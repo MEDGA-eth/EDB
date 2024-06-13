@@ -1,0 +1,21 @@
+[package]
+name = "edb"
+description = "EDB: The EVM Project Debugger"
+
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "edb"
+path = "bin/main.rs"
+
+[dependencies]
+eyre.workspace = true
