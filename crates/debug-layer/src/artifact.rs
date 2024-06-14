@@ -245,7 +245,7 @@ fn deserialize_arrayvec_hex<'de, D: serde::Deserializer<'de>>(
     Ok(array)
 }
 
-pub struct DebuggingArtifact {
+pub struct DebugArtifact {
     /// Debug traces returned from the EVM execution.
     pub debug_arena: Vec<DebugNodeFlat>,
     /// Identified contracts.
