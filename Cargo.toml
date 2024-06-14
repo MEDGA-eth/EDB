@@ -127,11 +127,13 @@ alloy-rlp = "0.3.3"
 solang-parser = "=0.3.3"
 
 ## misc
+arrayvec = "0.7"
 evm-disassembler = "0.5"
 eyre = "0.6"
 hex = { package = "const-hex", version = "1.6", features = ["hex"] }
 itertools = "0.13"
 rand = "0.8"
+rustc-hash = "1.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 strum = "0.26"

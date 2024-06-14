@@ -2,7 +2,7 @@
 
 ---
 
-Please also make sure that the following commands pass if you have changed the code:
+Please make sure that the following commands pass if you have changed the code:
 
 ```rust
 cargo check --all
