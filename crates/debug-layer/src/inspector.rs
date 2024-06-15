@@ -9,3 +9,7 @@ pub struct DebugInspector {
     pub(crate) compilation_artifacts: Rc<RefCell<HashMap<Address, Arc<CompilationArtifact>>>>,
     pub(crate) local_compilation_artifact: Option<Rc<RefCell<CompilationArtifact>>>,
 }
+
+pub struct PreDebugInspector {
+    pub(crate) creation_code: Rc<RefCell<HashMap<Address, Option<u64>>>>,
+}

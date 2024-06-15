@@ -17,5 +17,26 @@ workspace = true
 name = "edb"
 path = "bin/main.rs"
 
+[build-dependencies]
+vergen = { workspace = true, default-features = false, features = [
+    "build",
+    "git",
+    "gitcl",
+] }
+
 [dependencies]
+alloy-chains = { workspace = true, features = ["serde"] }
+alloy-primitives = { workspace = true, features = ["serde"] }
+clap = { version = "4", features = ["derive", "env", "unicode", "wrap_help"] }
+clap_complete = "4"
+clap_complete_fig = "4"
+color-eyre.workspace = true
 eyre.workspace = true
+serde.workspace = true
+strum = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["full"] }
+tracing.workspace = true
+tracing-error.workspace = true
+tracing-subscriber = { workspace = true, features = ["registry", "env-filter", "fmt"] }
+yansi.workspace = true
+

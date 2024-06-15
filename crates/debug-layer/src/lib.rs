@@ -12,7 +12,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 use alloy_primitives::Address;
 pub use artifact::*;
 pub use handler::DebugHanlder;
-pub use inspector::DebugInspector;
+pub use inspector::{DebugInspector, PreDebugInspector};
 
 #[derive(Debug, Default)]
 pub struct DebugLayer {
@@ -23,6 +23,8 @@ pub struct DebugLayer {
 
     // Compilation artifact from local file system
     local_compilation_artifact: Option<Rc<RefCell<CompilationArtifact>>>,
+    // Creation code for each contract
+    creation_code: Rc<RefCell<HashMap<Address, Option<u64>>>>,
 }
 
 impl DebugLayer {
@@ -37,7 +39,7 @@ impl DebugLayer {
         }
     }
 
-    pub fn new_inspector(&self) -> DebugInspector {
+    pub fn new_debug_inspector(&self) -> DebugInspector {
         DebugInspector {
             identified_contracts: Rc::clone(&self.identified_contracts),
             compilation_artifacts: Rc::clone(&self.compilation_artifacts),
@@ -45,11 +47,15 @@ impl DebugLayer {
         }
     }
 
-    pub fn new_handler(&self) -> DebugHanlder {
+    pub fn new_debug_handler(&self) -> DebugHanlder {
         DebugHanlder {
             identified_contracts: Rc::clone(&self.identified_contracts),
             compilation_artifacts: Rc::clone(&self.compilation_artifacts),
             local_compilation_artifact: self.local_compilation_artifact.as_ref().map(Rc::clone),
         }
+    }
+
+    pub fn new_pre_debug_inspector(&self) -> PreDebugInspector {
+        PreDebugInspector { creation_code: Rc::clone(&self.creation_code) }
     }
 }
