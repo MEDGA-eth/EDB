@@ -76,9 +76,12 @@ edb-foundry-adapter = { path = "crates/foundry-adapter" }
 edb-hardhat-adapter = { path = "crates/hardhat-adapter" }
 edb-utils = { path = "crates/utils" }
 
-# solc & compilation utilities
+# foundry
 foundry-block-explorers = { version = "0.4.0", default-features = false }
 foundry-compilers = { version = "0.7.0", default-features = false }
+foundry-common = { git = "https://github.com/foundry-rs/foundry", rev = "c2e5297" }
+foundry-evm = { git = "https://github.com/foundry-rs/foundry", rev = "c2e5297" }
+anvil = { git = "https://github.com/foundry-rs/foundry", rev = "c2e5297" }
 
 ## revm
 # no default features to avoid c-kzg
@@ -150,8 +153,7 @@ yansi = { version = "1.0", features = ["detect-tty", "detect-env"] }
 soldeer = "0.2.15"
 
 [patch.crates-io]
-# XXX: add patches back when using the following dependencies
-# revm = { git = "https://github.com/bluealloy/revm.git", rev = "a28a543" }
-# revm-interpreter = { git = "https://github.com/bluealloy/revm.git", rev = "a28a543" }
-# revm-precompile = { git = "https://github.com/bluealloy/revm.git", rev = "a28a543" }
-# revm-primitives = { git = "https://github.com/bluealloy/revm.git", rev = "a28a543" }
+revm = { git = "https://github.com/bluealloy/revm.git", rev = "a28a543" }
+revm-interpreter = { git = "https://github.com/bluealloy/revm.git", rev = "a28a543" }
+revm-precompile = { git = "https://github.com/bluealloy/revm.git", rev = "a28a543" }
+revm-primitives = { git = "https://github.com/bluealloy/revm.git", rev = "a28a543" }

@@ -4,7 +4,7 @@ use tracing_error::ErrorLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use yansi::Paint;
 
-/// A custom context type for Foundry specific error reporting via `eyre`
+/// A custom context type for EDB specific error reporting via `eyre`
 #[derive(Debug)]
 struct Handler;
 
