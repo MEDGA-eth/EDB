@@ -101,11 +101,6 @@ impl ReplayArgs {
                     continue;
                 }
 
-                if tx.hash == tx_hash {
-                    // we reach the target transaction
-                    break;
-                }
-
                 // execute the transaction
                 trace!("Executing transaction: {:?}", tx.hash);
                 configure_tx_env(&mut env, &tx);
@@ -127,6 +122,12 @@ impl ReplayArgs {
                     cumulative_gas_used,
                     tx_receipt.inner.inner.inner.receipt.cumulative_gas_used
                 );
+
+                // we put it after the execution to ensure the cache is updated
+                if tx.hash == tx_hash {
+                    // we reach the target transaction
+                    break;
+                }
             }
         }
 
