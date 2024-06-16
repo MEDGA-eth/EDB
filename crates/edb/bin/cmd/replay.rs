@@ -4,15 +4,16 @@ use alloy_primitives::TxHash;
 use alloy_provider::Provider;
 use alloy_rpc_types::{BlockTransactions, BlockTransactionsKind};
 use clap::Parser;
-use edb_utils::{
-    evm::{setup_block_env, setup_fork_db},
-    init_progress, update_progress,
-};
 use eyre::{ensure, eyre, Result};
 use foundry_block_explorers::Client;
 use foundry_common::{is_known_system_sender, SYSTEM_TRANSACTION_TYPE};
 use foundry_evm::utils::{configure_tx_env, new_evm_with_inspector};
 use revm::inspectors::NoOpInspector;
+
+use crate::{
+    init_progress, update_progress,
+    utils::evm::{setup_block_env, setup_fork_db},
+};
 
 use super::{etherscan::EtherscanOpts, rpc::RpcOpts};
 

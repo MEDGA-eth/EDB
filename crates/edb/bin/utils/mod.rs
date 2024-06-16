@@ -1,3 +1,6 @@
+pub mod evm;
+pub mod progress_bar;
+
 use eyre::EyreHandler;
 use std::{error::Error, future::Future};
 use tracing_error::ErrorLayer;

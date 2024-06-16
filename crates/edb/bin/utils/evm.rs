@@ -12,9 +12,9 @@ use foundry_evm::{
     fork::{database::ForkedDatabase, BlockchainDb, BlockchainDbMeta, SharedBackend},
     utils::apply_chain_and_block_specific_env_changes,
 };
-use revm::primitives::{BlobExcessGasAndPrice, BlockEnv, EnvWithHandlerCfg, SpecId};
+use revm::primitives::{BlobExcessGasAndPrice, BlockEnv, EnvWithHandlerCfg};
 
-use crate::cache::CachePath;
+use edb_utils::cache::CachePath;
 
 pub async fn setup_block_env<
     T: Transport + Clone + Unpin,
