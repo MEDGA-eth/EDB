@@ -1,11 +1,2 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
-
-use alloy_primitives::Address;
-
-use crate::CompilationArtifact;
-
-pub struct DebugHanlder {
-    pub(crate) identified_contracts: Rc<RefCell<HashMap<Address, String>>>,
-    pub(crate) compilation_artifacts: Rc<RefCell<HashMap<Address, Arc<CompilationArtifact>>>>,
-    pub(crate) local_compilation_artifact: Option<Rc<RefCell<CompilationArtifact>>>,
-}
+#[derive(Debug, Default)]
+pub struct DebugHanlder {}

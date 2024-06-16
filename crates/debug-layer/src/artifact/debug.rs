@@ -1,13 +1,13 @@
 use alloy_primitives::{Address, Bytes, U256};
 use arrayvec::ArrayVec;
-use foundry_compilers::artifacts::ContractBytecodeSome;
 use revm::interpreter::OpCode;
 use revm_inspectors::tracing::types::CallKind;
-use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, sync::Arc};
 
-use super::utils::is_memory_modifying_opcode;
+use crate::utils::evm;
+
+use crate::artifact::compilation::CompilationArtifact;
 
 /// An arena of [DebugNode]s
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -232,7 +232,7 @@ impl DebugStep {
 
     /// Returns `true` if the opcode modifies memory.
     pub fn opcode_modifies_memory(&self) -> bool {
-        OpCode::new(self.instruction).map_or(false, is_memory_modifying_opcode)
+        OpCode::new(self.instruction).map_or(false, evm::is_memory_modifying_opcode)
     }
 }
 
@@ -252,39 +252,4 @@ pub struct DebugArtifact {
     pub identified_contracts: HashMap<Address, String>,
     /// Map of source files. Note that each address will have a compilation artifact.
     pub compilation_artifacts: HashMap<Address, Arc<CompilationArtifact>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct BytecodeData {
-    pub bytecode: ContractBytecodeSome,
-    pub build_id: String,
-    pub file_id: u32,
-}
-
-#[derive(Clone, Debug)]
-pub struct SourceData {
-    pub source: Arc<String>,
-    pub name: String,
-}
-
-/// Contract source code and bytecode data used for debugger.
-#[derive(Clone, Debug, Default)]
-pub struct CompilationArtifact {
-    /// Map over build_id -> file_id -> (source code, language)
-    pub sources_by_id: HashMap<String, FxHashMap<u32, SourceData>>,
-    /// Map over contract name -> Vec<(bytecode, build_id, file_id)>
-    pub artifacts_by_name: HashMap<String, Vec<BytecodeData>>,
-}
-
-pub trait AsCompilationArtifact {
-    fn as_compilation_artifact(&self) -> CompilationArtifact;
-}
-
-impl<T> From<T> for CompilationArtifact
-where
-    T: AsCompilationArtifact,
-{
-    fn from(t: T) -> Self {
-        t.as_compilation_artifact()
-    }
 }
