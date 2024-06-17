@@ -1,14 +1,26 @@
 use edb_debug_backend::DebugBackend;
-use revm::Database;
 
-pub struct DebugFrontend<'a, DB> {
+use eyre::Result;
+use revm::DatabaseRef;
+
+pub struct DebugFrontend<'a, DBRef> {
     /// The backend.
-    backend: &'a mut DebugBackend<DB>,
+    backend: &'a mut DebugBackend<DBRef>,
 }
 
-impl<'a, DB> DebugFrontend<'a, DB> where DB: Database, DB::Error: std::error::Error, {
+impl<'a, DBRef> DebugFrontend<'a, DBRef>
+where
+    DBRef: DatabaseRef,
+    DBRef::Error: std::error::Error,
+{
     /// Create a new frontend.
-    pub fn new(backend: &'a mut DebugBackend<DB>) -> Self {
+    pub fn new(backend: &'a mut DebugBackend<DBRef>) -> Self {
         Self { backend }
+    }
+
+    /// Run the frontend.
+    pub async fn run(&mut self) -> Result<()> {
+        self.backend.prepare().await?;
+        Ok(())
     }
 }

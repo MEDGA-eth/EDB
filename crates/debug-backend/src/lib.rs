@@ -3,9 +3,9 @@
 //! EDB's core debugging backend.
 
 mod artifact;
+mod core;
 mod handler;
 mod inspector;
-mod core;
 mod utils;
 
 pub use core::DebugBackend;

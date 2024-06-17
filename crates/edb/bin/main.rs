@@ -1,14 +1,14 @@
 #[macro_use]
 extern crate tracing;
 
-mod cmd;
 mod args;
-mod utils;
+mod cmd;
 mod opts;
+mod utils;
 
+use args::{EDBArgs, EDBSubcommand};
 use clap::Parser;
 use eyre::Result;
-use args::{EDBArgs, EDBSubcommand};
 
 fn main() -> Result<()> {
     utils::install_error_handler();

@@ -1,5 +1,5 @@
-mod rpc;
 mod etherscan;
+mod rpc;
 
-pub use rpc::RpcOpts;
 pub use etherscan::EtherscanOpts;
+pub use rpc::RpcOpts;

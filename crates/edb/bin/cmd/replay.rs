@@ -5,6 +5,7 @@ use alloy_provider::Provider;
 use alloy_rpc_types::{BlockTransactions, BlockTransactionsKind};
 use clap::Parser;
 use edb_debug_backend::DebugBackend;
+use edb_debug_frontend::DebugFrontend;
 use eyre::{ensure, eyre, Result};
 use foundry_block_explorers::Client;
 use foundry_common::{is_known_system_sender, SYSTEM_TRANSACTION_TYPE};
@@ -15,9 +16,11 @@ use foundry_evm::{
 use revm::{inspectors::NoOpInspector, primitives::EnvWithHandlerCfg};
 
 use crate::{
-    init_progress, opts::{EtherscanOpts, RpcOpts}, update_progress, utils::evm::{setup_block_env, setup_fork_db}
+    init_progress,
+    opts::{EtherscanOpts, RpcOpts},
+    update_progress,
+    utils::evm::{setup_block_env, setup_fork_db},
 };
-
 
 /// CLI arguments for `edb replay`.
 #[derive(Clone, Debug, Parser)]
@@ -64,8 +67,9 @@ impl ReplayArgs {
         let mut backend = DebugBackend::<ForkedDatabase>::builder()
             .chain(self.etherscan.chain.unwrap_or_default())
             .etherscan_api_key(self.etherscan.key().unwrap_or_default())
-            .build::<ForkedDatabase>()?;
-        let artifact = backend.debug(db, env).await?;
+            .build::<ForkedDatabase>(&db, env)?;
+        let mut frontend = DebugFrontend::new(&mut backend);
+        frontend.run().await?;
         Ok(())
     }
 
