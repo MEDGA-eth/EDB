@@ -3,7 +3,7 @@ use arrayvec::ArrayVec;
 use revm::interpreter::OpCode;
 use revm_inspectors::tracing::types::CallKind;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use crate::utils::evm;
 
@@ -251,5 +251,5 @@ pub struct DebugArtifact {
     /// Identified contracts.
     pub identified_contracts: HashMap<Address, String>,
     /// Map of source files. Note that each address will have a compilation artifact.
-    pub compilation_artifacts: HashMap<Address, Arc<CompilationArtifact>>,
+    pub compilation_artifacts: HashMap<Address, CompilationArtifact>,
 }

@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct DebugInspector<ERR, DB> {
+pub struct DebugInspector<DB> {
     /// The arena of [DebugNode]s
     pub arena: DebugArena,
     /// The ID of the current [DebugNode].
@@ -24,13 +24,12 @@ pub struct DebugInspector<ERR, DB> {
     /// The current execution address.
     pub context: Address,
 
-    phantom: std::marker::PhantomData<(ERR, DB)>,
+    phantom: std::marker::PhantomData<DB>,
 }
 
-impl<ERR, DB> DebugInspector<ERR, DB>
+impl<DB> DebugInspector<DB>
 where
-    ERR: std::error::Error,
-    DB: Database<Error = ERR>,
+    DB: Database,
 {
     /// Creates a new [DebugInspector].
     pub fn new() -> Self {
@@ -57,10 +56,10 @@ where
     }
 }
 
-impl<DB> Inspector<DB> for DebugInspector<DB::Error, DB>
+impl<DB> Inspector<DB> for DebugInspector<DB>
 where
-    DB::Error: std::error::Error,
     DB: Database,
+    DB::Error: std::error::Error,
 {
     fn step(&mut self, interp: &mut Interpreter, ecx: &mut EvmContext<DB>) {
         let pc = interp.program_counter();

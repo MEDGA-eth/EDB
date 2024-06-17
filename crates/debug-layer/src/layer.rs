@@ -1,14 +1,18 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
 
 use alloy_chains::Chain;
 use alloy_primitives::Address;
-use eyre::Result;
+use eyre::{eyre, Result};
 use foundry_block_explorers::Client;
 use revm::{primitives::EnvWithHandlerCfg, Database};
 
-use crate::artifact::{
-    compilation::{AsCompilationArtifact, CompilationArtifact},
-    debug::DebugArtifact,
+use crate::{
+    artifact::{
+        compilation::{AsCompilationArtifact, CompilationArtifact},
+        debug::DebugArtifact,
+    },
+    inspector::DebugInspector,
+    utils::evm::new_evm_with_inspector,
 };
 
 #[derive(Debug, Default)]
@@ -61,7 +65,11 @@ impl DebugLayerBuilder {
         self
     }
 
-    pub fn build<ERR, DB>(self) -> Result<DebugLayer<ERR, DB>> {
+    pub fn build<DB>(self) -> Result<DebugLayer<DB>>
+    where
+        DB: Database,
+        DB::Error: std::error::Error,
+    {
         // XXX: the following code looks not elegant and needs to be refactored
         let cb = Client::builder();
         let cb = if let Some(chain) = self.chain { cb.chain(chain)? } else { cb };
@@ -91,7 +99,7 @@ impl DebugLayerBuilder {
 }
 
 #[derive(Debug)]
-pub struct DebugLayer<ERR, DB> {
+pub struct DebugLayer<DB> {
     /// Identified contracts.
     pub identified_contracts: Rc<RefCell<HashMap<Address, String>>>,
     /// Map of source files. Note that each address will have a compilation artifact.
@@ -105,19 +113,30 @@ pub struct DebugLayer<ERR, DB> {
     // etherscan client
     client: Client,
 
-    phantom: std::marker::PhantomData<(ERR, DB)>,
+    phantom: std::marker::PhantomData<DB>,
 }
 
-impl<ERR, DB> DebugLayer<ERR, DB>
+impl<DB> DebugLayer<DB>
 where
-    ERR: std::error::Error,
-    DB: Database<Error = ERR>,
+    DB: Database,
+    DB::Error: std::error::Error,
 {
     pub fn builder() -> DebugLayerBuilder {
         DebugLayerBuilder::default()
     }
 
-    pub fn debug(&mut self, db: &mut DB, env: EnvWithHandlerCfg) -> DebugArtifact {
-        todo!()
+    pub async fn debug(&mut self, mut db: DB, env: EnvWithHandlerCfg) -> Result<DebugArtifact> {
+        let mut inspector = DebugInspector::new();
+        let mut evm = new_evm_with_inspector(&mut db, env, &mut inspector);
+        evm.transact().map_err(|err| eyre!("failed to transact: {}", err))?;
+        drop(evm);
+
+        let debug_arena = inspector.arena.arena.into_iter().map(|n| n.into_flat()).collect();
+
+        Ok(DebugArtifact {
+            debug_arena,
+            identified_contracts: self.identified_contracts.borrow().clone(),
+            compilation_artifacts: self.compilation_artifacts.borrow().clone(),
+        })
     }
 }

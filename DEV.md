@@ -22,6 +22,7 @@ cargo +nightly clippy --all --all-targets --all-features -- -D warnings
     + `foundry-evm`: theoretically safe to use, but it is recommended not to use it in `debug-layer` and `debug-ui`.
     + `anvil`: safe to use as it does not depend on any debugger crates (recommended to use only in the `edb` crate).
 + The `utils` crate is intended for functions that should either be used by other projects like Foundry or generally by all EDB crates. Functions used exclusively by a single EDB crate should be placed within that crate.
++ Error message does not need to start with a capital letter.
 
 ## Todo
 
