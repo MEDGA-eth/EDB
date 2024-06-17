@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[derive(Debug, Default)]
-pub struct DebugLayerBuilder {
+pub struct DebugBackendBuilder {
     chain: Option<Chain>,
     api_key: Option<String>,
     local_compilation_artifact: Option<CompilationArtifact>,
@@ -24,7 +24,7 @@ pub struct DebugLayerBuilder {
     compilation_artifacts: Option<HashMap<Address, CompilationArtifact>>,
 }
 
-impl DebugLayerBuilder {
+impl DebugBackendBuilder {
     pub fn new() -> Self {
         Self::default()
     }
@@ -65,7 +65,7 @@ impl DebugLayerBuilder {
         self
     }
 
-    pub fn build<DB>(self) -> Result<DebugLayer<DB>>
+    pub fn build<DB>(self) -> Result<DebugBackend<DB>>
     where
         DB: Database,
         DB::Error: std::error::Error,
@@ -87,7 +87,7 @@ impl DebugLayerBuilder {
 
         let creation_code = Rc::new(RefCell::new(HashMap::new()));
 
-        Ok(DebugLayer {
+        Ok(DebugBackend {
             identified_contracts,
             compilation_artifacts,
             local_compilation_artifact,
@@ -99,7 +99,7 @@ impl DebugLayerBuilder {
 }
 
 #[derive(Debug)]
-pub struct DebugLayer<DB> {
+pub struct DebugBackend<DB> {
     /// Identified contracts.
     pub identified_contracts: Rc<RefCell<HashMap<Address, String>>>,
     /// Map of source files. Note that each address will have a compilation artifact.
@@ -116,13 +116,13 @@ pub struct DebugLayer<DB> {
     phantom: std::marker::PhantomData<DB>,
 }
 
-impl<DB> DebugLayer<DB>
+impl<DB> DebugBackend<DB>
 where
     DB: Database,
     DB::Error: std::error::Error,
 {
-    pub fn builder() -> DebugLayerBuilder {
-        DebugLayerBuilder::default()
+    pub fn builder() -> DebugBackendBuilder {
+        DebugBackendBuilder::default()
     }
 
     pub async fn debug(&mut self, mut db: DB, env: EnvWithHandlerCfg) -> Result<DebugArtifact> {
@@ -132,6 +132,7 @@ where
         drop(evm);
 
         let debug_arena = inspector.arena.arena.into_iter().map(|n| n.into_flat()).collect();
+        println!("{:?}", debug_arena);
 
         Ok(DebugArtifact {
             debug_arena,

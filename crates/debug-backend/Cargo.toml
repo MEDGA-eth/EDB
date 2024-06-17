@@ -1,6 +1,6 @@
 [package]
-name = "edb-debug-layer"
-description = "EDB's core layer providing comprehensive debugging functionalities"
+name = "edb-debug-backend"
+description = "EDB's backend providing comprehensive debugging functionalities"
 
 version.workspace = true
 edition.workspace = true

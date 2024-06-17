@@ -4,7 +4,7 @@ use alloy_primitives::TxHash;
 use alloy_provider::Provider;
 use alloy_rpc_types::{BlockTransactions, BlockTransactionsKind};
 use clap::Parser;
-use edb_debug_layer::DebugLayer;
+use edb_debug_backend::DebugBackend;
 use eyre::{ensure, eyre, Result};
 use foundry_block_explorers::Client;
 use foundry_common::{is_known_system_sender, SYSTEM_TRANSACTION_TYPE};
@@ -63,11 +63,11 @@ impl ReplayArgs {
         env: EnvWithHandlerCfg,
         enable_ui: bool,
     ) -> Result<()> {
-        let mut layer = DebugLayer::<ForkedDatabase>::builder()
+        let mut backend = DebugBackend::<ForkedDatabase>::builder()
             .chain(self.etherscan.chain.unwrap_or_default())
             .etherscan_api_key(self.etherscan.key().unwrap_or_default())
             .build::<ForkedDatabase>()?;
-        let artifact = layer.debug(db, env).await?;
+        let artifact = backend.debug(db, env).await?;
         Ok(())
     }
 
