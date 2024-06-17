@@ -15,7 +15,7 @@ cargo +nightly clippy --all --all-targets --all-features -- -D warnings
 
 ## Notes
 
-+ The `debug-backend` and `debug-ui` will be used by other projects like Foundry. Therefore, it is crucial to avoid introducing any circular dependencies. The following crates are safe to use:
++ The `debug-backend` and `debug-frontend` will be used by other projects like Foundry. Therefore, it is crucial to avoid introducing any circular dependencies. The following crates are safe to use:
     + `foundry-block-explorers`
     + `foundry-compiler`
     + `foundry-evm` and `foundry-common`: theoretically safe to use, but it is recommended not to use them in `debug-backend`.

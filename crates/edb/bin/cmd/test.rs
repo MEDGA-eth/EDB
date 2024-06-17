@@ -1,7 +1,7 @@
 use clap::Parser;
 use eyre::Result;
 
-use super::{etherscan::EtherscanOpts, rpc::RpcOpts};
+use crate::opts::{EtherscanOpts, RpcOpts};
 
 /// CLI arguments for `edb replay`.
 #[derive(Clone, Debug, Parser)]

@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "crates/debug-backend/",
-    "crates/debug-ui/",
+    "crates/debug-frontend/",
     "crates/edb/",
     "crates/etherscan-adapter/",
     "crates/foundry-adapter/",
@@ -70,7 +70,7 @@ codegen-units = 1
 [workspace.dependencies]
 edb = { path = "crates/edb" }
 edb-debug-backend = { path = "crates/debug-backend" }
-edb-debug-ui = { path = "crates/debug-ui" }
+edb-debug-frontend = { path = "crates/debug-frontend" }
 edb-etherscan-adapter = { path = "crates/etherscan-adapter" }
 edb-foundry-adapter = { path = "crates/foundry-adapter" }
 edb-hardhat-adapter = { path = "crates/hardhat-adapter" }

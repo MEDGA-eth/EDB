@@ -139,7 +139,7 @@ where
                 InterpreterResult {
                     result: InstructionResult::Revert,
                     output: alloy_sol_types::Revert::from(err.to_string()).abi_encode().into(),
-                    // output: evm::abi_encode_revert(&err),
+                    // output: evm::abi_encode_revert(&err), // XXX: unknown compilation error
                     gas,
                 },
                 None,

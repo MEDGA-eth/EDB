@@ -15,11 +15,9 @@ use foundry_evm::{
 use revm::{inspectors::NoOpInspector, primitives::EnvWithHandlerCfg};
 
 use crate::{
-    init_progress, update_progress,
-    utils::evm::{setup_block_env, setup_fork_db},
+    init_progress, opts::{EtherscanOpts, RpcOpts}, update_progress, utils::evm::{setup_block_env, setup_fork_db}
 };
 
-use super::{etherscan::EtherscanOpts, rpc::RpcOpts};
 
 /// CLI arguments for `edb replay`.
 #[derive(Clone, Debug, Parser)]
