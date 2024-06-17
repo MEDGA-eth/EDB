@@ -7,7 +7,6 @@ use clap::Parser;
 use edb_debug_backend::DebugBackend;
 use edb_debug_frontend::DebugFrontend;
 use eyre::{ensure, eyre, Result};
-use foundry_block_explorers::Client;
 use foundry_common::{is_known_system_sender, SYSTEM_TRANSACTION_TYPE};
 use foundry_evm::{
     fork::database::ForkedDatabase,
@@ -54,16 +53,11 @@ impl ReplayArgs {
         }
 
         let (db, env) = self.prepare().await?;
-        self.debug(db, env, true).await?;
+        self.debug(db, env).await?;
         Ok(())
     }
 
-    pub async fn debug(
-        &self,
-        db: ForkedDatabase,
-        env: EnvWithHandlerCfg,
-        enable_ui: bool,
-    ) -> Result<()> {
+    pub async fn debug(&self, db: ForkedDatabase, env: EnvWithHandlerCfg) -> Result<()> {
         let mut backend = DebugBackend::<ForkedDatabase>::builder()
             .chain(self.etherscan.chain.unwrap_or_default())
             .etherscan_api_key(self.etherscan.key().unwrap_or_default())
@@ -74,14 +68,11 @@ impl ReplayArgs {
     }
 
     pub async fn prepare(&self) -> Result<(ForkedDatabase, EnvWithHandlerCfg)> {
-        let Self { tx_hash, quick, rpc, no_validation, etherscan } = self;
+        let Self { tx_hash, quick, rpc, no_validation, etherscan: EtherscanOpts { chain, .. } } =
+            self;
         let fork_url = rpc.url(true)?.unwrap().to_string();
 
         // step 0. prepare rpc provider
-        let chain = etherscan.chain.unwrap_or_default();
-        let etherscan_api_key = etherscan.key().unwrap_or_default();
-        let _client = Client::new(chain, etherscan_api_key)?;
-
         let compute_units_per_second =
             if rpc.no_rate_limit { Some(u64::MAX) } else { rpc.compute_units_per_second };
         let mut provider_builder = foundry_common::provider::ProviderBuilder::new(&fork_url)
@@ -90,6 +81,10 @@ impl ReplayArgs {
             provider_builder = provider_builder.jwt(jwt);
         }
         let provider = Arc::new(provider_builder.build()?);
+        ensure!(
+            provider.get_chain_id().await? == chain.unwrap_or_default().id(),
+            "inconsistent chain id"
+        );
 
         // step 1. get the transaction and block data
         let tx = provider

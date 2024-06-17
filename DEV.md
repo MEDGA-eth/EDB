@@ -2,6 +2,11 @@
 
 This is a quick note for early-stage development.
 
+## Brainstorming
+
++ Support abstract-interpretation style for experssion?
+    
+
 ## Before Pushing to GitHub
 
 Please ensure the following commands pass if you have changed the code:
@@ -30,3 +35,5 @@ cargo +nightly clippy --all --all-targets --all-features -- -D warnings
 + [ ] Support command history.
 + [ ] Support caching in the debugger.
 + [ ] Move the dependency declarations to the top of `cargo.toml`.
++ [ ] Rewrite the subject contract, to add `pub` to all storage variables and functions.
++ [ ] Rewrite the subject contract, to enforce a storage update for each local variable update.

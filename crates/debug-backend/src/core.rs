@@ -93,7 +93,7 @@ impl DebugBackendBuilder {
             local_compilation_artifact,
             debug_artifact: None,
             creation_code,
-            client,
+            etherscan: client,
             base_db: CacheDB::new(db),
             env,
         })
@@ -116,8 +116,7 @@ pub struct DebugBackend<DBRef> {
     creation_code: Rc<RefCell<HashMap<Address, Option<u64>>>>,
 
     // Etherscan client
-    client: Client,
-
+    etherscan: Client,
     // The base database
     base_db: CacheDB<DBRef>,
     // EVM evnironment
