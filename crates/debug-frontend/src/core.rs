@@ -20,7 +20,7 @@ where
 
     /// Run the frontend.
     pub async fn run(&mut self) -> Result<()> {
-        self.backend.prepare().await?;
+        let _debug_artifact = self.backend.get_debug_artifact().await?;
         Ok(())
     }
 }

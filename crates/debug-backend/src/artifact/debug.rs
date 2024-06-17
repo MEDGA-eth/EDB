@@ -2,7 +2,7 @@ use alloy_primitives::{Address, Bytes, U256};
 use arrayvec::ArrayVec;
 use revm::interpreter::OpCode;
 use revm_inspectors::tracing::types::CallKind;
-use serde::{Deserialize, Serialize};
+use serde::{de, Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::utils::evm;
@@ -245,6 +245,7 @@ fn deserialize_arrayvec_hex<'de, D: serde::Deserializer<'de>>(
     Ok(array)
 }
 
+#[derive(Clone, Debug)]
 pub struct DebugArtifact {
     /// Debug traces returned from the EVM execution.
     pub debug_arena: Vec<DebugNodeFlat>,
