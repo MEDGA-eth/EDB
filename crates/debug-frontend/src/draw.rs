@@ -1,11 +1,9 @@
 //! TUI draw implementation.
 
-use super::context::{BufferKind, FrontendContext};
-use crate::{utils::opcode::OpcodeParam, FrontendTerminal};
+use super::context::{DataKind, FrontendContext};
+use crate::{context::CodeKind, utils::opcode::OpcodeParam, FrontendTerminal};
 use alloy_primitives::U256;
-use foundry_compilers::{
-    artifacts::sourcemap::SourceElement, compilers::multi::MultiCompilerLanguage,
-};
+use foundry_compilers::artifacts::sourcemap::SourceElement;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -19,12 +17,12 @@ use std::{collections::VecDeque, fmt::Write, io};
 
 impl FrontendContext<'_> {
     /// Draws the TUI layout and subcomponents to the given terminal.
-    pub(crate) fn draw(&self, terminal: &mut FrontendTerminal) -> io::Result<()> {
+    pub(crate) fn draw(&mut self, terminal: &mut FrontendTerminal) -> io::Result<()> {
         terminal.draw(|f| self.draw_layout(f)).map(drop)
     }
 
     #[inline]
-    fn draw_layout(&self, f: &mut Frame<'_>) {
+    fn draw_layout(&mut self, f: &mut Frame<'_>) {
         // We need 100 columns to display a 32 byte word in the memory and stack panes.
         let size = f.size();
         let min_width = 100;
@@ -37,9 +35,11 @@ impl FrontendContext<'_> {
         // The horizontal layout draws these panes at 50% width.
         let min_column_width_for_horizontal = 200;
         if size.width >= min_column_width_for_horizontal {
-            self.horizontal_layout(f);
+            self.is_small_screen = false;
+            self.large_screen_layout(f);
         } else {
-            self.vertical_layout(f);
+            self.is_small_screen = true;
+            self.small_screen_layout(f);
         }
     }
 
@@ -70,22 +70,7 @@ impl FrontendContext<'_> {
         f.render_widget(paragraph, size)
     }
 
-    /// Draws the layout in vertical mode.
-    ///
-    /// ```text
-    /// |-----------------------------|
-    /// |             op              |
-    /// |-----------------------------|
-    /// |            stack            |
-    /// |-----------------------------|
-    /// |             buf             |
-    /// |-----------------------------|
-    /// |                             |
-    /// |             src             |
-    /// |                             |
-    /// |-----------------------------|
-    /// ```
-    fn vertical_layout(&self, f: &mut Frame<'_>) {
+    fn small_screen_layout(&self, f: &mut Frame<'_>) {
         let area = f.size();
         let h_height = if self.show_shortcuts { 4 } else { 0 };
 
@@ -101,41 +86,33 @@ impl FrontendContext<'_> {
             unreachable!()
         };
 
-        // Split the app in 4 vertically to construct all the panes.
-        let [op_pane, stack_pane, memory_pane, src_pane] = Layout::new(
+        // Split app in 2 horizontally.
+        let [app_left, op_pane] =
+            Layout::new(Direction::Horizontal, [Constraint::Ratio(3, 4), Constraint::Ratio(1, 4)])
+                .split(app)[..]
+        else {
+            unreachable!()
+        };
+
+        // Split the right pane vertically to construct data and text panes.
+        let [code_pane, data_pane, _text_pane] = Layout::new(
             Direction::Vertical,
-            [
-                Constraint::Ratio(1, 6),
-                Constraint::Ratio(1, 6),
-                Constraint::Ratio(1, 6),
-                Constraint::Ratio(3, 6),
-            ],
+            [Constraint::Ratio(3, 8), Constraint::Ratio(3, 8), Constraint::Ratio(1, 4)],
         )
-        .split(app)[..] else {
+        .split(app_left)[..] else {
             unreachable!()
         };
 
         if self.show_shortcuts {
             self.draw_footer(f, footer);
         }
-        self.draw_src(f, src_pane);
+        self.draw_code(f, code_pane);
+        self.draw_data(f, data_pane);
         self.draw_op_list(f, op_pane);
-        self.draw_stack(f, stack_pane);
-        self.draw_buffer(f, memory_pane);
     }
 
     /// Draws the layout in horizontal mode.
-    ///
-    /// ```text
-    /// |-----------------|-----------|
-    /// |        op       |   stack   |
-    /// |-----------------|-----------|
-    /// |                 |           |
-    /// |       src       |    buf    |
-    /// |                 |           |
-    /// |-----------------|-----------|
-    /// ```
-    fn horizontal_layout(&self, f: &mut Frame<'_>) {
+    fn large_screen_layout(&self, f: &mut Frame<'_>) {
         let area = f.size();
         let h_height = if self.show_shortcuts { 4 } else { 0 };
 
@@ -148,42 +125,107 @@ impl FrontendContext<'_> {
             unreachable!()
         };
 
-        // Split app in 2 horizontally.
-        let [app_left, app_right] =
-            Layout::new(Direction::Horizontal, [Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
+        // Split app in 2 vertically.
+        let [app_top, app_bottom] =
+            Layout::new(Direction::Vertical, [Constraint::Ratio(3, 5), Constraint::Ratio(2, 5)])
                 .split(app)[..]
         else {
             unreachable!()
         };
 
-        // Split left pane in 2 vertically to opcode list and source.
-        let [op_pane, src_pane] =
-            Layout::new(Direction::Vertical, [Constraint::Ratio(1, 4), Constraint::Ratio(3, 4)])
-                .split(app_left)[..]
-        else {
+        // Split the upper pane in 3 vertically to trace, source, and opcode list .
+        let [trace_pane, src_pane, op_pane] = Layout::new(
+            Direction::Horizontal,
+            [Constraint::Ratio(2, 5), Constraint::Ratio(2, 5), Constraint::Ratio(1, 5)],
+        )
+        .split(app_top)[..] else {
             unreachable!()
         };
 
-        // Split right pane horizontally to construct stack and memory.
-        let [stack_pane, memory_pane] =
-            Layout::new(Direction::Vertical, [Constraint::Ratio(1, 4), Constraint::Ratio(3, 4)])
-                .split(app_right)[..]
+        // Split the lower pane horizontally to construct text aren and data panes.
+        let [_text_pane, data_pane] =
+            Layout::new(Direction::Horizontal, [Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
+                .split(app_bottom)[..]
         else {
             unreachable!()
         };
-
         if self.show_shortcuts {
             self.draw_footer(f, footer);
         }
-        self.draw_src(f, src_pane);
+
+        self.draw_trace(f, trace_pane);
         self.draw_op_list(f, op_pane);
-        self.draw_stack(f, stack_pane);
-        self.draw_buffer(f, memory_pane);
+        self.draw_src(f, src_pane);
+        self.draw_data(f, data_pane);
+    }
+
+    fn draw_code(&self, f: &mut Frame<'_>, area: Rect) {
+        match self.active_code {
+            CodeKind::Trace => {
+                self.draw_trace(f, area);
+            }
+            CodeKind::Source => {
+                self.draw_src(f, area);
+            }
+        }
+    }
+
+    fn draw_data(&self, f: &mut Frame<'_>, area: Rect) {
+        match self.active_data {
+            DataKind::Memory | DataKind::Calldata | DataKind::Returndata => {
+                self.draw_buffer(f, area);
+            }
+            DataKind::Stack => {
+                self.draw_stack(f, area);
+            }
+            DataKind::Expression => {
+                self.draw_expressions(f, area);
+            }
+            DataKind::Variable => {
+                self.draw_variables(f, area);
+            }
+        }
+    }
+
+    // TODO
+    fn draw_trace(&self, f: &mut Frame<'_>, area: Rect) {
+        let title = format!("Trace (address: {})", self.address());
+        let block = Block::default().title(title).borders(Borders::ALL);
+        let paragraph = Paragraph::new(Text::from(format!("trace displaying under construction")))
+            .block(block)
+            .wrap(Wrap { trim: false });
+        f.render_widget(paragraph, area);
+    }
+
+    // TODO
+    fn draw_variables(&self, f: &mut Frame<'_>, area: Rect) {
+        let title = self.active_data.title(0);
+        let block = Block::default().title(title).borders(Borders::ALL);
+        let paragraph =
+            Paragraph::new(Text::from(format!("variable displaying under construction")))
+                .block(block)
+                .wrap(Wrap { trim: false });
+        f.render_widget(paragraph, area);
+    }
+
+    // TODO
+    fn draw_expressions(&self, f: &mut Frame<'_>, area: Rect) {
+        let title = self.active_data.title(0);
+        let block = Block::default().title(title).borders(Borders::ALL);
+        let paragraph =
+            Paragraph::new(Text::from(format!("watcher displaying under construction")))
+                .block(block)
+                .wrap(Wrap { trim: false });
+        f.render_widget(paragraph, area);
     }
 
     fn draw_footer(&self, f: &mut Frame<'_>, area: Rect) {
-        let l1 = "[q]: quit | [k/j]: prev/next op | [a/s]: prev/next jump | [c/C]: prev/next call | [g/G]: start/end | [b]: cycle memory/calldata/returndata buffers";
-        let l2 = "[t]: stack labels | [m]: buffer decoding | [shift + j/k]: scroll stack | [ctrl + j/k]: scroll buffer | ['<char>]: goto breakpoint | [h] toggle help";
+        let l1 = "[q]: quit | [k/j]: prev/next op | [a/s]: prev/next jump | [c/C]: prev/next call | [g/G]: start/end | [b]: cycle variable/watcher/memory/calldata/returndata/stack";
+        let l2 = if self.is_small_screen {
+            "[t]: stack labels | [m]: buffer decoding | [shift + k]: cycle trace/source | [ctrl + j/k]: scroll data | ['<char>]: goto breakpoint | [h] toggle help"
+        } else {
+            "[t]: stack labels | [m]: buffer decoding | [ctrl + j/k]: scroll data | ['<char>]: goto breakpoint | [h] toggle help"
+        };
         let dimmed = Style::new().add_modifier(Modifier::DIM);
         let lines =
             vec![Line::from(Span::styled(l1, dimmed)), Line::from(Span::styled(l2, dimmed))];
@@ -428,8 +470,7 @@ impl FrontendContext<'_> {
             .collect::<Vec<_>>();
 
         let title = format!(
-            "Address: {} | PC: {} | Gas used in call: {}",
-            self.address(),
+            "PC: {} | Gas used in call: {}",
             self.current_step().pc,
             self.current_step().total_gas_used,
         );
@@ -494,10 +535,11 @@ impl FrontendContext<'_> {
 
     fn draw_buffer(&self, f: &mut Frame<'_>, area: Rect) {
         let step = self.current_step();
-        let buf = match self.active_buffer {
-            BufferKind::Memory => step.memory.as_ref(),
-            BufferKind::Calldata => step.calldata.as_ref(),
-            BufferKind::Returndata => step.returndata.as_ref(),
+        let buf = match self.active_data {
+            DataKind::Memory => step.memory.as_ref(),
+            DataKind::Calldata => step.calldata.as_ref(),
+            DataKind::Returndata => step.returndata.as_ref(),
+            _ => unreachable!("other data kinds should be handled elsewhere"),
         };
 
         let min_len = hex_digits(buf.len());
@@ -517,7 +559,7 @@ impl FrontendContext<'_> {
                     color = Some(Color::Cyan);
                 }
                 if let Some(write_access) = accesses.write {
-                    if self.active_buffer == BufferKind::Memory {
+                    if self.active_data == DataKind::Memory {
                         write_offset = Some(write_access.offset);
                         write_size = Some(write_access.size);
                     }
@@ -535,7 +577,7 @@ impl FrontendContext<'_> {
             if let Some(write_access) =
                 get_buffer_accesses(prev_step.instruction, &prev_step.stack).and_then(|a| a.write)
             {
-                if self.active_buffer == BufferKind::Memory {
+                if self.active_data == DataKind::Memory {
                     offset = Some(write_access.offset);
                     size = Some(write_access.size);
                     color = Some(Color::Green);
@@ -617,7 +659,7 @@ impl FrontendContext<'_> {
             })
             .collect();
 
-        let title = self.active_buffer.title(buf.len());
+        let title = self.active_data.title(buf.len());
         let block = Block::default().title(title).borders(Borders::ALL);
         let paragraph = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
         f.render_widget(paragraph, area);
@@ -664,7 +706,7 @@ struct BufferAccess {
 /// Container for read and write buffer access information.
 struct BufferAccesses {
     /// The read buffer kind and access information.
-    read: Option<(BufferKind, BufferAccess)>,
+    read: Option<(DataKind, BufferAccess)>,
     /// The only mutable buffer is the memory buffer, so don't store the buffer kind.
     write: Option<BufferAccess>,
 }
@@ -681,23 +723,23 @@ struct BufferAccesses {
 fn get_buffer_accesses(op: u8, stack: &[U256]) -> Option<BufferAccesses> {
     let buffer_access = match op {
         opcode::KECCAK256 | opcode::RETURN | opcode::REVERT => {
-            (Some((BufferKind::Memory, 1, 2)), None)
+            (Some((DataKind::Memory, 1, 2)), None)
         }
-        opcode::CALLDATACOPY => (Some((BufferKind::Calldata, 2, 3)), Some((1, 3))),
-        opcode::RETURNDATACOPY => (Some((BufferKind::Returndata, 2, 3)), Some((1, 3))),
-        opcode::CALLDATALOAD => (Some((BufferKind::Calldata, 1, -1)), None),
+        opcode::CALLDATACOPY => (Some((DataKind::Calldata, 2, 3)), Some((1, 3))),
+        opcode::RETURNDATACOPY => (Some((DataKind::Returndata, 2, 3)), Some((1, 3))),
+        opcode::CALLDATALOAD => (Some((DataKind::Calldata, 1, -1)), None),
         opcode::CODECOPY => (None, Some((1, 3))),
         opcode::EXTCODECOPY => (None, Some((2, 4))),
-        opcode::MLOAD => (Some((BufferKind::Memory, 1, -1)), None),
+        opcode::MLOAD => (Some((DataKind::Memory, 1, -1)), None),
         opcode::MSTORE => (None, Some((1, -1))),
         opcode::MSTORE8 => (None, Some((1, -2))),
         opcode::LOG0 | opcode::LOG1 | opcode::LOG2 | opcode::LOG3 | opcode::LOG4 => {
-            (Some((BufferKind::Memory, 1, 2)), None)
+            (Some((DataKind::Memory, 1, 2)), None)
         }
-        opcode::CREATE | opcode::CREATE2 => (Some((BufferKind::Memory, 2, 3)), None),
-        opcode::CALL | opcode::CALLCODE => (Some((BufferKind::Memory, 4, 5)), None),
-        opcode::DELEGATECALL | opcode::STATICCALL => (Some((BufferKind::Memory, 3, 4)), None),
-        opcode::MCOPY => (Some((BufferKind::Memory, 2, 3)), Some((1, 3))),
+        opcode::CREATE | opcode::CREATE2 => (Some((DataKind::Memory, 2, 3)), None),
+        opcode::CALL | opcode::CALLCODE => (Some((DataKind::Memory, 4, 5)), None),
+        opcode::DELEGATECALL | opcode::STATICCALL => (Some((DataKind::Memory, 3, 4)), None),
+        opcode::MCOPY => (Some((DataKind::Memory, 2, 3)), Some((1, 3))),
         _ => Default::default(),
     };
 

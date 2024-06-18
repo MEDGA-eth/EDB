@@ -16,30 +16,56 @@ pub(crate) struct DrawMemory {
     pub(crate) current_stack_startline: usize,
 }
 
-/// Used to keep track of which buffer is currently active to be drawn by the debugger.
+/// Used to keep track of which kind of data is currently active to be drawn by the debugger.
 #[derive(Debug, PartialEq)]
-pub(crate) enum BufferKind {
+pub(crate) enum DataKind {
+    Variable,
+    Expression,
     Memory,
     Calldata,
     Returndata,
+    Stack,
 }
 
-impl BufferKind {
+impl DataKind {
     /// Helper to cycle through the active buffers.
     pub(crate) fn next(&self) -> Self {
         match self {
+            Self::Variable => Self::Expression,
+            Self::Expression => Self::Memory,
             Self::Memory => Self::Calldata,
             Self::Calldata => Self::Returndata,
-            Self::Returndata => Self::Memory,
+            Self::Returndata => Self::Stack,
+            Self::Stack => Self::Variable,
         }
     }
 
     /// Helper to format the title of the active buffer pane
     pub(crate) fn title(&self, size: usize) -> String {
         match self {
+            Self::Variable => format!("Live Variables (number: {size}))"),
+            Self::Expression => format!("Watchers (number: {size})"),
             Self::Memory => format!("Memory (max expansion: {size} bytes)"),
             Self::Calldata => format!("Calldata (size: {size} bytes)"),
             Self::Returndata => format!("Returndata (size: {size} bytes)"),
+            Self::Stack => format!("Stack (depth: {size})"),
+        }
+    }
+}
+
+/// Used to keep track of which kind of code is currently active to be drawn by the debugger.
+#[derive(Debug, PartialEq)]
+pub(crate) enum CodeKind {
+    Trace,
+    Source,
+}
+
+impl CodeKind {
+    /// Helper to cycle through the active code panes.
+    pub(crate) fn next(&self) -> Self {
+        match self {
+            Self::Trace => Self::Source,
+            Self::Source => Self::Trace,
         }
     }
 }
@@ -59,8 +85,13 @@ pub(crate) struct FrontendContext<'a> {
     /// Whether to decode active buffer as utf8 or not.
     pub(crate) buf_utf: bool,
     pub(crate) show_shortcuts: bool,
-    /// The currently active buffer (memory, calldata, returndata) to be drawn.
-    pub(crate) active_buffer: BufferKind,
+    /// The currently active data pane to be drawn.
+    pub(crate) active_data: DataKind,
+    /// The currently active code pane to be drawn.
+    pub(crate) active_code: CodeKind,
+
+    /// The current screen size.
+    pub(crate) is_small_screen: bool,
 }
 
 impl<'a> FrontendContext<'a> {
@@ -77,7 +108,10 @@ impl<'a> FrontendContext<'a> {
             stack_labels: false,
             buf_utf: false,
             show_shortcuts: true,
-            active_buffer: BufferKind::Memory,
+            active_data: DataKind::Variable,
+            active_code: CodeKind::Trace,
+
+            is_small_screen: true,
         }
     }
 
@@ -126,11 +160,13 @@ impl<'a> FrontendContext<'a> {
         }
     }
 
-    fn active_buffer(&self) -> &[u8] {
-        match self.active_buffer {
-            BufferKind::Memory => &self.current_step().memory,
-            BufferKind::Calldata => &self.current_step().calldata,
-            BufferKind::Returndata => &self.current_step().returndata,
+    fn active_data_depth(&self) -> usize {
+        match self.active_data {
+            DataKind::Memory => self.current_step().memory.len() / 32,
+            DataKind::Calldata => self.current_step().calldata.len() / 32,
+            DataKind::Returndata => self.current_step().returndata.len() / 32,
+            DataKind::Stack => self.current_step().stack.len(),
+            DataKind::Expression | DataKind::Variable => todo!(),
         }
     }
 }
@@ -169,7 +205,7 @@ impl FrontendContext<'_> {
             }),
             // Scroll down the memory buffer
             KeyCode::Char('j') | KeyCode::Down if control => self.repeat(|this| {
-                let max_buf = (this.active_buffer().len() / 32).saturating_sub(1);
+                let max_buf = this.active_data_depth().saturating_sub(1);
                 if this.draw_memory.current_buf_startline < max_buf {
                     this.draw_memory.current_buf_startline += 1;
                 }
@@ -180,22 +216,14 @@ impl FrontendContext<'_> {
             // Move down
             KeyCode::Char('j') | KeyCode::Down => self.repeat(Self::step),
 
-            // Scroll up the stack
-            KeyCode::Char('K') => self.repeat(|this| {
-                this.draw_memory.current_stack_startline =
-                    this.draw_memory.current_stack_startline.saturating_sub(1);
-            }),
-            // Scroll down the stack
-            KeyCode::Char('J') => self.repeat(|this| {
-                let max_stack = this.current_step().stack.len().saturating_sub(1);
-                if this.draw_memory.current_stack_startline < max_stack {
-                    this.draw_memory.current_stack_startline += 1;
-                }
-            }),
+            // Cycle code
+            KeyCode::Char('K') if self.is_small_screen => {
+                self.active_code = self.active_code.next();
+            }
 
-            // Cycle buffers
+            // Cycle data
             KeyCode::Char('b') => {
-                self.active_buffer = self.active_buffer.next();
+                self.active_data = self.active_data.next();
                 self.draw_memory.current_buf_startline = 0;
             }
 
