@@ -62,8 +62,8 @@ impl ReplayArgs {
             .chain(self.etherscan.chain.unwrap_or_default())
             .etherscan_api_key(self.etherscan.key().unwrap_or_default())
             .build::<ForkedDatabase>(&db, env)?;
-        let mut frontend = DebugFrontend::new(&mut backend);
-        frontend.run().await?;
+        let mut frontend = DebugFrontend::builder().build(backend.analyze().await?);
+        frontend.render().await?;
         Ok(())
     }
 

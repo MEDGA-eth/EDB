@@ -1,9 +1,11 @@
 //! TUI draw implementation.
 
-use super::context::{BufferKind, DebuggerContext};
-use crate::op::OpcodeParam;
+use super::context::{BufferKind, FrontendContext};
+use crate::{utils::opcode::OpcodeParam, FrontendTerminal};
 use alloy_primitives::U256;
-use foundry_compilers::{compilers::multi::MultiCompilerLanguage, sourcemap::SourceElement};
+use foundry_compilers::{
+    artifacts::sourcemap::SourceElement, compilers::multi::MultiCompilerLanguage,
+};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -15,9 +17,9 @@ use revm::interpreter::opcode;
 use revm_inspectors::tracing::types::CallKind;
 use std::{collections::VecDeque, fmt::Write, io};
 
-impl DebuggerContext<'_> {
+impl FrontendContext<'_> {
     /// Draws the TUI layout and subcomponents to the given terminal.
-    pub(crate) fn draw(&self, terminal: &mut super::DebuggerTerminal) -> io::Result<()> {
+    pub(crate) fn draw(&self, terminal: &mut FrontendTerminal) -> io::Result<()> {
         terminal.draw(|f| self.draw_layout(f)).map(drop)
     }
 
@@ -340,69 +342,71 @@ impl DebuggerContext<'_> {
 
     /// Returns source map, source code and source name of the current line.
     fn src_map(&self) -> Result<(SourceElement, &str, &str), String> {
-        let address = self.address();
-        let Some(contract_name) = self.debugger.identified_contracts.get(address) else {
-            return Err(format!("Unknown contract at address {address}"));
-        };
+        Err(format!("source code displaying under construction"))
 
-        let Some(mut files_source_code) =
-            self.debugger.contracts_sources.get_sources(contract_name)
-        else {
-            return Err(format!("No source map index for contract {contract_name}"));
-        };
+        // let address = self.address();
+        // let Some(contract_name) = self.debugger.identified_contracts.get(address) else {
+        //     return Err(format!("Unknown contract at address {address}"));
+        // };
 
-        let Some((create_map, rt_map)) = self.debugger.pc_ic_maps.get(contract_name) else {
-            return Err(format!("No PC-IC maps for contract {contract_name}"));
-        };
+        // let Some(mut files_source_code) =
+        //     self.debugger.contracts_sources.get_sources(contract_name)
+        // else {
+        //     return Err(format!("No source map index for contract {contract_name}"));
+        // };
 
-        let is_create = matches!(self.call_kind(), CallKind::Create | CallKind::Create2);
-        let pc = self.current_step().pc;
-        let Some((source_element, source_code, source_file)) =
-            files_source_code.find_map(|(artifact, source)| {
-                let bytecode = if is_create {
-                    &artifact.bytecode.bytecode
-                } else {
-                    artifact.bytecode.deployed_bytecode.bytecode.as_ref()?
-                };
-                let source_map = bytecode.source_map()?.expect("failed to parse");
+        // let Some((create_map, rt_map)) = self.debugger.pc_ic_maps.get(contract_name) else {
+        //     return Err(format!("No PC-IC maps for contract {contract_name}"));
+        // };
 
-                let pc_ic_map = if is_create { create_map } else { rt_map };
-                let ic = pc_ic_map.get(pc)?;
+        // let is_create = matches!(self.call_kind(), CallKind::Create | CallKind::Create2);
+        // let pc = self.current_step().pc;
+        // let Some((source_element, source_code, source_file)) =
+        //     files_source_code.find_map(|(artifact, source)| {
+        //         let bytecode = if is_create {
+        //             &artifact.bytecode.bytecode
+        //         } else {
+        //             artifact.bytecode.deployed_bytecode.bytecode.as_ref()?
+        //         };
+        //         let source_map = bytecode.source_map()?.expect("failed to parse");
 
-                // Solc indexes source maps by instruction counter, but Vyper indexes by program
-                // counter.
-                let source_element = if matches!(source.language, MultiCompilerLanguage::Solc(_)) {
-                    source_map.get(ic)?
-                } else {
-                    source_map.get(pc)?
-                };
-                // if the source element has an index, find the sourcemap for that index
-                let res = source_element
-                    .index()
-                    // if index matches current file_id, return current source code
-                    .and_then(|index| {
-                        (index == artifact.file_id)
-                            .then(|| (source_element.clone(), source.source.as_str(), &source.name))
-                    })
-                    .or_else(|| {
-                        // otherwise find the source code for the element's index
-                        self.debugger
-                            .contracts_sources
-                            .sources_by_id
-                            .get(&artifact.build_id)?
-                            .get(&source_element.index()?)
-                            .map(|source| {
-                                (source_element.clone(), source.source.as_str(), &source.name)
-                            })
-                    });
+        //         let pc_ic_map = if is_create { create_map } else { rt_map };
+        //         let ic = pc_ic_map.get(pc)?;
 
-                res
-            })
-        else {
-            return Err(format!("No source map for contract {contract_name}"));
-        };
+        //         // Solc indexes source maps by instruction counter, but Vyper indexes by program
+        //         // counter.
+        //         let source_element = if matches!(source.language, MultiCompilerLanguage::Solc(_))
+        // {             source_map.get(ic)?
+        //         } else {
+        //             source_map.get(pc)?
+        //         };
+        //         // if the source element has an index, find the sourcemap for that index
+        //         let res = source_element
+        //             .index()
+        //             // if index matches current file_id, return current source code
+        //             .and_then(|index| {
+        //                 (index == artifact.file_id)
+        //                     .then(|| (source_element.clone(), source.source.as_str(),
+        // &source.name))             })
+        //             .or_else(|| {
+        //                 // otherwise find the source code for the element's index
+        //                 self.debugger
+        //                     .contracts_sources
+        //                     .sources_by_id
+        //                     .get(&artifact.build_id)?
+        //                     .get(&source_element.index()?)
+        //                     .map(|source| {
+        //                         (source_element.clone(), source.source.as_str(), &source.name)
+        //                     })
+        //             });
 
-        Ok((source_element, source_code, source_file))
+        //         res
+        //     })
+        // else {
+        //     return Err(format!("No source map for contract {contract_name}"));
+        // };
+
+        // Ok((source_element, source_code, source_file))
     }
 
     fn draw_op_list(&self, f: &mut Frame<'_>, area: Rect) {

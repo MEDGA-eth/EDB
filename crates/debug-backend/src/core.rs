@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
 
 use alloy_chains::Chain;
 use alloy_primitives::Address;
@@ -9,7 +9,7 @@ use revm::{db::CacheDB, primitives::EnvWithHandlerCfg, DatabaseRef};
 use crate::{
     artifact::{
         compilation::{AsCompilationArtifact, CompilationArtifact},
-        debug::{self, DebugArtifact},
+        debug::DebugArtifact,
     },
     inspector::DebugInspector,
     utils::evm::new_evm_with_inspector,
@@ -25,10 +25,6 @@ pub struct DebugBackendBuilder {
 }
 
 impl DebugBackendBuilder {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
     pub fn chain(mut self, chain: Chain) -> Self {
         self.chain = Some(chain);
         self
@@ -91,7 +87,6 @@ impl DebugBackendBuilder {
             identified_contracts,
             compilation_artifacts,
             local_compilation_artifact,
-            debug_artifact: None,
             creation_code,
             etherscan: client,
             base_db: CacheDB::new(db),
@@ -106,9 +101,6 @@ pub struct DebugBackend<DBRef> {
     pub identified_contracts: Rc<RefCell<HashMap<Address, String>>>,
     /// Map of source files. Note that each address will have a compilation artifact.
     pub compilation_artifacts: Rc<RefCell<HashMap<Address, CompilationArtifact>>>,
-
-    /// Debug artifact which requires to be used in a multi-threaded environment.
-    pub debug_artifact: Option<Arc<RefCell<DebugArtifact>>>,
 
     // Compilation artifact from local file system
     local_compilation_artifact: Option<Rc<RefCell<CompilationArtifact>>>,
@@ -133,18 +125,8 @@ where
         DebugBackendBuilder::default()
     }
 
-    pub async fn get_debug_artifact(&mut self) -> Result<Arc<RefCell<DebugArtifact>>> {
-        if let Some(debug_artifact) = self.debug_artifact.as_ref() {
-            Ok(Arc::clone(debug_artifact))
-        } else {
-            let debug_artifact = Arc::new(RefCell::new(self.initial_analyze().await?));
-            self.debug_artifact = Some(Arc::clone(&debug_artifact));
-            Ok(debug_artifact)
-        }
-    }
-
     // The initial analyze of execution traces. It may take a while to finish.
-    async fn initial_analyze(&mut self) -> Result<DebugArtifact> {
+    pub async fn analyze(&mut self) -> Result<DebugArtifact> {
         let mut inspector = DebugInspector::new();
         let mut evm = new_evm_with_inspector(&mut self.base_db, self.env.clone(), &mut inspector);
         evm.transact().map_err(|err| eyre!("failed to transact: {}", err))?;
@@ -152,8 +134,6 @@ where
 
         let debug_arena: Vec<_> =
             inspector.arena.arena.into_iter().map(|n| n.into_flat()).collect();
-        println!("{:?}", debug_arena);
-
         Ok(DebugArtifact {
             debug_arena,
             identified_contracts: self.identified_contracts.borrow().clone(),

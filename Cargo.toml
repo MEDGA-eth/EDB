@@ -137,6 +137,7 @@ clap = { version = "4", features = ["derive", "env", "unicode", "wrap_help"] }
 clap_complete = "4"
 clap_complete_fig = "4"
 color-eyre = "0.6"
+crossterm = "0.27"
 evm-disassembler = "0.5"
 eyre = "0.6"
 hex = { package = "const-hex", version = "1.6", features = ["hex"] }
