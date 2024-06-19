@@ -150,10 +150,11 @@ serde_json = { version = "1.0", features = ["arbitrary_precision"] }
 strum = "0.26"
 toml = "0.8"
 ratatui = { version = "0.26", default-features = false, features = ["crossterm"] }
+tokio = "1"
 tracing = "0.1"
 tracing-error = "0.2"
 tracing-subscriber = "0.3"
-tokio = "1"
+tui-textarea = { version = "0.4", features = ["search"] }
 vergen = { version = "8", default-features = false }
 yansi = { version = "1.0", features = ["detect-tty", "detect-env"] }
 

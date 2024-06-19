@@ -35,10 +35,10 @@ impl FrontendContext<'_> {
         // The horizontal layout draws these panes at 50% width.
         let min_column_width_for_horizontal = 200;
         if size.width >= min_column_width_for_horizontal {
-            self.is_small_screen = false;
+            self.screen.set_large_screen();
             self.large_screen_layout(f);
         } else {
-            self.is_small_screen = true;
+            self.screen.set_small_screen();
             self.small_screen_layout(f);
         }
     }
@@ -70,7 +70,7 @@ impl FrontendContext<'_> {
         f.render_widget(paragraph, size)
     }
 
-    fn small_screen_layout(&self, f: &mut Frame<'_>) {
+    fn small_screen_layout(&mut self, f: &mut Frame<'_>) {
         let area = f.size();
         let h_height = if self.show_shortcuts { 4 } else { 0 };
 
@@ -95,7 +95,7 @@ impl FrontendContext<'_> {
         };
 
         // Split the right pane vertically to construct data and text panes.
-        let [code_pane, data_pane, _text_pane] = Layout::new(
+        let [code_pane, data_pane, text_pane] = Layout::new(
             Direction::Vertical,
             [Constraint::Ratio(3, 8), Constraint::Ratio(3, 8), Constraint::Ratio(1, 4)],
         )
@@ -109,10 +109,11 @@ impl FrontendContext<'_> {
         self.draw_code(f, code_pane);
         self.draw_data(f, data_pane);
         self.draw_op_list(f, op_pane);
+        self.draw_terminal(f, text_pane);
     }
 
     /// Draws the layout in horizontal mode.
-    fn large_screen_layout(&self, f: &mut Frame<'_>) {
+    fn large_screen_layout(&mut self, f: &mut Frame<'_>) {
         let area = f.size();
         let h_height = if self.show_shortcuts { 4 } else { 0 };
 
@@ -143,7 +144,7 @@ impl FrontendContext<'_> {
         };
 
         // Split the lower pane horizontally to construct text aren and data panes.
-        let [_text_pane, data_pane] =
+        let [text_pane, data_pane] =
             Layout::new(Direction::Horizontal, [Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)])
                 .split(app_bottom)[..]
         else {
@@ -157,21 +158,40 @@ impl FrontendContext<'_> {
         self.draw_op_list(f, op_pane);
         self.draw_src(f, src_pane);
         self.draw_data(f, data_pane);
+        self.draw_terminal(f, text_pane);
+    }
+
+    fn draw_terminal(&mut self, f: &mut Frame<'_>, area: Rect) {
+        self.terminal.set_cursor_line_style(Style::default().add_modifier(Modifier::UNDERLINED));
+        self.terminal.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
+        self.terminal.set_block(
+            Block::default()
+                .style(Style::default())
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green))
+                .title(" Script Terminal "),
+        );
+
+        let widget = self.terminal.widget();
+        f.render_widget(widget, area);
     }
 
     fn draw_code(&self, f: &mut Frame<'_>, area: Rect) {
-        match self.active_code {
+        match self.screen.active_code {
             CodeKind::Trace => {
                 self.draw_trace(f, area);
             }
             CodeKind::Source => {
                 self.draw_src(f, area);
             }
+            CodeKind::General => {
+                // do nothing
+            }
         }
     }
 
     fn draw_data(&self, f: &mut Frame<'_>, area: Rect) {
-        match self.active_data {
+        match self.screen.active_data {
             DataKind::Memory | DataKind::Calldata | DataKind::Returndata => {
                 self.draw_buffer(f, area);
             }
@@ -189,7 +209,7 @@ impl FrontendContext<'_> {
 
     // TODO
     fn draw_trace(&self, f: &mut Frame<'_>, area: Rect) {
-        let title = format!("Trace (address: {})", self.address());
+        let title = format!(" Trace (address: {}) ", self.address());
         let block = Block::default().title(title).borders(Borders::ALL);
         let paragraph = Paragraph::new(Text::from(format!("trace displaying under construction")))
             .block(block)
@@ -199,7 +219,7 @@ impl FrontendContext<'_> {
 
     // TODO
     fn draw_variables(&self, f: &mut Frame<'_>, area: Rect) {
-        let title = self.active_data.title(0);
+        let title = format!(" Live Variables (number: 0) ");
         let block = Block::default().title(title).borders(Borders::ALL);
         let paragraph =
             Paragraph::new(Text::from(format!("variable displaying under construction")))
@@ -210,7 +230,7 @@ impl FrontendContext<'_> {
 
     // TODO
     fn draw_expressions(&self, f: &mut Frame<'_>, area: Rect) {
-        let title = self.active_data.title(0);
+        let title = format!(" Watchers (number: 0) ");
         let block = Block::default().title(title).borders(Borders::ALL);
         let paragraph =
             Paragraph::new(Text::from(format!("watcher displaying under construction")))
@@ -221,7 +241,7 @@ impl FrontendContext<'_> {
 
     fn draw_footer(&self, f: &mut Frame<'_>, area: Rect) {
         let l1 = "[q]: quit | [k/j]: prev/next op | [a/s]: prev/next jump | [c/C]: prev/next call | [g/G]: start/end | [b]: cycle variable/watcher/memory/calldata/returndata/stack";
-        let l2 = if self.is_small_screen {
+        let l2 = if self.screen.is_small() {
             "[t]: stack labels | [m]: buffer decoding | [shift + k]: cycle trace/source | [ctrl + j/k]: scroll data | ['<char>]: goto breakpoint | [h] toggle help"
         } else {
             "[t]: stack labels | [m]: buffer decoding | [ctrl + j/k]: scroll data | ['<char>]: goto breakpoint | [h] toggle help"
@@ -245,7 +265,7 @@ impl FrontendContext<'_> {
             CallKind::AuthCall => "Contract authcall",
         };
         let title = format!(
-            "{} {} ",
+            " {} {} ",
             call_kind_text,
             source_name.map(|s| format!("| {s}")).unwrap_or_default()
         );
@@ -470,7 +490,7 @@ impl FrontendContext<'_> {
             .collect::<Vec<_>>();
 
         let title = format!(
-            "PC: {} | Gas used in call: {}",
+            " PC: {} | Gas used in call: {} ",
             self.current_step().pc,
             self.current_step().total_gas_used,
         );
@@ -527,7 +547,7 @@ impl FrontendContext<'_> {
             })
             .collect();
 
-        let title = format!("Stack: {}", stack.len());
+        let title = format!(" Stack (depth: {})) ", stack.len());
         let block = Block::default().title(title).borders(Borders::ALL);
         let paragraph = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
         f.render_widget(paragraph, area);
@@ -535,10 +555,19 @@ impl FrontendContext<'_> {
 
     fn draw_buffer(&self, f: &mut Frame<'_>, area: Rect) {
         let step = self.current_step();
-        let buf = match self.active_data {
-            DataKind::Memory => step.memory.as_ref(),
-            DataKind::Calldata => step.calldata.as_ref(),
-            DataKind::Returndata => step.returndata.as_ref(),
+        let (buf, title) = match self.screen.active_data {
+            DataKind::Memory => (
+                step.memory.as_ref(),
+                format!(" Memory (max expansion: {} bytes) ", step.memory.len()),
+            ),
+            DataKind::Calldata => (
+                step.calldata.as_ref(),
+                format!(" Calldata (size: {} bytes) ", step.calldata.len()),
+            ),
+            DataKind::Returndata => (
+                step.returndata.as_ref(),
+                format!(" Returndata (size: {} bytes) ", step.returndata.len()),
+            ),
             _ => unreachable!("other data kinds should be handled elsewhere"),
         };
 
@@ -559,7 +588,7 @@ impl FrontendContext<'_> {
                     color = Some(Color::Cyan);
                 }
                 if let Some(write_access) = accesses.write {
-                    if self.active_data == DataKind::Memory {
+                    if self.screen.active_data == DataKind::Memory {
                         write_offset = Some(write_access.offset);
                         write_size = Some(write_access.size);
                     }
@@ -577,7 +606,7 @@ impl FrontendContext<'_> {
             if let Some(write_access) =
                 get_buffer_accesses(prev_step.instruction, &prev_step.stack).and_then(|a| a.write)
             {
-                if self.active_data == DataKind::Memory {
+                if self.screen.active_data == DataKind::Memory {
                     offset = Some(write_access.offset);
                     size = Some(write_access.size);
                     color = Some(Color::Green);
@@ -659,7 +688,6 @@ impl FrontendContext<'_> {
             })
             .collect();
 
-        let title = self.active_data.title(buf.len());
         let block = Block::default().title(title).borders(Borders::ALL);
         let paragraph = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
         f.render_widget(paragraph, area);

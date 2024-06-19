@@ -1,12 +1,28 @@
 //! Debugger context and event handler implementation.
 
 use alloy_primitives::Address;
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use crossterm::{
+    event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind},
+    terminal,
+};
 use edb_debug_backend::artifact::debug::{DebugArtifact, DebugNodeFlat, DebugStep};
+use ratatui::{
+    style::{Modifier, Style},
+    text::Text,
+    widgets::{Block, Borders},
+};
 use revm_inspectors::tracing::types::CallKind;
 use std::{cell::RefCell, fmt::Debug, ops::ControlFlow, rc::Rc};
+use tui_textarea::TextArea;
 
 use crate::{core::ExitReason, DebugFrontend};
+
+/// The focus mode of the frontend.
+#[derive(Debug)]
+pub(crate) enum FocusMode {
+    Normal,
+    Insert,
+}
 
 /// This is currently used to remember last scroll position so screen doesn't wiggle as much.
 #[derive(Default)]
@@ -16,8 +32,187 @@ pub(crate) struct DrawMemory {
     pub(crate) current_stack_startline: usize,
 }
 
+/// Used to keep track of which kind of pane is currently active
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum PaneKind {
+    // we need to have a specific code pane for each code kind,
+    // since the code pane is flattened in the large screen layout
+    CodePane(CodeKind),
+    DataPane,
+    TerminalPane,
+    OpcodePane,
+}
+
+/// The size of the screen.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Screen {
+    SmallScreen,
+    LargeScreen,
+}
+
+/// Trace the focus, to ensure the pane switching is backed by a state machine.
+pub(crate) struct ScreenMode {
+    pub(crate) screen: Screen,
+    pub(crate) focus: PaneKind,
+    pub(crate) prev_focus: Option<PaneKind>,
+    pub(crate) mode: FocusMode,
+
+    pub(crate) active_data: DataKind,
+    pub(crate) active_code: CodeKind,
+}
+
+/// The layout of two different screens.
+///
+/// The small screen layout is:
+/// ```text
+/// +-----------------+-------+
+/// | CodePane        |       |
+/// +-----------------+   op  |
+/// | DataPane        |  code |
+/// +-----------------+  list |
+/// | TerminalPane    |       |
+/// +-----------------+-------+
+///                    // prev_focus is only meaningful in op code list
+/// ```
+///
+/// The large screen layout is:
+/// ```text
+/// +---------+--------+--------+
+/// |  Trace  | Source | opcode |
+/// +---------+-----+--+--------+
+/// | Terminal Pane | Data Pane |
+/// +---------+--------+--------+
+/// ```
+impl ScreenMode {
+    pub(crate) fn new() -> Self {
+        Self {
+            screen: Screen::SmallScreen,
+            focus: PaneKind::CodePane(CodeKind::Trace),
+            prev_focus: None,
+            mode: FocusMode::Normal,
+            active_code: CodeKind::Trace,
+            active_data: DataKind::Variable,
+        }
+    }
+
+    pub(crate) fn switch_right(&mut self) {
+        if self.is_small() {
+            // todo
+        } else {
+            match self.focus {
+                PaneKind::CodePane(CodeKind::Trace) => {
+                    self.focus = PaneKind::CodePane(CodeKind::Source)
+                }
+                PaneKind::CodePane(CodeKind::Source) => self.focus = PaneKind::OpcodePane,
+                PaneKind::CodePane(CodeKind::General) => {
+                    unreachable!("general code pane should not appear in large screen layout")
+                }
+                PaneKind::OpcodePane => self.focus = PaneKind::CodePane(CodeKind::Trace),
+                PaneKind::DataPane => self.focus = PaneKind::TerminalPane,
+                PaneKind::TerminalPane => self.focus = PaneKind::DataPane,
+            }
+            self.prev_focus = None;
+        }
+    }
+
+    pub(crate) fn switch_left(&mut self) {
+        if self.is_small() {
+            // todo
+        } else {
+            match self.focus {
+                PaneKind::CodePane(CodeKind::Trace) => {
+                    self.focus = PaneKind::CodePane(CodeKind::Source)
+                }
+                PaneKind::CodePane(CodeKind::Source) => self.focus = PaneKind::OpcodePane,
+                PaneKind::CodePane(CodeKind::General) => {
+                    unreachable!("general code pane should not appear in large screen layout")
+                }
+                PaneKind::OpcodePane => self.focus = PaneKind::CodePane(CodeKind::Trace),
+                PaneKind::DataPane => self.focus = PaneKind::TerminalPane,
+                PaneKind::TerminalPane => self.focus = PaneKind::DataPane,
+            }
+            self.prev_focus = None; // reset the prev_focus
+        }
+    }
+
+    pub(crate) fn swith_up(&mut self) {
+        if self.is_small() {
+            match self.focus {
+                PaneKind::CodePane(CodeKind::General) => self.focus = PaneKind::TerminalPane,
+                PaneKind::CodePane(_) => {
+                    unreachable!("flatten code pane should not appear in small screen layout")
+                }
+                PaneKind::DataPane => self.focus = PaneKind::CodePane(CodeKind::Trace),
+                PaneKind::TerminalPane => self.focus = PaneKind::DataPane,
+                PaneKind::OpcodePane => { /* do nothing */ }
+            }
+        } else {
+            match self.focus {
+                PaneKind::CodePane(CodeKind::Trace) => self.focus = PaneKind::TerminalPane,
+                PaneKind::CodePane(CodeKind::Source) => {
+                    self.focus = self.prev_focus.unwrap_or(PaneKind::TerminalPane)
+                }
+                PaneKind::CodePane(CodeKind::General) => {
+                    unreachable!("general code pane should not appear in large screen layout")
+                }
+                PaneKind::OpcodePane => self.focus = PaneKind::DataPane,
+                PaneKind::DataPane => self.focus = self.prev_focus.unwrap_or(PaneKind::OpcodePane),
+
+                PaneKind::TerminalPane => {
+                    self.focus = self.prev_focus.unwrap_or(PaneKind::CodePane((CodeKind::Trace)))
+                }
+            }
+            self.prev_focus = Some(self.focus);
+        }
+    }
+
+    pub(crate) fn switch_down(&mut self) {
+        if self.is_small() {
+            match self.focus {
+                PaneKind::CodePane(CodeKind::General) => self.focus = PaneKind::DataPane,
+                PaneKind::CodePane(_) => {
+                    unreachable!("flatten code pane should not appear in small screen layout")
+                }
+                PaneKind::DataPane => self.focus = PaneKind::TerminalPane,
+                PaneKind::TerminalPane => self.focus = PaneKind::CodePane(CodeKind::Trace),
+                PaneKind::OpcodePane => { /* do nothing */ }
+            }
+        } else {
+            // large screen layout only has two rows, so swith_down is the same as switch_up
+            self.swith_up();
+        }
+    }
+
+    pub(crate) fn is_small(&self) -> bool {
+        matches!(self.screen, Screen::SmallScreen)
+    }
+
+    pub(crate) fn is_large(&self) -> bool {
+        matches!(self.screen, Screen::LargeScreen)
+    }
+
+    pub(crate) fn set_large_screen(&mut self) {
+        if self.is_small() {
+            // when we switch from small screen to large screen, we reset the focus to the default
+            self.prev_focus = None;
+            self.focus = PaneKind::CodePane(CodeKind::Trace);
+            self.active_code = CodeKind::General;
+            self.screen = Screen::LargeScreen;
+        }
+    }
+
+    pub(crate) fn set_small_screen(&mut self) {
+        if self.is_large() {
+            self.prev_focus = None;
+            self.focus = PaneKind::CodePane(CodeKind::General);
+            self.active_code = CodeKind::Trace;
+            self.screen = Screen::SmallScreen;
+        }
+    }
+}
+
 /// Used to keep track of which kind of data is currently active to be drawn by the debugger.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum DataKind {
     Variable,
     Expression,
@@ -39,25 +234,14 @@ impl DataKind {
             Self::Stack => Self::Variable,
         }
     }
-
-    /// Helper to format the title of the active buffer pane
-    pub(crate) fn title(&self, size: usize) -> String {
-        match self {
-            Self::Variable => format!("Live Variables (number: {size}))"),
-            Self::Expression => format!("Watchers (number: {size})"),
-            Self::Memory => format!("Memory (max expansion: {size} bytes)"),
-            Self::Calldata => format!("Calldata (size: {size} bytes)"),
-            Self::Returndata => format!("Returndata (size: {size} bytes)"),
-            Self::Stack => format!("Stack (depth: {size})"),
-        }
-    }
 }
 
 /// Used to keep track of which kind of code is currently active to be drawn by the debugger.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum CodeKind {
     Trace,
     Source,
+    General,
 }
 
 impl CodeKind {
@@ -66,6 +250,7 @@ impl CodeKind {
         match self {
             Self::Trace => Self::Source,
             Self::Source => Self::Trace,
+            Self::General => Self::General,
         }
     }
 }
@@ -85,13 +270,11 @@ pub(crate) struct FrontendContext<'a> {
     /// Whether to decode active buffer as utf8 or not.
     pub(crate) buf_utf: bool,
     pub(crate) show_shortcuts: bool,
-    /// The currently active data pane to be drawn.
-    pub(crate) active_data: DataKind,
-    /// The currently active code pane to be drawn.
-    pub(crate) active_code: CodeKind,
+    /// The terminal pane
+    pub(crate) terminal: TextArea<'a>,
 
-    /// The current screen size.
-    pub(crate) is_small_screen: bool,
+    /// The current screen.
+    pub(crate) screen: ScreenMode,
 }
 
 impl<'a> FrontendContext<'a> {
@@ -108,10 +291,9 @@ impl<'a> FrontendContext<'a> {
             stack_labels: false,
             buf_utf: false,
             show_shortcuts: true,
-            active_data: DataKind::Variable,
-            active_code: CodeKind::Trace,
+            terminal: TextArea::default(),
 
-            is_small_screen: true,
+            screen: ScreenMode::new(),
         }
     }
 
@@ -161,7 +343,7 @@ impl<'a> FrontendContext<'a> {
     }
 
     fn active_data_depth(&self) -> usize {
-        match self.active_data {
+        match self.screen.active_data {
             DataKind::Memory => self.current_step().memory.len() / 32,
             DataKind::Calldata => self.current_step().calldata.len() / 32,
             DataKind::Returndata => self.current_step().returndata.len() / 32,
@@ -217,13 +399,13 @@ impl FrontendContext<'_> {
             KeyCode::Char('j') | KeyCode::Down => self.repeat(Self::step),
 
             // Cycle code
-            KeyCode::Char('K') if self.is_small_screen => {
-                self.active_code = self.active_code.next();
+            KeyCode::Char('K') if self.screen.is_small() => {
+                self.screen.active_code = self.screen.active_code.next();
             }
 
             // Cycle data
             KeyCode::Char('b') => {
-                self.active_data = self.active_data.next();
+                self.screen.active_data = self.screen.active_data.next();
                 self.draw_memory.current_buf_startline = 0;
             }
 
@@ -303,8 +485,11 @@ impl FrontendContext<'_> {
                 return ControlFlow::Continue(());
             }
 
+            // XXX: it is a test for text terminal
             // Unknown/unhandled key code
-            _ => {}
+            _ => {
+                self.terminal.input(event);
+            }
         };
 
         self.key_buffer.clear();

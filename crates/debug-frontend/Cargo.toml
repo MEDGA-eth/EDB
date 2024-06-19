@@ -30,5 +30,6 @@ revm.workspace = true
 revm-inspectors.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true
-tracing.workspace = true
 ratatui.workspace = true
+tracing.workspace = true
+tui-textarea.workspace = true
