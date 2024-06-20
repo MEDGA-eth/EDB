@@ -1,11 +1,18 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use revm::primitives::bitvec::vec;
 
 /// The focus mode of the frontend.
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum FocusMode {
-    NormalEnter,
-    NormalBrowse,
+    TerminalEntered(TerminalMode), /* bool is used to indicate whether the terminal is in
+                                    * insert mode */
+    OtherEntered,
+    Browse,
+}
+
+/// The focus mode of the frontend.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum TerminalMode {
+    Normal,
     Insert,
 }
 
@@ -64,9 +71,9 @@ impl Screen {
     pub(crate) fn new() -> Self {
         Self {
             screen: ScreenSize::Small,
-            focus: Pane::CodePane(CodeView::Trace),
+            focus: Pane::TerminalPane,
             prev_focus: None,
-            mode: FocusMode::NormalBrowse,
+            mode: FocusMode::TerminalEntered(TerminalMode::Insert),
             active_code: CodeView::Trace,
             active_data: DataView::Variable,
         }
@@ -138,22 +145,33 @@ impl Screen {
         }
     }
 
-    pub(crate) fn set_normal_enter_mode(&mut self) {
+    pub(crate) fn enter_pane(&mut self) {
         if self.focus == Pane::TerminalPane {
             // enter to the terminal pane should always be in insert mode
-            self.set_insert_mode();
+            self.mode = FocusMode::TerminalEntered(TerminalMode::Insert);
         } else {
-            self.mode = FocusMode::NormalEnter;
+            self.mode = FocusMode::OtherEntered;
         }
     }
 
-    pub(crate) fn set_normal_browse_mode(&mut self) {
-        self.mode = FocusMode::NormalBrowse;
+    pub(crate) fn browse_pane(&mut self) {
+        self.mode = FocusMode::Browse;
     }
 
-    pub(crate) fn set_insert_mode(&mut self) {
-        self.mode = FocusMode::Insert;
-        self.focus = Pane::TerminalPane;
+    pub(crate) fn enter_terminal(&mut self, terminal_mode: TerminalMode) {
+        self.mode = FocusMode::TerminalEntered(terminal_mode);
+    }
+
+    pub(crate) fn set_terminal_normal_mode(&mut self) {
+        if let FocusMode::TerminalEntered(_) = self.mode {
+            self.mode = FocusMode::TerminalEntered(TerminalMode::Normal);
+        }
+    }
+
+    pub(crate) fn set_terminal_insert_mode(&mut self) {
+        if let FocusMode::TerminalEntered(_) = self.mode {
+            self.mode = FocusMode::TerminalEntered(TerminalMode::Insert);
+        }
     }
 
     pub(crate) fn switch_right(&mut self) {
@@ -248,7 +266,7 @@ impl Screen {
         if self.is_small() {
             // when we switch from small screen to large screen, we reset the focus to the default
             self.prev_focus = None;
-            self.focus = Pane::CodePane(CodeView::Trace);
+            self.focus = Pane::TerminalPane;
             self.active_code = CodeView::Trace; // use trace as a placeholder
             self.screen = ScreenSize::Large;
         }
@@ -257,7 +275,7 @@ impl Screen {
     pub(crate) fn set_small_screen(&mut self) {
         if self.is_large() {
             self.prev_focus = None;
-            self.focus = Pane::CodePane(self.active_code);
+            self.focus = Pane::TerminalPane;
             self.active_code = CodeView::Trace;
             self.screen = ScreenSize::Small;
         }

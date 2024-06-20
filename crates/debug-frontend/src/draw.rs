@@ -10,13 +10,13 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
-use revm::{interpreter::opcode, primitives::bitvec::vec};
+use revm::interpreter::opcode;
 use revm_inspectors::tracing::types::CallKind;
 use std::{collections::VecDeque, fmt::Write, io};
 
 use crate::{
     context::FrontendContext,
-    screen::{CodeView, DataView, FocusMode, Pane},
+    screen::{CodeView, DataView, FocusMode, Pane, TerminalMode},
     utils::opcode::OpcodeParam,
     vec_to_vars, FrontendTerminal,
 };
@@ -139,23 +139,16 @@ impl FrontendContext<'_> {
 
     fn get_focused_block(&self, pane: Pane) -> Block<'static> {
         let (border_style, border_set) = match self.screen.mode {
-            FocusMode::NormalEnter => {
+            FocusMode::OtherEntered | FocusMode::TerminalEntered(_) => {
                 if self.screen.is_focused_pane(pane) {
                     (Style::default().fg(Color::Green), border::DOUBLE)
                 } else {
                     (Style::default(), border::PLAIN)
                 }
             }
-            FocusMode::NormalBrowse => {
+            FocusMode::Browse => {
                 if self.screen.is_focused_pane(pane) {
                     (Style::default().fg(Color::LightCyan), border::DOUBLE)
-                } else {
-                    (Style::default(), border::PLAIN)
-                }
-            }
-            FocusMode::Insert => {
-                if pane == Pane::TerminalPane {
-                    (Style::default().fg(Color::Green), border::DOUBLE)
                 } else {
                     (Style::default(), border::PLAIN)
                 }
@@ -198,7 +191,12 @@ impl FrontendContext<'_> {
     }
 
     fn draw_terminal(&mut self, f: &mut Frame<'_>, area: Rect) {
-        let block = self.get_focused_block(Pane::TerminalPane).title(" Script Terminal ");
+        let title = match self.screen.mode {
+            FocusMode::TerminalEntered(TerminalMode::Insert) => " Script Terminal (Insert) ",
+            FocusMode::TerminalEntered(TerminalMode::Normal) => " Script Terminal (Normal) ",
+            _ => " Script Terminal ",
+        };
+        let block = self.get_focused_block(Pane::TerminalPane).title(title);
         self.terminal.set_cursor_line_style(Style::default().add_modifier(Modifier::UNDERLINED));
         self.terminal.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         self.terminal.set_block(block);

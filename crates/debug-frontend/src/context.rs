@@ -9,7 +9,7 @@ use tui_textarea::TextArea;
 
 use crate::{
     core::ExitReason,
-    screen::{DataView, FocusMode, Pane, Screen},
+    screen::{DataView, FocusMode, Screen, TerminalMode},
 };
 
 /// This is currently used to remember last scroll position so screen doesn't wiggle as much.
@@ -142,33 +142,37 @@ impl FrontendContext<'_> {
         let control = event.modifiers.contains(KeyModifiers::CONTROL);
 
         match self.screen.mode {
-            FocusMode::Insert => match event.code {
-                KeyCode::Esc => self.screen.set_normal_browse_mode(),
-                _ => {
-                    self.terminal.input(event);
-                }
-            },
-            FocusMode::NormalBrowse => match event.code {
+            FocusMode::Browse => match event.code {
                 KeyCode::Char('h') | KeyCode::Left => self.repeat(|this| this.screen.switch_left()),
                 KeyCode::Char('l') | KeyCode::Right => {
                     self.repeat(|this| this.screen.switch_right())
                 }
                 KeyCode::Char('j') | KeyCode::Down => self.repeat(|this| this.screen.switch_down()),
                 KeyCode::Char('k') | KeyCode::Up => self.repeat(|this| this.screen.switch_up()),
-                KeyCode::Char('i') => self.screen.set_insert_mode(),
-                KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit),
-                KeyCode::Enter => self.screen.set_normal_enter_mode(),
+                KeyCode::Char('i') => self.screen.enter_terminal(TerminalMode::Insert),
+                KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit), /* just for test */
+                KeyCode::Enter => self.screen.enter_pane(),
                 _ => { /* Do nothing */ }
             },
-            FocusMode::NormalEnter => match event.code {
+            FocusMode::TerminalEntered(TerminalMode::Insert) => match event.code {
+                // terminal insert mode
+                KeyCode::Esc => self.screen.set_terminal_normal_mode(),
+                _ => {
+                    self.terminal.input(event);
+                }
+            },
+            FocusMode::TerminalEntered(TerminalMode::Normal) => match event.code {
+                KeyCode::Char('i') => self.screen.set_terminal_insert_mode(),
+                KeyCode::Esc => self.screen.browse_pane(),
+                _ => { /* Do nothing */ }
+            },
+            FocusMode::OtherEntered => match event.code {
                 // Exit
-                KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit),
-
-                // Exit to normal browse mode
-                KeyCode::Esc => self.screen.set_normal_browse_mode(),
+                KeyCode::Esc => self.screen.browse_pane(),
+                KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit), /* just for test */
 
                 // Goto insert mode
-                KeyCode::Char('i') => self.screen.set_insert_mode(),
+                KeyCode::Char('i') => self.screen.enter_terminal(TerminalMode::Insert),
 
                 // Scroll up the memory buffer
                 KeyCode::Char('k') | KeyCode::Up if control => self.repeat(|this| {
