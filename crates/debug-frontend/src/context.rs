@@ -1,28 +1,16 @@
 //! Debugger context and event handler implementation.
 
 use alloy_primitives::Address;
-use crossterm::{
-    event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind},
-    terminal,
-};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
 use edb_debug_backend::artifact::debug::{DebugArtifact, DebugNodeFlat, DebugStep};
-use ratatui::{
-    style::{Modifier, Style},
-    text::Text,
-    widgets::{Block, Borders},
-};
 use revm_inspectors::tracing::types::CallKind;
-use std::{cell::RefCell, fmt::Debug, ops::ControlFlow, rc::Rc};
+use std::ops::ControlFlow;
 use tui_textarea::TextArea;
 
-use crate::{core::ExitReason, DebugFrontend};
-
-/// The focus mode of the frontend.
-#[derive(Debug)]
-pub(crate) enum FocusMode {
-    Normal,
-    Insert,
-}
+use crate::{
+    core::ExitReason,
+    screen::{DataView, FocusMode, Pane, Screen},
+};
 
 /// This is currently used to remember last scroll position so screen doesn't wiggle as much.
 #[derive(Default)]
@@ -30,229 +18,6 @@ pub(crate) struct DrawMemory {
     pub(crate) inner_call_index: usize,
     pub(crate) current_buf_startline: usize,
     pub(crate) current_stack_startline: usize,
-}
-
-/// Used to keep track of which kind of pane is currently active
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum PaneKind {
-    // we need to have a specific code pane for each code kind,
-    // since the code pane is flattened in the large screen layout
-    CodePane(CodeKind),
-    DataPane,
-    TerminalPane,
-    OpcodePane,
-}
-
-/// The size of the screen.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum Screen {
-    SmallScreen,
-    LargeScreen,
-}
-
-/// Trace the focus, to ensure the pane switching is backed by a state machine.
-pub(crate) struct ScreenMode {
-    pub(crate) screen: Screen,
-    pub(crate) focus: PaneKind,
-    pub(crate) prev_focus: Option<PaneKind>,
-    pub(crate) mode: FocusMode,
-
-    pub(crate) active_data: DataKind,
-    pub(crate) active_code: CodeKind,
-}
-
-/// The layout of two different screens.
-///
-/// The small screen layout is:
-/// ```text
-/// +-----------------+-------+
-/// | CodePane        |       |
-/// +-----------------+   op  |
-/// | DataPane        |  code |
-/// +-----------------+  list |
-/// | TerminalPane    |       |
-/// +-----------------+-------+
-///                    // prev_focus is only meaningful in op code list
-/// ```
-///
-/// The large screen layout is:
-/// ```text
-/// +---------+--------+--------+
-/// |  Trace  | Source | opcode |
-/// +---------+-----+--+--------+
-/// | Terminal Pane | Data Pane |
-/// +---------+--------+--------+
-/// ```
-impl ScreenMode {
-    pub(crate) fn new() -> Self {
-        Self {
-            screen: Screen::SmallScreen,
-            focus: PaneKind::CodePane(CodeKind::Trace),
-            prev_focus: None,
-            mode: FocusMode::Normal,
-            active_code: CodeKind::Trace,
-            active_data: DataKind::Variable,
-        }
-    }
-
-    pub(crate) fn switch_right(&mut self) {
-        if self.is_small() {
-            // todo
-        } else {
-            match self.focus {
-                PaneKind::CodePane(CodeKind::Trace) => {
-                    self.focus = PaneKind::CodePane(CodeKind::Source)
-                }
-                PaneKind::CodePane(CodeKind::Source) => self.focus = PaneKind::OpcodePane,
-                PaneKind::CodePane(CodeKind::General) => {
-                    unreachable!("general code pane should not appear in large screen layout")
-                }
-                PaneKind::OpcodePane => self.focus = PaneKind::CodePane(CodeKind::Trace),
-                PaneKind::DataPane => self.focus = PaneKind::TerminalPane,
-                PaneKind::TerminalPane => self.focus = PaneKind::DataPane,
-            }
-            self.prev_focus = None;
-        }
-    }
-
-    pub(crate) fn switch_left(&mut self) {
-        if self.is_small() {
-            // todo
-        } else {
-            match self.focus {
-                PaneKind::CodePane(CodeKind::Trace) => {
-                    self.focus = PaneKind::CodePane(CodeKind::Source)
-                }
-                PaneKind::CodePane(CodeKind::Source) => self.focus = PaneKind::OpcodePane,
-                PaneKind::CodePane(CodeKind::General) => {
-                    unreachable!("general code pane should not appear in large screen layout")
-                }
-                PaneKind::OpcodePane => self.focus = PaneKind::CodePane(CodeKind::Trace),
-                PaneKind::DataPane => self.focus = PaneKind::TerminalPane,
-                PaneKind::TerminalPane => self.focus = PaneKind::DataPane,
-            }
-            self.prev_focus = None; // reset the prev_focus
-        }
-    }
-
-    pub(crate) fn swith_up(&mut self) {
-        if self.is_small() {
-            match self.focus {
-                PaneKind::CodePane(CodeKind::General) => self.focus = PaneKind::TerminalPane,
-                PaneKind::CodePane(_) => {
-                    unreachable!("flatten code pane should not appear in small screen layout")
-                }
-                PaneKind::DataPane => self.focus = PaneKind::CodePane(CodeKind::Trace),
-                PaneKind::TerminalPane => self.focus = PaneKind::DataPane,
-                PaneKind::OpcodePane => { /* do nothing */ }
-            }
-        } else {
-            match self.focus {
-                PaneKind::CodePane(CodeKind::Trace) => self.focus = PaneKind::TerminalPane,
-                PaneKind::CodePane(CodeKind::Source) => {
-                    self.focus = self.prev_focus.unwrap_or(PaneKind::TerminalPane)
-                }
-                PaneKind::CodePane(CodeKind::General) => {
-                    unreachable!("general code pane should not appear in large screen layout")
-                }
-                PaneKind::OpcodePane => self.focus = PaneKind::DataPane,
-                PaneKind::DataPane => self.focus = self.prev_focus.unwrap_or(PaneKind::OpcodePane),
-
-                PaneKind::TerminalPane => {
-                    self.focus = self.prev_focus.unwrap_or(PaneKind::CodePane((CodeKind::Trace)))
-                }
-            }
-            self.prev_focus = Some(self.focus);
-        }
-    }
-
-    pub(crate) fn switch_down(&mut self) {
-        if self.is_small() {
-            match self.focus {
-                PaneKind::CodePane(CodeKind::General) => self.focus = PaneKind::DataPane,
-                PaneKind::CodePane(_) => {
-                    unreachable!("flatten code pane should not appear in small screen layout")
-                }
-                PaneKind::DataPane => self.focus = PaneKind::TerminalPane,
-                PaneKind::TerminalPane => self.focus = PaneKind::CodePane(CodeKind::Trace),
-                PaneKind::OpcodePane => { /* do nothing */ }
-            }
-        } else {
-            // large screen layout only has two rows, so swith_down is the same as switch_up
-            self.swith_up();
-        }
-    }
-
-    pub(crate) fn is_small(&self) -> bool {
-        matches!(self.screen, Screen::SmallScreen)
-    }
-
-    pub(crate) fn is_large(&self) -> bool {
-        matches!(self.screen, Screen::LargeScreen)
-    }
-
-    pub(crate) fn set_large_screen(&mut self) {
-        if self.is_small() {
-            // when we switch from small screen to large screen, we reset the focus to the default
-            self.prev_focus = None;
-            self.focus = PaneKind::CodePane(CodeKind::Trace);
-            self.active_code = CodeKind::General;
-            self.screen = Screen::LargeScreen;
-        }
-    }
-
-    pub(crate) fn set_small_screen(&mut self) {
-        if self.is_large() {
-            self.prev_focus = None;
-            self.focus = PaneKind::CodePane(CodeKind::General);
-            self.active_code = CodeKind::Trace;
-            self.screen = Screen::SmallScreen;
-        }
-    }
-}
-
-/// Used to keep track of which kind of data is currently active to be drawn by the debugger.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum DataKind {
-    Variable,
-    Expression,
-    Memory,
-    Calldata,
-    Returndata,
-    Stack,
-}
-
-impl DataKind {
-    /// Helper to cycle through the active buffers.
-    pub(crate) fn next(&self) -> Self {
-        match self {
-            Self::Variable => Self::Expression,
-            Self::Expression => Self::Memory,
-            Self::Memory => Self::Calldata,
-            Self::Calldata => Self::Returndata,
-            Self::Returndata => Self::Stack,
-            Self::Stack => Self::Variable,
-        }
-    }
-}
-
-/// Used to keep track of which kind of code is currently active to be drawn by the debugger.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum CodeKind {
-    Trace,
-    Source,
-    General,
-}
-
-impl CodeKind {
-    /// Helper to cycle through the active code panes.
-    pub(crate) fn next(&self) -> Self {
-        match self {
-            Self::Trace => Self::Source,
-            Self::Source => Self::Trace,
-            Self::General => Self::General,
-        }
-    }
 }
 
 pub(crate) struct FrontendContext<'a> {
@@ -274,7 +39,7 @@ pub(crate) struct FrontendContext<'a> {
     pub(crate) terminal: TextArea<'a>,
 
     /// The current screen.
-    pub(crate) screen: ScreenMode,
+    pub(crate) screen: Screen,
 }
 
 impl<'a> FrontendContext<'a> {
@@ -293,7 +58,7 @@ impl<'a> FrontendContext<'a> {
             show_shortcuts: true,
             terminal: TextArea::default(),
 
-            screen: ScreenMode::new(),
+            screen: Screen::new(),
         }
     }
 
@@ -342,13 +107,13 @@ impl<'a> FrontendContext<'a> {
         }
     }
 
-    fn active_data_depth(&self) -> usize {
+    fn data_pane_height(&self) -> usize {
         match self.screen.active_data {
-            DataKind::Memory => self.current_step().memory.len() / 32,
-            DataKind::Calldata => self.current_step().calldata.len() / 32,
-            DataKind::Returndata => self.current_step().returndata.len() / 32,
-            DataKind::Stack => self.current_step().stack.len(),
-            DataKind::Expression | DataKind::Variable => todo!(),
+            DataView::Memory => self.current_step().memory.len() / 32,
+            DataView::Calldata => self.current_step().calldata.len() / 32,
+            DataView::Returndata => self.current_step().returndata.len() / 32,
+            DataView::Stack => self.current_step().stack.len(),
+            DataView::Expression | DataView::Variable => todo!(),
         }
     }
 }
@@ -376,120 +141,145 @@ impl FrontendContext<'_> {
 
         let control = event.modifiers.contains(KeyModifiers::CONTROL);
 
-        match event.code {
-            // Exit
-            KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit),
-
-            // Scroll up the memory buffer
-            KeyCode::Char('k') | KeyCode::Up if control => self.repeat(|this| {
-                this.draw_memory.current_buf_startline =
-                    this.draw_memory.current_buf_startline.saturating_sub(1);
-            }),
-            // Scroll down the memory buffer
-            KeyCode::Char('j') | KeyCode::Down if control => self.repeat(|this| {
-                let max_buf = this.active_data_depth().saturating_sub(1);
-                if this.draw_memory.current_buf_startline < max_buf {
-                    this.draw_memory.current_buf_startline += 1;
+        match self.screen.mode {
+            FocusMode::Insert => match event.code {
+                KeyCode::Esc => self.screen.set_normal_browse_mode(),
+                _ => {
+                    self.terminal.input(event);
                 }
-            }),
+            },
+            FocusMode::NormalBrowse => match event.code {
+                KeyCode::Char('h') | KeyCode::Left => self.repeat(|this| this.screen.switch_left()),
+                KeyCode::Char('l') | KeyCode::Right => {
+                    self.repeat(|this| this.screen.switch_right())
+                }
+                KeyCode::Char('j') | KeyCode::Down => self.repeat(|this| this.screen.switch_down()),
+                KeyCode::Char('k') | KeyCode::Up => self.repeat(|this| this.screen.switch_up()),
+                KeyCode::Char('i') => self.screen.set_insert_mode(),
+                KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit),
+                KeyCode::Enter => self.screen.set_normal_enter_mode(),
+                _ => { /* Do nothing */ }
+            },
+            FocusMode::NormalEnter => match event.code {
+                // Exit
+                KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit),
 
-            // Move up
-            KeyCode::Char('k') | KeyCode::Up => self.repeat(Self::step_back),
-            // Move down
-            KeyCode::Char('j') | KeyCode::Down => self.repeat(Self::step),
+                // Exit to normal browse mode
+                KeyCode::Esc => self.screen.set_normal_browse_mode(),
 
-            // Cycle code
-            KeyCode::Char('K') if self.screen.is_small() => {
-                self.screen.active_code = self.screen.active_code.next();
-            }
+                // Goto insert mode
+                KeyCode::Char('i') => self.screen.set_insert_mode(),
 
-            // Cycle data
-            KeyCode::Char('b') => {
-                self.screen.active_data = self.screen.active_data.next();
-                self.draw_memory.current_buf_startline = 0;
-            }
+                // Scroll up the memory buffer
+                KeyCode::Char('k') | KeyCode::Up if control => self.repeat(|this| {
+                    this.draw_memory.current_buf_startline =
+                        this.draw_memory.current_buf_startline.saturating_sub(1);
+                }),
+                // Scroll down the memory buffer
+                KeyCode::Char('j') | KeyCode::Down if control => self.repeat(|this| {
+                    let max_buf = this.data_pane_height().saturating_sub(1);
+                    if this.draw_memory.current_buf_startline < max_buf {
+                        this.draw_memory.current_buf_startline += 1;
+                    }
+                }),
 
-            // Go to top of file
-            KeyCode::Char('g') => {
-                self.draw_memory.inner_call_index = 0;
-                self.current_step = 0;
-            }
+                // Move up
+                KeyCode::Char('k') | KeyCode::Up => self.repeat(Self::step_back),
+                // Move down
+                KeyCode::Char('j') | KeyCode::Down => self.repeat(Self::step),
 
-            // Go to bottom of file
-            KeyCode::Char('G') => {
-                self.draw_memory.inner_call_index = self.debug_arena().len() - 1;
-                self.current_step = self.n_steps() - 1;
-            }
+                // Cycle code
+                KeyCode::Char('K') if self.screen.is_small() => {
+                    self.screen.active_code = self.screen.active_code.next();
+                }
 
-            // Go to previous call
-            KeyCode::Char('c') => {
-                self.draw_memory.inner_call_index =
-                    self.draw_memory.inner_call_index.saturating_sub(1);
-                self.current_step = self.n_steps() - 1;
-            }
+                // Cycle data
+                KeyCode::Char('b') => {
+                    self.screen.active_data = self.screen.active_data.next();
+                    self.draw_memory.current_buf_startline = 0;
+                }
 
-            // Go to next call
-            KeyCode::Char('C') => {
-                if self.debug_arena().len() > self.draw_memory.inner_call_index + 1 {
-                    self.draw_memory.inner_call_index += 1;
+                // Go to top of file
+                KeyCode::Char('g') => {
+                    self.draw_memory.inner_call_index = 0;
                     self.current_step = 0;
                 }
-            }
 
-            // Step forward
-            KeyCode::Char('s') => self.repeat(|this| {
-                let remaining_ops = &this.opcode_list[this.current_step..];
-                if let Some((i, _)) = remaining_ops.iter().enumerate().skip(1).find(|&(i, op)| {
-                    let prev = &remaining_ops[i - 1];
-                    let prev_is_jump = prev.contains("JUMP") && prev != "JUMPDEST";
-                    let is_jumpdest = op == "JUMPDEST";
-                    prev_is_jump && is_jumpdest
-                }) {
-                    this.current_step += i;
+                // Go to bottom of file
+                KeyCode::Char('G') => {
+                    self.draw_memory.inner_call_index = self.debug_arena().len() - 1;
+                    self.current_step = self.n_steps() - 1;
                 }
-            }),
 
-            // Step backwards
-            KeyCode::Char('a') => self.repeat(|this| {
-                let ops = &this.opcode_list[..this.current_step];
-                this.current_step = ops
-                    .iter()
-                    .enumerate()
-                    .skip(1)
-                    .rev()
-                    .find(|&(i, op)| {
-                        let prev = &ops[i - 1];
-                        let prev_is_jump = prev.contains("JUMP") && prev != "JUMPDEST";
-                        let is_jumpdest = op == "JUMPDEST";
-                        prev_is_jump && is_jumpdest
-                    })
-                    .map(|(i, _)| i)
-                    .unwrap_or_default();
-            }),
+                // Go to previous call
+                KeyCode::Char('c') => {
+                    self.draw_memory.inner_call_index =
+                        self.draw_memory.inner_call_index.saturating_sub(1);
+                    self.current_step = self.n_steps() - 1;
+                }
 
-            // Toggle stack labels
-            KeyCode::Char('t') => self.stack_labels = !self.stack_labels,
+                // Go to next call
+                KeyCode::Char('C') => {
+                    if self.debug_arena().len() > self.draw_memory.inner_call_index + 1 {
+                        self.draw_memory.inner_call_index += 1;
+                        self.current_step = 0;
+                    }
+                }
 
-            // Toggle memory UTF-8 decoding
-            KeyCode::Char('m') => self.buf_utf = !self.buf_utf,
+                // Step forward
+                KeyCode::Char('s') => self.repeat(|this| {
+                    let remaining_ops = &this.opcode_list[this.current_step..];
+                    if let Some((i, _)) =
+                        remaining_ops.iter().enumerate().skip(1).find(|&(i, op)| {
+                            let prev = &remaining_ops[i - 1];
+                            let prev_is_jump = prev.contains("JUMP") && prev != "JUMPDEST";
+                            let is_jumpdest = op == "JUMPDEST";
+                            prev_is_jump && is_jumpdest
+                        })
+                    {
+                        this.current_step += i;
+                    }
+                }),
 
-            // Toggle help notice
-            KeyCode::Char('h') => self.show_shortcuts = !self.show_shortcuts,
+                // Step backwards
+                KeyCode::Char('a') => self.repeat(|this| {
+                    let ops = &this.opcode_list[..this.current_step];
+                    this.current_step = ops
+                        .iter()
+                        .enumerate()
+                        .skip(1)
+                        .rev()
+                        .find(|&(i, op)| {
+                            let prev = &ops[i - 1];
+                            let prev_is_jump = prev.contains("JUMP") && prev != "JUMPDEST";
+                            let is_jumpdest = op == "JUMPDEST";
+                            prev_is_jump && is_jumpdest
+                        })
+                        .map(|(i, _)| i)
+                        .unwrap_or_default();
+                }),
 
-            // Numbers for repeating commands or breakpoints
-            KeyCode::Char(
-                other @ ('0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '\''),
-            ) => {
-                // Early return to not clear the buffer.
-                self.key_buffer.push(other);
-                return ControlFlow::Continue(());
-            }
+                // Toggle stack labels
+                KeyCode::Char('t') => self.stack_labels = !self.stack_labels,
 
-            // XXX: it is a test for text terminal
-            // Unknown/unhandled key code
-            _ => {
-                self.terminal.input(event);
-            }
+                // Toggle memory UTF-8 decoding
+                KeyCode::Char('m') => self.buf_utf = !self.buf_utf,
+
+                // Toggle help notice
+                KeyCode::Char('h') => self.show_shortcuts = !self.show_shortcuts,
+
+                // Numbers for repeating commands or breakpoints
+                KeyCode::Char(
+                    other @ ('0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '\''),
+                ) => {
+                    // Early return to not clear the buffer.
+                    self.key_buffer.push(other);
+                    return ControlFlow::Continue(());
+                }
+
+                // Unknown/unhandled key code
+                _ => {}
+            },
         };
 
         self.key_buffer.clear();
