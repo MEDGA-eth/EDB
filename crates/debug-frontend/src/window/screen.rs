@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use eyre::Result;
 use ratatui::layout::Rect;
 
-use crate::pane::{Pane, PaneFlattened, PaneManager, PaneView, Point};
+use crate::window::pane::{Pane, PaneFlattened, PaneManager, PaneView, Point};
 
 pub const SMALL_SCREEN_STR: &str = "Defualt Small Screen";
 pub const LARGE_SCREEN_STR: &str = "Defualt Large Screen";

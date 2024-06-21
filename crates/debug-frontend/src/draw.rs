@@ -20,10 +20,8 @@ use std::{
 
 use crate::{
     context::FrontendContext,
-    pane::{PaneFlattened, PaneView},
-    screen::FocusMode,
-    terminal::TerminalMode,
     utils::opcode::OpcodeParam,
+    window::{FocusMode, PaneFlattened, PaneView, TerminalMode},
     FrontendTerminal,
 };
 
@@ -47,11 +45,11 @@ impl FrontendContext<'_> {
         // The horizontal layout draws these panes at 50% width.
         let min_column_width_for_horizontal = 200;
 
-        if self.screen.use_default_pane {
+        if self.window.use_default_pane {
             if size.width >= min_column_width_for_horizontal {
-                self.screen.set_large_screen();
+                self.window.set_large_screen();
             } else {
-                self.screen.set_small_screen();
+                self.window.set_small_screen();
             }
         }
 
@@ -99,13 +97,13 @@ impl FrontendContext<'_> {
             unreachable!()
         };
 
-        if let Some(point) = self.screen.pending_mouse_move {
+        if let Some(point) = self.window.pending_mouse_move {
             let v_point = point.project(app);
-            self.screen.get_current_pane_mut().unwrap().force_goto(v_point);
+            self.window.get_current_pane_mut().unwrap().force_goto(v_point);
         }
-        self.screen.pending_mouse_move = None;
+        self.window.pending_mouse_move = None;
 
-        let layout = self.screen.get_flattened_layout(app).unwrap();
+        let layout = self.window.get_flattened_layout(app).unwrap();
 
         if self.show_shortcuts {
             self.draw_footer(f, footer);
@@ -129,7 +127,7 @@ impl FrontendContext<'_> {
     }
 
     fn get_focused_block(&self, is_focus: bool) -> Block<'static> {
-        let (border_style, border_set) = match self.screen.focus_mode {
+        let (border_style, border_set) = match self.window.focus_mode {
             FocusMode::Entered | FocusMode::FullScreen => {
                 if is_focus {
                     (Style::default().fg(Color::Green), border::DOUBLE)
@@ -154,16 +152,17 @@ impl FrontendContext<'_> {
     }
 
     fn draw_terminal(&mut self, f: &mut Frame<'_>, pane: PaneFlattened) {
-        let title = match self.terminal.mode {
+        let title = match self.window.editor_mode {
             TerminalMode::Insert => format!(" [{}] Script Terminal (Insert Mode) ", pane.id),
             TerminalMode::Normal => format!(" [{}] Script Terminal (Normal Mode) ", pane.id),
         };
         let block = self.get_focused_block(pane.focused).title(title);
-        self.terminal.set_cursor_line_style(Style::default().add_modifier(Modifier::UNDERLINED));
-        self.terminal.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
-        self.terminal.set_block(block);
+        let editor_mut = self.window.get_editor_mut();
+        editor_mut.set_cursor_line_style(Style::default().add_modifier(Modifier::UNDERLINED));
+        editor_mut.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
+        editor_mut.set_block(block);
 
-        let widget = self.terminal.widget();
+        let widget = editor_mut.widget();
         f.render_widget(widget, pane.rect);
     }
 

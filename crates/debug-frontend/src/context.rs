@@ -6,16 +6,12 @@ use crossterm::event::{
 };
 use edb_debug_backend::artifact::debug::{DebugArtifact, DebugNodeFlat, DebugStep};
 use eyre::Result;
-use ratatui::Terminal;
 use revm_inspectors::tracing::types::CallKind;
 use std::ops::ControlFlow;
-use tui_textarea::TextArea;
 
 use crate::{
     core::ExitReason,
-    pane::PaneView,
-    screen::{FocusMode, ScreenManager},
-    terminal::{TerminalManager, TerminalMode},
+    window::{FocusMode, PaneView, TerminalMode, Window},
 };
 
 /// This is currently used to remember last scroll position so screen doesn't wiggle as much.
@@ -41,16 +37,13 @@ pub struct FrontendContext<'a> {
     /// Whether to decode active buffer as utf8 or not.
     pub(crate) buf_utf: bool,
     pub(crate) show_shortcuts: bool,
-    /// The terminal pane
-    pub(crate) terminal: TerminalManager<'a>,
 
-    /// The current screen.
-    pub(crate) screen: ScreenManager,
+    /// The display window
+    pub(crate) window: Window<'a>,
 }
 
 impl<'a> FrontendContext<'a> {
     pub(crate) fn new(artifact: &'a mut DebugArtifact) -> Result<Self> {
-        let screen = ScreenManager::new()?;
         Ok(FrontendContext {
             artifact,
 
@@ -63,9 +56,8 @@ impl<'a> FrontendContext<'a> {
             stack_labels: false,
             buf_utf: false,
             show_shortcuts: true,
-            terminal: TerminalManager::new(),
 
-            screen,
+            window: Window::new()?,
         })
     }
 
@@ -147,88 +139,85 @@ impl FrontendContext<'_> {
 
         let control = event.modifiers.contains(KeyModifiers::CONTROL);
 
-        match self.screen.focus_mode {
+        match self.window.focus_mode {
             FocusMode::Browse => match event.code {
                 KeyCode::Char('h') | KeyCode::Left => {
-                    self.repeat(|this| this.screen.focus_left().unwrap())
+                    self.repeat(|this| this.window.focus_left().unwrap())
                 }
                 KeyCode::Char('l') | KeyCode::Right => {
-                    self.repeat(|this| this.screen.focus_right().unwrap())
+                    self.repeat(|this| this.window.focus_right().unwrap())
                 }
                 KeyCode::Char('j') | KeyCode::Down => {
-                    self.repeat(|this| this.screen.focus_down().unwrap())
+                    self.repeat(|this| this.window.focus_down().unwrap())
                 }
                 KeyCode::Char('k') | KeyCode::Up => {
-                    self.repeat(|this| this.screen.focus_up().unwrap())
+                    self.repeat(|this| this.window.focus_up().unwrap())
                 }
                 KeyCode::Char('i') => {
-                    self.screen.enter_terminal().unwrap();
-                    self.terminal.enter_insert_mode();
+                    self.window.enter_terminal().unwrap();
+                    self.window.set_editor_insert_mode();
                 }
                 KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit), /* just for test */
-                KeyCode::Enter => self.screen.enter_pane(),
+                KeyCode::Enter => self.window.enter_pane(),
                 _ => { /* Do nothing */ }
             },
             FocusMode::Entered | FocusMode::FullScreen => {
-                let focused_pane = self.screen.get_focused_view().unwrap();
+                let focused_pane = self.window.get_focused_view().unwrap();
                 match focused_pane {
                     PaneView::Terminal => {
-                        if self.terminal.mode == TerminalMode::Insert {
+                        // Handle terminal input
+                        if self.window.editor_mode == TerminalMode::Insert {
                             match event.code {
-                                KeyCode::Esc => self.terminal.enter_normal_mode(),
-                                _ => {
-                                    self.terminal.input(event);
-                                }
+                                KeyCode::Esc => self.window.set_editor_normal_mode(),
+                                _ => self.window.handle_input(event),
                             }
                         } else {
                             match event.code {
                                 KeyCode::Char('i') => {
                                     // We do not want to exit the full screen mode when we are in
                                     // the terminal, so we do not change screen
-                                    self.terminal.enter_insert_mode();
+                                    self.window.set_editor_insert_mode();
                                 }
                                 KeyCode::Esc => {
-                                    if self.screen.focus_mode == FocusMode::Entered {
-                                        self.screen.browse_pane();
+                                    if self.window.focus_mode == FocusMode::Entered {
+                                        // from entered to browse
+                                        self.window.browse_pane();
                                     } else {
-                                        self.screen.toggle_full_screen().unwrap();
+                                        // from full screen to entered
+                                        self.window.toggle_full_screen().unwrap();
                                     }
                                 }
                                 KeyCode::Enter => {
-                                    if self.screen.focus_mode == FocusMode::Entered {
-                                        self.screen.toggle_full_screen().unwrap();
-                                    } else {
-                                        // do nothing
+                                    if self.window.focus_mode == FocusMode::Entered {
+                                        self.window.toggle_full_screen().unwrap();
                                     }
                                 }
                                 KeyCode::Char('q') => {
                                     return ControlFlow::Break(ExitReason::CharExit)
-                                } /* just for test */
-                                _ => { /* Do nothing */ }
+                                }
+                                _ => self.window.handle_input(event),
                             }
                         }
                     }
                     PaneView::Null => {
                         match event.code {
                             KeyCode::Char('i') => {
-                                self.screen.enter_terminal().unwrap();
-                                self.terminal.enter_insert_mode();
+                                self.window.enter_terminal().unwrap();
+                                self.window.set_editor_insert_mode();
                             }
                             KeyCode::Esc => {
-                                if self.screen.focus_mode == FocusMode::Entered {
-                                    self.screen.browse_pane();
+                                if self.window.focus_mode == FocusMode::Entered {
+                                    self.window.browse_pane();
                                 } else {
-                                    self.screen.toggle_full_screen().unwrap();
+                                    self.window.toggle_full_screen().unwrap();
                                 }
                             }
                             KeyCode::Enter => {
-                                if self.screen.focus_mode == FocusMode::Entered {
-                                    self.screen.toggle_full_screen().unwrap();
-                                } else {
-                                    // do nothing
+                                if self.window.focus_mode == FocusMode::Entered {
+                                    self.window.toggle_full_screen().unwrap();
                                 }
                             }
-                            KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit), /* just for test */
+                            KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit),
                             _ => { /* Do nothing */ }
                         }
                     }
@@ -239,15 +228,15 @@ impl FrontendContext<'_> {
 
                             // Full screen
                             KeyCode::Esc => {
-                                if self.screen.focus_mode == FocusMode::Entered {
-                                    self.screen.browse_pane();
+                                if self.window.focus_mode == FocusMode::Entered {
+                                    self.window.browse_pane();
                                 } else {
-                                    self.screen.toggle_full_screen().unwrap();
+                                    self.window.toggle_full_screen().unwrap();
                                 }
                             }
                             KeyCode::Enter => {
-                                if self.screen.focus_mode == FocusMode::Entered {
-                                    self.screen.toggle_full_screen().unwrap();
+                                if self.window.focus_mode == FocusMode::Entered {
+                                    self.window.toggle_full_screen().unwrap();
                                 } else {
                                     // do nothing
                                 }
@@ -255,19 +244,19 @@ impl FrontendContext<'_> {
 
                             // Goto insert mode
                             KeyCode::Char('i') => {
-                                self.screen.enter_terminal().unwrap();
-                                self.terminal.enter_insert_mode();
+                                self.window.enter_terminal().unwrap();
+                                self.window.set_editor_insert_mode();
                             }
 
                             // Cycle left the current focused pane
                             KeyCode::Char('h') | KeyCode::Left => self.repeat(|this| {
-                                let pane = this.screen.get_focused_pane().unwrap();
+                                let pane = this.window.get_focused_pane().unwrap();
                                 pane.prev_view();
                             }),
 
                             // Cycle right the current focused pane
                             KeyCode::Char('l') | KeyCode::Right => self.repeat(|this| {
-                                let pane = this.screen.get_focused_pane().unwrap();
+                                let pane = this.window.get_focused_pane().unwrap();
                                 pane.next_view();
                             }),
 
@@ -405,7 +394,7 @@ impl FrontendContext<'_> {
             // MouseEventKind::ScrollUp => self.step_back(),
             // MouseEventKind::ScrollDown => self.step(),
             MouseEventKind::Down(MouseButton::Left) => {
-                self.screen.set_mouse_move(event.column, event.row)
+                self.window.set_mouse_move(event.column, event.row)
             }
             _ => {}
         }

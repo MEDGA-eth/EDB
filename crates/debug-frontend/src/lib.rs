@@ -4,10 +4,8 @@ extern crate tracing;
 mod context;
 mod core;
 mod draw;
-mod pane;
-mod screen;
-mod terminal;
 mod utils;
+mod window;
 
 pub use core::DebugFrontend;
 
