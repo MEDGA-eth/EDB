@@ -63,8 +63,23 @@ impl Pane {
         Pane { id, views: vec![], current_view: 0 }
     }
 
-    pub fn add_view(&mut self, view: PaneView) {
-        self.views.push(view);
+    pub fn add_view(&mut self, view: PaneView) -> Result<()> {
+        // We will ensure that Terminal is the only view in a pane
+        if view == PaneView::Terminal {
+            // let's first check whether Terminal is here
+            if !self.views.contains(&view) && !self.views.is_empty() {
+                return Err(eyre::eyre!("terminal has to be the only view in a pane"));
+            }
+
+            // we then push update the view if Terminal is not here
+            if self.views.is_empty() {
+                self.views.push(view);
+            }
+        } else if !self.views.contains(&view) {
+            self.views.push(view);
+        }
+
+        Ok(())
     }
 
     pub fn remove_view(&mut self, view: PaneView) {
@@ -150,26 +165,22 @@ pub struct PaneManager {
 
 impl Default for PaneManager {
     fn default() -> Self {
-        PaneManager::new(PaneView::Terminal)
+        PaneManager::new()
     }
 }
 
 impl PaneManager {
-    pub fn new(view: PaneView) -> Self {
-        let mut pane = Pane::new(1); // we start with 1;
-        pane.add_view(view);
+    pub fn new() -> Self {
+        let pane = Pane::new(1); // we start with 1;
 
         let mut panes = BTreeMap::new();
         panes.insert(pane.id, pane);
-
-        let mut view_assignment = BTreeMap::new();
-        view_assignment.insert(view, 1);
 
         PaneManager {
             next_id: 2,
             panes,
             operations: Vec::new(),
-            view_assignment,
+            view_assignment: BTreeMap::new(),
             focus: Point::new(0, 0),
         }
     }
@@ -183,7 +194,7 @@ impl PaneManager {
     /// +------------------+---------------+
     /// ```
     pub fn default_large_screen() -> Result<Self> {
-        let mut manager = PaneManager::new(PaneView::Source);
+        let mut manager = PaneManager::new();
 
         manager.split(1, Direction::Vertical, [3, 2])?;
         manager.split(1, Direction::Horizontal, [2, 3])?;
@@ -228,7 +239,7 @@ impl PaneManager {
     /// +-----------------+-------+
     /// ```
     pub fn default_small_screen() -> Result<Self> {
-        let mut manager = PaneManager::new(PaneView::Source);
+        let mut manager = PaneManager::new();
 
         manager.split(1, Direction::Horizontal, [3, 1])?;
         manager.split(1, Direction::Vertical, [3, 4])?;
@@ -273,7 +284,17 @@ impl PaneManager {
         }
 
         let pane = self.panes.get_mut(&target).ok_or(eyre::eyre!("pane not found (assign)"))?;
-        pane.add_view(view);
+        pane.add_view(view)?;
+
+        Ok(())
+    }
+
+    pub fn unassign(&mut self, view: PaneView) -> Result<()> {
+        ensure!(view.is_valid(), "invalid view");
+        if let Some(id) = self.view_assignment.remove(&view) {
+            let pane = self.panes.get_mut(&id).ok_or(eyre::eyre!("pane not found (unassign)"))?;
+            pane.remove_view(view);
+        }
 
         Ok(())
     }
@@ -333,7 +354,7 @@ impl PaneManager {
 
         let mut new_pane = Pane::new(new_id);
         for view in target1.views.iter().chain(target2.views.iter()) {
-            new_pane.add_view(*view);
+            new_pane.add_view(*view)?;
         }
 
         self.panes.remove(&id2);

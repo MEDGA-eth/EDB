@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate tracing;
 
+mod actions;
 mod context;
 mod core;
 mod draw;
