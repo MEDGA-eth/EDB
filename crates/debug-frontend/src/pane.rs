@@ -1,17 +1,40 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 use eyre::{ensure, eyre, Result};
-use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
-    style::palette::tailwind::VIOLET,
-};
-use tracing::instrument::WithSubscriber;
-
-use crate::screen::PaneView;
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 pub type PaneId = usize;
 
-#[derive(Debug)]
+/// Used to keep track of which kind of pane is currently active
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq)]
+pub enum PaneView {
+    // data
+    Variable,
+    Expression,
+    Memory,
+    Calldata,
+    Returndata,
+    Stack,
+
+    // code
+    Opcode,
+    Source,
+    Trace,
+
+    // terminal
+    Terminal,
+
+    // Null
+    Null,
+}
+
+impl PaneView {
+    fn is_valid(&self) -> bool {
+        !matches!(self, PaneView::Null)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct PaneLayout(BTreeMap<PaneId, Rect>);
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -20,11 +43,19 @@ struct Point(u16, u16);
 /// A virtual rect to help find the focused pane.
 const VIRTUAL_RECT: Rect = Rect { x: 0, y: 0, width: 2048, height: 2048 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Pane {
-    id: PaneId,
+    pub id: PaneId,
     views: Vec<PaneView>,
     current_view: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct PaneFlattened {
+    pub rect: Rect,
+    pub view: PaneView,
+    pub focused: bool,
+    pub id: PaneId,
 }
 
 impl Pane {
@@ -45,8 +76,8 @@ impl Pane {
         }
     }
 
-    pub fn current_view(&self) -> Option<PaneView> {
-        self.views.get(self.current_view).copied()
+    pub fn get_current_view(&self) -> PaneView {
+        *self.views.get(self.current_view).unwrap_or(&PaneView::Null)
     }
 
     pub fn next_view(&mut self) {
@@ -63,6 +94,12 @@ impl Pane {
         }
 
         self.current_view = (self.current_view + self.views.len() - 1) % self.views.len();
+    }
+
+    pub fn select_view(&mut self, view: PaneView) {
+        if let Some(index) = self.views.iter().position(|v| v == &view) {
+            self.current_view = index;
+        }
     }
 }
 
@@ -81,9 +118,15 @@ struct MergePane {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+struct SwitchPaneId {
+    input_id: [PaneId; 2],
+}
+
+#[derive(Debug, Clone, PartialEq)]
 enum PaneOperation {
     Split(SplitPane),
     Merge(MergePane),
+    SwitchId(SwitchPaneId),
 }
 
 #[derive(Debug, Clone)]
@@ -103,7 +146,12 @@ pub struct PaneManager {
 
     // A virtual focus point to help find the focused pane
     focus: Point,
-    focus_cache: Option<FocusInfo>,
+}
+
+impl Default for PaneManager {
+    fn default() -> Self {
+        PaneManager::new(PaneView::Terminal)
+    }
 }
 
 impl PaneManager {
@@ -114,35 +162,48 @@ impl PaneManager {
         let mut panes = BTreeMap::new();
         panes.insert(pane.id, pane);
 
+        let mut view_assignment = BTreeMap::new();
+        view_assignment.insert(view, 1);
+
         PaneManager {
             next_id: 2,
             panes,
             operations: Vec::new(),
-            view_assignment: BTreeMap::new(),
+            view_assignment,
             focus: Point::new(0, 0),
-            focus_cache: None,
         }
     }
 
     /// The large screen layout is:
     /// ```text
     /// +----------+-----------+-----------+
-    /// | 1. Trace | 3. Source | 4. opcode |
+    /// | 1. Trace | 2. Source | 3. opcode |
     /// +----------+-------+---+-----------+
-    /// | 2. Terminal Pane | 5. Data Pane  |
+    /// | 4. Terminal Pane | 5. Data Pane  |
     /// +------------------+---------------+
     /// ```
     pub fn default_large_screen() -> Result<Self> {
         let mut manager = PaneManager::new(PaneView::Source);
 
-        manager.split(1, Direction::Horizontal, [3, 2])?;
-        manager.split(1, Direction::Vertical, [4, 1])?;
-        manager.split(3, Direction::Vertical, [2, 1])?;
-        manager.split(2, Direction::Vertical, [1, 1])?;
+        manager.split(1, Direction::Vertical, [3, 2])?;
+        manager.split(1, Direction::Horizontal, [2, 3])?;
+        manager.split(3, Direction::Horizontal, [2, 1])?;
+        manager.split(2, Direction::Horizontal, [1, 1])?;
+
+        // The current layout:
+        // ```test
+        // +----------+-----------+-----------+
+        // | 1. Trace | 3. Source | 4. opcode |
+        // +----------+-------+---+-----------+
+        // | 2. Terminal Pane | 5. Data Pane  |
+        // +------------------+---------------+
+        // ```
+        manager.switch_id(2, 3)?;
+        manager.switch_id(3, 4)?;
 
         manager.assign(PaneView::Trace, 1)?;
-        manager.assign(PaneView::Source, 3)?;
-        manager.assign(PaneView::Opcode, 4)?;
+        manager.assign(PaneView::Source, 2)?;
+        manager.assign(PaneView::Opcode, 3)?;
 
         manager.assign(PaneView::Variable, 5)?;
         manager.assign(PaneView::Expression, 5)?;
@@ -151,7 +212,7 @@ impl PaneManager {
         manager.assign(PaneView::Calldata, 5)?;
         manager.assign(PaneView::Returndata, 5)?;
 
-        manager.assign(PaneView::Terminal, 2)?;
+        manager.assign(PaneView::Terminal, 4)?;
 
         Ok(manager)
     }
@@ -159,31 +220,44 @@ impl PaneManager {
     /// The small screen layout is:
     /// ```text
     /// +-----------------+-------+
-    /// | 1: CodePane     | 2:    |
+    /// | 1: CodePane     | 4:    |
     /// +-----------------+   op  |
-    /// | 3: DataPane     |  code |
+    /// | 2: DataPane     |  code |
     /// +-----------------+  list |
-    /// | 4: TerminalPane |       |
+    /// | 3: TerminalPane |       |
     /// +-----------------+-------+
     /// ```
     pub fn default_small_screen() -> Result<Self> {
         let mut manager = PaneManager::new(PaneView::Source);
 
-        manager.split(1, Direction::Vertical, [3, 1])?;
-        manager.split(1, Direction::Horizontal, [3, 4])?;
-        manager.split(3, Direction::Horizontal, [3, 1])?;
+        manager.split(1, Direction::Horizontal, [3, 1])?;
+        manager.split(1, Direction::Vertical, [3, 4])?;
+        manager.split(3, Direction::Vertical, [3, 1])?;
+
+        // The curent layout is:
+        // ```text
+        // +-----------------+-------+
+        // | 1: CodePane     | 2:    |
+        // +-----------------+   op  |
+        // | 3: DataPane     |  code |
+        // +-----------------+  list |
+        // | 4: TerminalPane |       |
+        // +-----------------+-------+
+        // ```
+        manager.switch_id(2, 3)?;
+        manager.switch_id(3, 4)?;
 
         manager.assign(PaneView::Trace, 1)?;
         manager.assign(PaneView::Source, 1)?;
 
-        manager.assign(PaneView::Opcode, 2)?;
+        manager.assign(PaneView::Opcode, 4)?;
 
-        manager.assign(PaneView::Variable, 3)?;
-        manager.assign(PaneView::Expression, 3)?;
-        manager.assign(PaneView::Stack, 3)?;
-        manager.assign(PaneView::Memory, 3)?;
-        manager.assign(PaneView::Calldata, 3)?;
-        manager.assign(PaneView::Returndata, 3)?;
+        manager.assign(PaneView::Variable, 2)?;
+        manager.assign(PaneView::Expression, 2)?;
+        manager.assign(PaneView::Stack, 2)?;
+        manager.assign(PaneView::Memory, 2)?;
+        manager.assign(PaneView::Calldata, 2)?;
+        manager.assign(PaneView::Returndata, 2)?;
 
         manager.assign(PaneView::Terminal, 4)?;
 
@@ -191,12 +265,14 @@ impl PaneManager {
     }
 
     pub fn assign(&mut self, view: PaneView, target: PaneId) -> Result<()> {
+        ensure!(view.is_valid(), "invalid view");
         if let Some(old_pane_id) = self.view_assignment.insert(view, target) {
-            let old_pane = self.panes.get_mut(&old_pane_id).ok_or(eyre::eyre!("Pane not found"))?;
+            let old_pane =
+                self.panes.get_mut(&old_pane_id).ok_or(eyre::eyre!("pane not found (assign)"))?;
             old_pane.remove_view(view);
         }
 
-        let pane = self.panes.get_mut(&target).ok_or(eyre::eyre!("Pane not found"))?;
+        let pane = self.panes.get_mut(&target).ok_or(eyre::eyre!("pane not found (assign)"))?;
         pane.add_view(view);
 
         Ok(())
@@ -208,26 +284,34 @@ impl PaneManager {
         direction: Direction,
         ratio: [u32; 2],
     ) -> Result<usize> {
-        let target_id =
-            self.view_assignment.get(&view).copied().ok_or(eyre::eyre!("Pane not found"))?;
+        let target_id = self
+            .view_assignment
+            .get(&view)
+            .copied()
+            .ok_or(eyre::eyre!("pane not found (split_by_view)"))?;
         self.split(target_id, direction, ratio)
     }
 
     pub fn merge_by_view(&mut self, input1: PaneView, input2: PaneView) -> Result<usize> {
-        let input1_id =
-            self.view_assignment.get(&input1).copied().ok_or(eyre::eyre!("Pane not found"))?;
-        let input2_id =
-            self.view_assignment.get(&input2).copied().ok_or(eyre::eyre!("Pane not found"))?;
+        let input1_id = self
+            .view_assignment
+            .get(&input1)
+            .copied()
+            .ok_or(eyre::eyre!("pane not found (merge_by_view)"))?;
+        let input2_id = self
+            .view_assignment
+            .get(&input2)
+            .copied()
+            .ok_or(eyre::eyre!("pane not found (merge_by_view)"))?;
         self.merge(input1_id, input2_id)
     }
 
     pub fn merge(&mut self, id1: PaneId, id2: PaneId) -> Result<usize> {
-        // remove the focus cache
-        self.focus_cache = None;
+        let (id1, id2) = if id1 < id2 { (id1, id2) } else { (id2, id1) };
 
-        let layout = self.get_screen_layout(VIRTUAL_RECT)?;
-        let rect1 = layout.0.get(&id1).ok_or(eyre::eyre!("Pane not found"))?;
-        let rect2 = layout.0.get(&id2).ok_or(eyre::eyre!("Pane not found"))?;
+        let layout = self.get_layout(VIRTUAL_RECT)?;
+        let rect1 = layout.0.get(&id1).ok_or(eyre::eyre!("pane not found (merge)"))?;
+        let rect2 = layout.0.get(&id2).ok_or(eyre::eyre!("pane not found (merge)"))?;
 
         // we should first check if the two panes are adjacent
         if rect1.width == rect2.width {
@@ -242,45 +326,64 @@ impl PaneManager {
             return Err(eyre::eyre!("Panes are not adjacent"));
         }
 
-        let target1 = self.panes.get(&id1).ok_or(eyre::eyre!("Pane not found"))?;
-        let target2 = self.panes.get(&id2).ok_or(eyre::eyre!("Pane not found"))?;
+        let target1 = self.panes.get(&id1).ok_or(eyre::eyre!("pane not found (merge)"))?;
+        let target2 = self.panes.get(&id2).ok_or(eyre::eyre!("pane not found (merge)"))?;
 
-        let new_id = self.next_id;
-        self.next_id += 1;
+        let new_id = id1;
 
-        let merge = MergePane { input_id: [id1, id2], output_id: new_id };
+        let mut new_pane = Pane::new(new_id);
+        for view in target1.views.iter().chain(target2.views.iter()) {
+            new_pane.add_view(*view);
+        }
 
-        self.operations.push(PaneOperation::Merge(merge));
-
-        let new_pane = Pane::new(new_id);
-        let new_pane_views: Vec<_> =
-            target1.views.iter().chain(target2.views.iter()).cloned().collect();
+        self.panes.remove(&id2);
         self.panes.insert(new_id, new_pane);
 
-        for view in new_pane_views {
-            self.assign(view, new_id)?;
-        }
+        let merge = MergePane { input_id: [id1, id2], output_id: new_id };
+        self.operations.push(PaneOperation::Merge(merge));
 
         Ok(new_id)
     }
 
     pub fn split(&mut self, id: PaneId, direction: Direction, ratio: [u32; 2]) -> Result<usize> {
-        // remove the focus cache
-        self.focus_cache = None;
-
-        let _ = self.panes.get(&id).ok_or(eyre::eyre!("Pane not found"))?;
+        let _ = self.panes.get(&id).ok_or(eyre::eyre!("pane not found (split)"))?;
 
         let new_id = self.next_id;
         self.next_id += 1;
 
-        let split = SplitPane { input_id: id, output_id: [new_id, new_id], ratio, direction };
-
-        self.operations.push(PaneOperation::Split(split));
+        let split = SplitPane { input_id: id, output_id: [id, new_id], ratio, direction };
 
         let new_pane = Pane::new(new_id);
         self.panes.insert(new_id, new_pane);
 
+        self.operations.push(PaneOperation::Split(split));
+
         Ok(new_id)
+    }
+
+    // Switch the pane ids
+    pub fn switch_id(&mut self, input1: PaneId, input2: PaneId) -> Result<()> {
+        let _ = self.panes.get(&input1).ok_or(eyre::eyre!("pane not found (switch_id)"))?;
+        let _ = self.panes.get(&input2).ok_or(eyre::eyre!("pane not found (switch_id)"))?;
+
+        let switch = SwitchPaneId { input_id: [input1, input2] };
+        self.operations.push(PaneOperation::SwitchId(switch));
+
+        Ok(())
+    }
+
+    pub fn force_goto(&mut self, view: PaneView) -> Result<()> {
+        let target_id = self.get_pane_id(view).ok_or(eyre::eyre!("pane not found (force_goto)"))?;
+        let layout = self.get_layout(VIRTUAL_RECT)?;
+
+        let rect = layout.0.get(&target_id).ok_or(eyre::eyre!("pane not found (force_goto)"))?;
+        self.focus = Point::new(rect.x, rect.y);
+
+        let pane =
+            self.panes.get_mut(&target_id).ok_or(eyre::eyre!("pane not found (force_goto)"))?;
+        pane.select_view(view);
+
+        Ok(())
     }
 
     pub fn focus_up(&mut self) -> Result<()> {
@@ -315,23 +418,27 @@ impl PaneManager {
         Ok(())
     }
 
-    pub fn get_focused_view(&mut self) -> Result<Option<PaneView>> {
+    pub fn get_focused_pane_mut(&mut self) -> Result<&mut Pane> {
         let info = self.get_focused_info()?;
-        let pane = self.panes.get(&info.pane_id).ok_or(eyre!("invalid pane id"))?;
-        Ok(pane.current_view())
+        Ok(self.panes.get_mut(&info.pane_id).ok_or(eyre!("invalid pane id"))?)
     }
 
-    fn get_focused_info(&mut self) -> Result<FocusInfo> {
-        if let Some(info) = &self.focus_cache {
-            return Ok(info.clone());
-        }
+    pub fn get_focused_pane(&self) -> Result<&Pane> {
+        let info = self.get_focused_info()?;
+        Ok(self.panes.get(&info.pane_id).ok_or(eyre!("invalid pane id"))?)
+    }
 
-        let layout = self.get_screen_layout(VIRTUAL_RECT)?;
+    pub fn get_focused_view(&mut self) -> Result<PaneView> {
+        let pane = self.get_focused_pane_mut()?;
+        Ok(pane.get_current_view())
+    }
+
+    fn get_focused_info(&self) -> Result<FocusInfo> {
+        let layout = self.get_layout(VIRTUAL_RECT)?;
         for (id, rect) in layout.0.iter() {
             if self.focus.in_rect(*rect) {
-                ensure!(self.panes.contains_key(id), "Pane not found");
+                ensure!(self.panes.contains_key(id), "pane not found (get_focused_info)");
                 let info = FocusInfo { pane_id: *id, rect: *rect };
-                self.focus_cache = Some(info.clone());
                 return Ok(info);
             }
         }
@@ -343,14 +450,37 @@ impl PaneManager {
         self.view_assignment.get(&view).copied()
     }
 
-    pub fn get_screen_layout(&self, app: Rect) -> Result<PaneLayout> {
+    pub fn get_flattened_layout(&self, app: Rect) -> Result<Vec<PaneFlattened>> {
+        let layout = self.get_layout(app)?;
+        let focus_info = self.get_focused_info()?;
+        Ok(layout
+            .0
+            .iter()
+            .map(|(id, rect)| {
+                let pane = self
+                    .panes
+                    .get(&id)
+                    .ok_or_else(|| eyre::eyre!("pane not found (get_flattened_layout)"))?;
+                Ok(PaneFlattened {
+                    rect: *rect,
+                    view: pane.get_current_view(),
+                    focused: focus_info.pane_id == *id,
+                    id: *id,
+                })
+            })
+            .collect::<Result<Vec<PaneFlattened>>>()?)
+    }
+
+    pub fn get_layout(&self, app: Rect) -> Result<PaneLayout> {
         let mut layout = BTreeMap::new();
         layout.insert(1usize, app);
 
         for op in &self.operations {
             match op {
                 PaneOperation::Split(split) => {
-                    let input = layout.get(&split.input_id).ok_or(eyre::eyre!("Pane not found"))?;
+                    let input = layout
+                        .get(&split.input_id)
+                        .ok_or(eyre::eyre!("pane not found (get_layout)"))?;
                     let t_r = split.ratio[0] + split.ratio[1];
                     let [output1, output2] = Layout::new(
                         split.direction,
@@ -368,32 +498,33 @@ impl PaneManager {
                     layout.insert(split.output_id[1], output2);
                 }
                 PaneOperation::Merge(merge) => {
-                    let input1 =
-                        layout.get(&merge.input_id[0]).ok_or(eyre::eyre!("Pane not found"))?;
-                    let input2 =
-                        layout.get(&merge.input_id[1]).ok_or(eyre::eyre!("Pane not found"))?;
+                    let input1 = layout
+                        .get(&merge.input_id[0])
+                        .ok_or(eyre::eyre!("pane not found (get_layout)"))?;
+                    let input2 = layout
+                        .get(&merge.input_id[1])
+                        .ok_or(eyre::eyre!("pane not found (get_layout)"))?;
                     let output = input1.union(*input2);
 
                     layout.remove(&merge.input_id[0]);
                     layout.remove(&merge.input_id[1]);
                     layout.insert(merge.output_id, output);
                 }
+                PaneOperation::SwitchId(switch) => {
+                    let input1 = *layout
+                        .get(&switch.input_id[0])
+                        .ok_or(eyre::eyre!("pane not found (get_layout)"))?;
+                    let input2 = *layout
+                        .get(&switch.input_id[1])
+                        .ok_or(eyre::eyre!("pane not found (get_layout)"))?;
+
+                    layout.insert(switch.input_id[0], input2);
+                    layout.insert(switch.input_id[1], input1);
+                }
             }
         }
 
         Ok(PaneLayout(layout))
-    }
-}
-
-impl PaneLayout {
-    pub fn flatten<'a>(&self, manager: &PaneManager) -> Vec<(Rect, Option<PaneView>)> {
-        self.0
-            .iter()
-            .map(|(id, rect)| {
-                let view = manager.panes.get(&id).and_then(|pane| pane.current_view());
-                (*rect, view)
-            })
-            .collect()
     }
 }
 

@@ -1,346 +1,157 @@
-use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use std::collections::HashMap;
+
+use eyre::Result;
+use ratatui::layout::Rect;
+
+use crate::pane::{Pane, PaneFlattened, PaneManager, PaneView};
+
+pub const SMALL_SCREEN_STR: &str = "Defualt Small Screen";
+pub const LARGE_SCREEN_STR: &str = "Defualt Large Screen";
 
 /// The focus mode of the frontend.
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum FocusMode {
-    TerminalEntered(TerminalMode), /* bool is used to indicate whether the terminal is in
-                                    * insert mode */
-    OtherEntered,
-    Browse,
-}
-
-/// The focus mode of the frontend.
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum TerminalMode {
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TerminalMode {
     Normal,
     Insert,
 }
 
-/// Used to keep track of which kind of pane is currently active
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum Pane {
-    // we need to have a specific code pane for each code kind,
-    // since the code pane is flattened in the large screen layout
-    CodePane(CodeView),
-    DataPane,
-    TerminalPane,
-    OpcodePane,
-}
-
-/// Used to keep track of which kind of pane is currently active
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq)]
-pub(crate) enum PaneView {
-    // data
-    Variable,
-    Expression,
-    Memory,
-    Calldata,
-    Returndata,
-    Stack,
-
-    // code
-    Opcode,
-    Source,
-    Trace,
-
-    // terminal
-    Terminal,
-}
-
-/// The size of the screen.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum ScreenSize {
-    Small,
-    Large,
+/// The focus mode of the frontend.
+/// State Machine:
+/// Browse <-(ESC/ENTER)-> Entered <-(ESC/ENTER)-> FullScreen
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FocusMode {
+    Entered,
+    Browse,
+    FullScreen,
 }
 
 /// Trace the focus, to ensure the pane switching is backed by a state machine.
-pub(crate) struct Screen {
-    pub(crate) screen: ScreenSize,
-    pub(crate) focus: Pane,
-    pub(crate) prev_focus: Option<Pane>,
-    pub(crate) mode: FocusMode,
+pub struct ScreenManager {
+    pub panes: HashMap<String, PaneManager>,
+    pub current_pane: String,
+    pub use_default_pane: bool,
 
-    pub(crate) active_data: DataView,
-    pub(crate) active_code: CodeView,
+    pub terminal_mode: TerminalMode,
+    pub focus_mode: FocusMode,
 }
 
-/// The layout of two different screens.
-///
-/// The small screen layout is:
-/// ```text
-/// +-----------------+-------+
-/// | CodePane        |       |
-/// +-----------------+   op  |
-/// | DataPane        |  code |
-/// +-----------------+  list |
-/// | TerminalPane    |       |
-/// +-----------------+-------+
-///                    // prev_focus is only meaningful in op code list
-/// ```
-///
-/// The large screen layout is:
-/// ```text
-/// +---------+--------+--------+
-/// |  Trace  | Source | opcode |
-/// +---------+-----+--+--------+
-/// | Terminal Pane | Data Pane |
-/// +---------+--------+--------+
-/// ```
-impl Screen {
-    pub(crate) fn new() -> Self {
-        Self {
-            screen: ScreenSize::Small,
-            focus: Pane::TerminalPane,
-            prev_focus: None,
-            mode: FocusMode::TerminalEntered(TerminalMode::Insert),
-            active_code: CodeView::Trace,
-            active_data: DataView::Variable,
-        }
+impl ScreenManager {
+    pub fn new() -> Result<Self> {
+        let mut manager = Self {
+            panes: HashMap::new(),
+            current_pane: String::new(),
+            terminal_mode: TerminalMode::Normal,
+            focus_mode: FocusMode::Entered,
+            use_default_pane: true,
+        };
+
+        manager.add_pane_manager(SMALL_SCREEN_STR, PaneManager::default_small_screen()?);
+        manager.add_pane_manager(LARGE_SCREEN_STR, PaneManager::default_large_screen()?);
+        manager.current_pane = SMALL_SCREEN_STR.to_string();
+
+        Ok(manager)
     }
 
-    pub(crate) fn split_screen(&self, app: Rect) -> Vec<Rect> {
-        match self.screen {
-            ScreenSize::Small => {
-                // Split app in 2 horizontally.
-                let [app_left, op_pane] = Layout::new(
-                    Direction::Horizontal,
-                    [Constraint::Ratio(3, 4), Constraint::Ratio(1, 4)],
-                )
-                .split(app)[..] else {
-                    unreachable!()
-                };
-
-                // Split the right pane vertically to construct data and text panes.
-                let [code_pane, data_pane, text_pane] = Layout::new(
-                    Direction::Vertical,
-                    [Constraint::Ratio(3, 8), Constraint::Ratio(3, 8), Constraint::Ratio(1, 4)],
-                )
-                .split(app_left)[..] else {
-                    unreachable!()
-                }; // Split app in 2 horizontally.
-
-                vec![code_pane, data_pane, text_pane, op_pane]
-            }
-            ScreenSize::Large => {
-                // Split app in 2 vertically.
-                let [app_top, app_bottom] = Layout::new(
-                    Direction::Vertical,
-                    [Constraint::Ratio(3, 5), Constraint::Ratio(2, 5)],
-                )
-                .split(app)[..] else {
-                    unreachable!()
-                };
-
-                // Split the upper pane in 3 vertically to trace, source, and opcode list .
-                let [trace_pane, src_pane, op_pane] = Layout::new(
-                    Direction::Horizontal,
-                    [Constraint::Ratio(2, 5), Constraint::Ratio(2, 5), Constraint::Ratio(1, 5)],
-                )
-                .split(app_top)[..] else {
-                    unreachable!()
-                };
-
-                // Split the lower pane horizontally to construct text aren and data panes.
-                let [text_pane, data_pane] = Layout::new(
-                    Direction::Horizontal,
-                    [Constraint::Ratio(1, 2), Constraint::Ratio(1, 2)],
-                )
-                .split(app_bottom)[..] else {
-                    unreachable!()
-                };
-
-                vec![trace_pane, src_pane, op_pane, text_pane, data_pane]
-            }
-        }
+    pub fn get_focused_pane(&mut self) -> Result<&mut Pane> {
+        self.get_current_pane_mut()?.get_focused_pane_mut()
     }
 
-    pub(crate) fn is_focused_pane(&self, pane: Pane) -> bool {
-        match self.screen {
-            ScreenSize::Small => match self.focus {
-                Pane::CodePane(_) => matches!(pane, Pane::CodePane(_)),
-                _ => self.focus == pane,
-            },
-            ScreenSize::Large => self.focus == pane,
-        }
+    pub fn get_focused_view(&mut self) -> Result<PaneView> {
+        self.get_current_pane_mut()?.get_focused_view()
     }
 
-    pub(crate) fn enter_pane(&mut self) {
-        if self.focus == Pane::TerminalPane {
-            // enter to the terminal pane should always be in insert mode
-            self.mode = FocusMode::TerminalEntered(TerminalMode::Insert);
+    pub fn get_available_panes(&self) -> Vec<String> {
+        self.panes.keys().cloned().collect()
+    }
+
+    pub fn use_default_pane(&mut self, use_default_pane: bool) {
+        self.use_default_pane = use_default_pane;
+    }
+
+    pub fn add_pane_manager(&mut self, name: &str, manager: PaneManager) {
+        self.panes.insert(name.to_string(), manager);
+    }
+
+    pub fn toggle_full_screen(&mut self) -> Result<()> {
+        if self.focus_mode == FocusMode::FullScreen {
+            self.focus_mode = FocusMode::Entered;
+            Ok(())
+        } else if self.focus_mode == FocusMode::Entered {
+            self.focus_mode = FocusMode::FullScreen;
+            Ok(())
         } else {
-            self.mode = FocusMode::OtherEntered;
+            Err(eyre::eyre!("Cannot toggle full screen in browse mode"))
         }
     }
 
-    pub(crate) fn browse_pane(&mut self) {
-        self.mode = FocusMode::Browse;
+    pub fn enter_pane(&mut self) {
+        self.focus_mode = FocusMode::Entered;
     }
 
-    pub(crate) fn enter_terminal(&mut self, terminal_mode: TerminalMode) {
-        self.mode = FocusMode::TerminalEntered(terminal_mode);
+    pub fn browse_pane(&mut self) {
+        self.focus_mode = FocusMode::Browse;
     }
 
-    pub(crate) fn set_terminal_normal_mode(&mut self) {
-        if let FocusMode::TerminalEntered(_) = self.mode {
-            self.mode = FocusMode::TerminalEntered(TerminalMode::Normal);
-        }
+    pub fn get_current_pane(&self) -> Result<&PaneManager> {
+        self.panes.get(&self.current_pane).ok_or(eyre::eyre!("No current pane"))
     }
 
-    pub(crate) fn set_terminal_insert_mode(&mut self) {
-        if let FocusMode::TerminalEntered(_) = self.mode {
-            self.mode = FocusMode::TerminalEntered(TerminalMode::Insert);
-        }
+    pub fn get_current_pane_mut(&mut self) -> Result<&mut PaneManager> {
+        self.panes.get_mut(&self.current_pane).ok_or(eyre::eyre!("No current pane"))
     }
 
-    pub(crate) fn switch_right(&mut self) {
-        if self.is_small() {
-            let focus = self.focus;
-            match self.focus {
-                Pane::CodePane(_) | Pane::DataPane | Pane::TerminalPane => {
-                    self.focus = Pane::OpcodePane
-                }
-                Pane::OpcodePane => {
-                    self.focus = self.prev_focus.unwrap_or(Pane::CodePane(self.active_code))
-                }
-            }
-            self.prev_focus = Some(focus);
+    pub fn enter_terminal(&mut self, terminal_mode: TerminalMode) -> Result<()> {
+        self.get_current_pane_mut()?.force_goto(PaneView::Terminal)?;
+        self.terminal_mode = terminal_mode;
+        self.focus_mode = FocusMode::Entered;
+
+        Ok(())
+    }
+
+    pub fn set_pane(&mut self, name: &str) -> Result<()> {
+        if self.panes.contains_key(name) {
+            self.current_pane = name.to_string();
+            Ok(())
         } else {
-            match self.focus {
-                Pane::CodePane(CodeView::Trace) => self.focus = Pane::CodePane(CodeView::Source),
-                Pane::CodePane(CodeView::Source) => self.focus = Pane::OpcodePane,
-                Pane::OpcodePane => self.focus = Pane::CodePane(CodeView::Trace),
-                Pane::DataPane => self.focus = Pane::TerminalPane,
-                Pane::TerminalPane => self.focus = Pane::DataPane,
-            }
-            self.prev_focus = None;
+            Err(eyre::eyre!("No such pane"))
         }
     }
 
-    pub(crate) fn switch_left(&mut self) {
-        if self.is_small() {
-            // small screen layout only has two columns, so switch_left is the same as switch_right
-            self.switch_right();
+    pub fn set_large_screen(&mut self) {
+        self.current_pane = LARGE_SCREEN_STR.to_string();
+    }
+
+    pub fn set_small_screen(&mut self) {
+        self.current_pane = SMALL_SCREEN_STR.to_string();
+    }
+
+    pub fn focus_up(&mut self) -> Result<()> {
+        self.get_current_pane_mut()?.focus_up()
+    }
+
+    pub fn focus_down(&mut self) -> Result<()> {
+        self.get_current_pane_mut()?.focus_down()
+    }
+
+    pub fn focus_left(&mut self) -> Result<()> {
+        self.get_current_pane_mut()?.focus_left()
+    }
+
+    pub fn focus_right(&mut self) -> Result<()> {
+        self.get_current_pane_mut()?.focus_right()
+    }
+
+    pub fn get_flattened_layout(&self, app: Rect) -> Result<Vec<PaneFlattened>> {
+        if self.focus_mode == FocusMode::FullScreen {
+            let pane = self.get_current_pane()?.get_focused_pane()?;
+            Ok(vec![PaneFlattened {
+                view: pane.get_current_view(),
+                id: pane.id,
+                focused: true,
+                rect: app,
+            }])
         } else {
-            match self.focus {
-                Pane::CodePane(CodeView::Trace) => self.focus = Pane::OpcodePane,
-                Pane::CodePane(CodeView::Source) => self.focus = Pane::CodePane(CodeView::Trace),
-                Pane::OpcodePane => self.focus = Pane::CodePane(CodeView::Source),
-                Pane::DataPane => self.focus = Pane::TerminalPane,
-                Pane::TerminalPane => self.focus = Pane::DataPane,
-            }
-            self.prev_focus = None; // reset the prev_focus
-        }
-    }
-
-    pub(crate) fn switch_up(&mut self) {
-        if self.is_small() {
-            match self.focus {
-                Pane::CodePane(_) => self.focus = Pane::TerminalPane,
-                Pane::DataPane => self.focus = Pane::CodePane(CodeView::Trace),
-                Pane::TerminalPane => self.focus = Pane::DataPane,
-                Pane::OpcodePane => { /* do nothing */ }
-            }
-        } else {
-            let focus = self.focus;
-            match self.focus {
-                Pane::CodePane(CodeView::Trace) => self.focus = Pane::TerminalPane,
-                Pane::CodePane(CodeView::Source) => {
-                    self.focus = self.prev_focus.unwrap_or(Pane::TerminalPane)
-                }
-                Pane::OpcodePane => self.focus = Pane::DataPane,
-                Pane::DataPane => self.focus = self.prev_focus.unwrap_or(Pane::OpcodePane),
-
-                Pane::TerminalPane => {
-                    self.focus = self.prev_focus.unwrap_or(Pane::CodePane(CodeView::Trace))
-                }
-            }
-            self.prev_focus = Some(focus);
-        }
-    }
-
-    pub(crate) fn switch_down(&mut self) {
-        if self.is_small() {
-            match self.focus {
-                Pane::CodePane(_) => self.focus = Pane::DataPane,
-                Pane::DataPane => self.focus = Pane::TerminalPane,
-                Pane::TerminalPane => self.focus = Pane::CodePane(CodeView::Trace),
-                Pane::OpcodePane => { /* do nothing */ }
-            }
-        } else {
-            // large screen layout only has two rows, so swith_down is the same as switch_up
-            self.switch_up();
-        }
-    }
-
-    pub(crate) fn is_small(&self) -> bool {
-        matches!(self.screen, ScreenSize::Small)
-    }
-
-    pub(crate) fn is_large(&self) -> bool {
-        matches!(self.screen, ScreenSize::Large)
-    }
-
-    pub(crate) fn set_large_screen(&mut self) {
-        if self.is_small() {
-            // when we switch from small screen to large screen, we reset the focus to the default
-            self.prev_focus = None;
-            self.focus = Pane::TerminalPane;
-            self.active_code = CodeView::Trace; // use trace as a placeholder
-            self.screen = ScreenSize::Large;
-        }
-    }
-
-    pub(crate) fn set_small_screen(&mut self) {
-        if self.is_large() {
-            self.prev_focus = None;
-            self.focus = Pane::TerminalPane;
-            self.active_code = CodeView::Trace;
-            self.screen = ScreenSize::Small;
-        }
-    }
-}
-
-/// Used to keep track of which kind of data is currently active to be drawn by the debugger.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum DataView {
-    Variable,
-    Expression,
-    Memory,
-    Calldata,
-    Returndata,
-    Stack,
-}
-
-impl DataView {
-    /// Helper to cycle through the active buffers.
-    pub(crate) fn next(&self) -> Self {
-        match self {
-            Self::Variable => Self::Expression,
-            Self::Expression => Self::Memory,
-            Self::Memory => Self::Calldata,
-            Self::Calldata => Self::Returndata,
-            Self::Returndata => Self::Stack,
-            Self::Stack => Self::Variable,
-        }
-    }
-}
-
-/// Used to keep track of which kind of code is currently active to be drawn by the debugger.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum CodeView {
-    Trace,
-    Source,
-}
-
-impl CodeView {
-    /// Helper to cycle through the active code panes.
-    /// Note that opcode is not included here, since it is in a separate pane.
-    pub(crate) fn next(&self) -> Self {
-        match self {
-            Self::Trace => Self::Source,
-            Self::Source => Self::Trace,
+            Ok(self.get_current_pane()?.get_flattened_layout(app)?)
         }
     }
 }

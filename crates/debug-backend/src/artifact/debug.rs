@@ -2,7 +2,7 @@ use alloy_primitives::{Address, Bytes, U256};
 use arrayvec::ArrayVec;
 use revm::interpreter::OpCode;
 use revm_inspectors::tracing::types::CallKind;
-use serde::{de, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::utils::evm;

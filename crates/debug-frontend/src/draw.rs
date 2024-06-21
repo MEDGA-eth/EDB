@@ -12,13 +12,18 @@ use ratatui::{
 };
 use revm::interpreter::opcode;
 use revm_inspectors::tracing::types::CallKind;
-use std::{collections::VecDeque, fmt::Write, io};
+use std::{
+    collections::VecDeque,
+    fmt::Write,
+    io::{self},
+};
 
 use crate::{
     context::FrontendContext,
-    screen::{CodeView, DataView, FocusMode, Pane, TerminalMode},
+    pane::{PaneFlattened, PaneView},
+    screen::{FocusMode, TerminalMode},
     utils::opcode::OpcodeParam,
-    vec_to_vars, FrontendTerminal,
+    FrontendTerminal,
 };
 
 impl FrontendContext<'_> {
@@ -40,13 +45,16 @@ impl FrontendContext<'_> {
 
         // The horizontal layout draws these panes at 50% width.
         let min_column_width_for_horizontal = 200;
-        if size.width >= min_column_width_for_horizontal {
-            self.screen.set_large_screen();
-            self.large_screen_layout(f);
-        } else {
-            self.screen.set_small_screen();
-            self.small_screen_layout(f);
+
+        if self.screen.use_default_pane {
+            if size.width >= min_column_width_for_horizontal {
+                self.screen.set_large_screen();
+            } else {
+                self.screen.set_small_screen();
+            }
         }
+
+        self.screen_layout(f);
     }
 
     fn size_too_small(&self, f: &mut Frame<'_>, min_width: u16, min_height: u16) {
@@ -76,35 +84,8 @@ impl FrontendContext<'_> {
         f.render_widget(paragraph, size)
     }
 
-    fn small_screen_layout(&mut self, f: &mut Frame<'_>) {
-        let area = f.size();
-        let h_height = if self.show_shortcuts { 4 } else { 0 };
-
-        // NOTE: `Layout::split` always returns a slice of the same length as the number of
-        // constraints, so the `else` branch is unreachable.
-
-        // Split off footer.
-        let [app, footer] = Layout::new(
-            Direction::Vertical,
-            [Constraint::Ratio(100 - h_height, 100), Constraint::Ratio(h_height, 100)],
-        )
-        .split(area)[..] else {
-            unreachable!()
-        };
-
-        vec_to_vars!(self.screen.split_screen(app), code_pane, data_pane, text_pane, op_pane);
-
-        if self.show_shortcuts {
-            self.draw_footer(f, footer);
-        }
-        self.draw_code(f, code_pane);
-        self.draw_data(f, data_pane);
-        self.draw_op_list(f, op_pane);
-        self.draw_terminal(f, text_pane);
-    }
-
     /// Draws the layout in horizontal mode.
-    fn large_screen_layout(&mut self, f: &mut Frame<'_>) {
+    fn screen_layout(&mut self, f: &mut Frame<'_>) {
         let area = f.size();
         let h_height = if self.show_shortcuts { 4 } else { 0 };
 
@@ -117,37 +98,40 @@ impl FrontendContext<'_> {
             unreachable!()
         };
 
-        vec_to_vars!(
-            self.screen.split_screen(app),
-            trace_pane,
-            src_pane,
-            op_pane,
-            text_pane,
-            data_pane
-        );
+        let layout = self.screen.get_flattened_layout(app).unwrap();
 
         if self.show_shortcuts {
             self.draw_footer(f, footer);
         }
 
-        self.draw_trace(f, trace_pane);
-        self.draw_op_list(f, op_pane);
-        self.draw_src(f, src_pane);
-        self.draw_data(f, data_pane);
-        self.draw_terminal(f, text_pane);
+        for pane in layout {
+            match pane.view {
+                PaneView::Memory | PaneView::Calldata | PaneView::Returndata => {
+                    self.draw_buffer(f, pane)
+                }
+                PaneView::Expression => self.draw_expressions(f, pane),
+                PaneView::Variable => self.draw_variables(f, pane),
+                PaneView::Stack => self.draw_stack(f, pane),
+                PaneView::Source => self.draw_src(f, pane),
+                PaneView::Trace => self.draw_trace(f, pane),
+                PaneView::Opcode => self.draw_op_list(f, pane),
+                PaneView::Terminal => self.draw_terminal(f, pane),
+                PaneView::Null => self.draw_null(f, pane),
+            }
+        }
     }
 
-    fn get_focused_block(&self, pane: Pane) -> Block<'static> {
-        let (border_style, border_set) = match self.screen.mode {
-            FocusMode::OtherEntered | FocusMode::TerminalEntered(_) => {
-                if self.screen.is_focused_pane(pane) {
+    fn get_focused_block(&self, is_focus: bool) -> Block<'static> {
+        let (border_style, border_set) = match self.screen.focus_mode {
+            FocusMode::Entered | FocusMode::FullScreen => {
+                if is_focus {
                     (Style::default().fg(Color::Green), border::DOUBLE)
                 } else {
                     (Style::default(), border::PLAIN)
                 }
             }
             FocusMode::Browse => {
-                if self.screen.is_focused_pane(pane) {
+                if is_focus {
                     (Style::default().fg(Color::LightCyan), border::DOUBLE)
                 } else {
                     (Style::default(), border::PLAIN)
@@ -162,88 +146,65 @@ impl FrontendContext<'_> {
             .border_set(border_set)
     }
 
-    fn draw_code(&self, f: &mut Frame<'_>, area: Rect) {
-        match self.screen.active_code {
-            CodeView::Trace => {
-                self.draw_trace(f, area);
-            }
-            CodeView::Source => {
-                self.draw_src(f, area);
-            }
-        }
-    }
-
-    fn draw_data(&self, f: &mut Frame<'_>, area: Rect) {
-        match self.screen.active_data {
-            DataView::Memory | DataView::Calldata | DataView::Returndata => {
-                self.draw_buffer(f, area);
-            }
-            DataView::Stack => {
-                self.draw_stack(f, area);
-            }
-            DataView::Expression => {
-                self.draw_expressions(f, area);
-            }
-            DataView::Variable => {
-                self.draw_variables(f, area);
-            }
-        }
-    }
-
-    fn draw_terminal(&mut self, f: &mut Frame<'_>, area: Rect) {
-        let title = match self.screen.mode {
-            FocusMode::TerminalEntered(TerminalMode::Insert) => " Script Terminal (Insert) ",
-            FocusMode::TerminalEntered(TerminalMode::Normal) => " Script Terminal (Normal) ",
-            _ => " Script Terminal ",
+    fn draw_terminal(&mut self, f: &mut Frame<'_>, pane: PaneFlattened) {
+        let title = match self.screen.terminal_mode {
+            TerminalMode::Insert => format!(" [{}] Script Terminal (Insert) ", pane.id),
+            TerminalMode::Normal => format!(" [{}] Script Terminal (Normal) ", pane.id),
         };
-        let block = self.get_focused_block(Pane::TerminalPane).title(title);
+        let block = self.get_focused_block(pane.focused).title(title);
         self.terminal.set_cursor_line_style(Style::default().add_modifier(Modifier::UNDERLINED));
         self.terminal.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
         self.terminal.set_block(block);
 
         let widget = self.terminal.widget();
-        f.render_widget(widget, area);
+        f.render_widget(widget, pane.rect);
     }
 
     // TODO
-    fn draw_trace(&self, f: &mut Frame<'_>, area: Rect) {
-        let title = format!(" Trace (address: {}) ", self.address());
-        let block = self.get_focused_block(Pane::CodePane(CodeView::Trace)).title(title);
+    fn draw_null(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
+        let title = format!(" [{}] Empty Pane ", pane.id);
+        let block = self.get_focused_block(pane.focused).title(title);
         let paragraph = Paragraph::new(Text::from(format!("trace displaying under construction")))
             .block(block)
             .wrap(Wrap { trim: false });
-        f.render_widget(paragraph, area);
+        f.render_widget(paragraph, pane.rect);
     }
 
     // TODO
-    fn draw_variables(&self, f: &mut Frame<'_>, area: Rect) {
-        let title = format!(" Live Variables (number: 0) ");
-        let block = self.get_focused_block(Pane::DataPane).title(title);
+    fn draw_trace(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
+        let title = format!(" [{}] Trace (address: {}) ", pane.id, self.address());
+        let block = self.get_focused_block(pane.focused).title(title);
+        let paragraph = Paragraph::new(Text::from(format!("trace displaying under construction")))
+            .block(block)
+            .wrap(Wrap { trim: false });
+        f.render_widget(paragraph, pane.rect);
+    }
+
+    // TODO
+    fn draw_variables(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
+        let title = format!(" [{}] Live Variables (number: 0) ", pane.id);
+        let block = self.get_focused_block(pane.focused).title(title);
         let paragraph =
             Paragraph::new(Text::from(format!("variable displaying under construction")))
                 .block(block)
                 .wrap(Wrap { trim: false });
-        f.render_widget(paragraph, area);
+        f.render_widget(paragraph, pane.rect);
     }
 
     // TODO
-    fn draw_expressions(&self, f: &mut Frame<'_>, area: Rect) {
-        let title = format!(" Watchers (number: 0) ");
-        let block = self.get_focused_block(Pane::DataPane).title(title);
+    fn draw_expressions(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
+        let title = format!(" [{}] Watchers (number: 0) ", pane.id);
+        let block = self.get_focused_block(pane.focused).title(title);
         let paragraph =
             Paragraph::new(Text::from(format!("watcher displaying under construction")))
                 .block(block)
                 .wrap(Wrap { trim: false });
-        f.render_widget(paragraph, area);
+        f.render_widget(paragraph, pane.rect);
     }
 
     fn draw_footer(&self, f: &mut Frame<'_>, area: Rect) {
         let l1 = "[q]: quit | [k/j]: prev/next op | [a/s]: prev/next jump | [c/C]: prev/next call | [g/G]: start/end | [b]: cycle variable/watcher/memory/calldata/returndata/stack";
-        let l2 = if self.screen.is_small() {
-            "[t]: stack labels | [m]: buffer decoding | [shift + k]: cycle trace/source | [ctrl + j/k]: scroll data | ['<char>]: goto breakpoint | [h] toggle help"
-        } else {
-            "[t]: stack labels | [m]: buffer decoding | [ctrl + j/k]: scroll data | ['<char>]: goto breakpoint | [h] toggle help"
-        };
+        let l2 = "[t]: stack labels | [m]: buffer decoding | [shift + k]: cycle trace/source | [ctrl + j/k]: scroll data | ['<char>]: goto breakpoint | [h] toggle help";
         let dimmed = Style::new().add_modifier(Modifier::DIM);
         let lines =
             vec![Line::from(Span::styled(l1, dimmed)), Line::from(Span::styled(l2, dimmed))];
@@ -252,8 +213,8 @@ impl FrontendContext<'_> {
         f.render_widget(paragraph, area);
     }
 
-    fn draw_src(&self, f: &mut Frame<'_>, area: Rect) {
-        let (text_output, source_name) = self.src_text(area);
+    fn draw_src(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
+        let (text_output, source_name) = self.src_text(pane.rect);
         let call_kind_text = match self.call_kind() {
             CallKind::Create | CallKind::Create2 => "Contract creation",
             CallKind::Call => "Contract call",
@@ -263,13 +224,14 @@ impl FrontendContext<'_> {
             CallKind::AuthCall => "Contract authcall",
         };
         let title = format!(
-            " {} {} ",
+            " [{}] {} {} ",
+            pane.id,
             call_kind_text,
             source_name.map(|s| format!("| {s}")).unwrap_or_default()
         );
-        let block = self.get_focused_block(Pane::CodePane(CodeView::Source)).title(title);
+        let block = self.get_focused_block(pane.focused).title(title);
         let paragraph = Paragraph::new(text_output).block(block).wrap(Wrap { trim: false });
-        f.render_widget(paragraph, area);
+        f.render_widget(paragraph, pane.rect);
     }
 
     fn src_text(&self, area: Rect) -> (Text<'_>, Option<&str>) {
@@ -469,7 +431,7 @@ impl FrontendContext<'_> {
         // Ok((source_element, source_code, source_file))
     }
 
-    fn draw_op_list(&self, f: &mut Frame<'_>, area: Rect) {
+    fn draw_op_list(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
         let debug_steps = self.debug_steps();
         let max_pc = debug_steps.iter().map(|step| step.pc).max().unwrap_or(0);
         let max_pc_len = hex_digits(max_pc);
@@ -488,21 +450,22 @@ impl FrontendContext<'_> {
             .collect::<Vec<_>>();
 
         let title = format!(
-            " PC: {} | Gas used in call: {} ",
+            " [{}] PC: {} | Gas used in call: {} ",
+            pane.id,
             self.current_step().pc,
             self.current_step().total_gas_used,
         );
-        let block = self.get_focused_block(Pane::OpcodePane).title(title);
+        let block = self.get_focused_block(pane.focused).title(title);
         let list = List::new(items)
             .block(block)
             .highlight_symbol("▶")
             .highlight_style(Style::new().fg(Color::White).bg(Color::DarkGray))
             .scroll_padding(1);
         let mut state = ListState::default().with_selected(Some(self.current_step));
-        f.render_stateful_widget(list, area, &mut state);
+        f.render_stateful_widget(list, pane.rect, &mut state);
     }
 
-    fn draw_stack(&self, f: &mut Frame<'_>, area: Rect) {
+    fn draw_stack(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
         let step = self.current_step();
         let stack = &step.stack;
 
@@ -545,26 +508,26 @@ impl FrontendContext<'_> {
             })
             .collect();
 
-        let title = format!(" Stack (depth: {})) ", stack.len());
-        let block = self.get_focused_block(Pane::DataPane).title(title);
+        let title = format!(" [{}] Stack (depth: {})) ", pane.id, stack.len());
+        let block = self.get_focused_block(pane.focused).title(title);
         let paragraph = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
-        f.render_widget(paragraph, area);
+        f.render_widget(paragraph, pane.rect);
     }
 
-    fn draw_buffer(&self, f: &mut Frame<'_>, area: Rect) {
+    fn draw_buffer(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
         let step = self.current_step();
-        let (buf, title) = match self.screen.active_data {
-            DataView::Memory => (
+        let (buf, title) = match pane.view {
+            PaneView::Memory => (
                 step.memory.as_ref(),
-                format!(" Memory (max expansion: {} bytes) ", step.memory.len()),
+                format!(" [{}] Memory (max expansion: {} bytes) ", pane.id, step.memory.len()),
             ),
-            DataView::Calldata => (
+            PaneView::Calldata => (
                 step.calldata.as_ref(),
-                format!(" Calldata (size: {} bytes) ", step.calldata.len()),
+                format!(" [{}] Calldata (size: {} bytes) ", pane.id, step.calldata.len()),
             ),
-            DataView::Returndata => (
+            PaneView::Returndata => (
                 step.returndata.as_ref(),
-                format!(" Returndata (size: {} bytes) ", step.returndata.len()),
+                format!(" [{}] Returndata (size: {} bytes) ", pane.id, step.returndata.len()),
             ),
             _ => unreachable!("other data kinds should be handled elsewhere"),
         };
@@ -586,7 +549,7 @@ impl FrontendContext<'_> {
                     color = Some(Color::Cyan);
                 }
                 if let Some(write_access) = accesses.write {
-                    if self.screen.active_data == DataView::Memory {
+                    if pane.view == PaneView::Memory {
                         write_offset = Some(write_access.offset);
                         write_size = Some(write_access.size);
                     }
@@ -604,7 +567,7 @@ impl FrontendContext<'_> {
             if let Some(write_access) =
                 get_buffer_accesses(prev_step.instruction, &prev_step.stack).and_then(|a| a.write)
             {
-                if self.screen.active_data == DataView::Memory {
+                if pane.view == PaneView::Memory {
                     offset = Some(write_access.offset);
                     size = Some(write_access.size);
                     color = Some(Color::Green);
@@ -612,7 +575,7 @@ impl FrontendContext<'_> {
             }
         }
 
-        let height = area.height as usize;
+        let height = pane.rect.height as usize;
         let end_line = self.draw_memory.current_buf_startline + height;
 
         let text: Vec<Line<'_>> = buf
@@ -686,9 +649,9 @@ impl FrontendContext<'_> {
             })
             .collect();
 
-        let block = self.get_focused_block(Pane::DataPane).title(title);
+        let block = self.get_focused_block(pane.focused).title(title);
         let paragraph = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
-        f.render_widget(paragraph, area);
+        f.render_widget(paragraph, pane.rect);
     }
 }
 
@@ -732,7 +695,7 @@ struct BufferAccess {
 /// Container for read and write buffer access information.
 struct BufferAccesses {
     /// The read buffer kind and access information.
-    read: Option<(DataView, BufferAccess)>,
+    read: Option<(PaneView, BufferAccess)>,
     /// The only mutable buffer is the memory buffer, so don't store the buffer kind.
     write: Option<BufferAccess>,
 }
@@ -749,23 +712,23 @@ struct BufferAccesses {
 fn get_buffer_accesses(op: u8, stack: &[U256]) -> Option<BufferAccesses> {
     let buffer_access = match op {
         opcode::KECCAK256 | opcode::RETURN | opcode::REVERT => {
-            (Some((DataView::Memory, 1, 2)), None)
+            (Some((PaneView::Memory, 1, 2)), None)
         }
-        opcode::CALLDATACOPY => (Some((DataView::Calldata, 2, 3)), Some((1, 3))),
-        opcode::RETURNDATACOPY => (Some((DataView::Returndata, 2, 3)), Some((1, 3))),
-        opcode::CALLDATALOAD => (Some((DataView::Calldata, 1, -1)), None),
+        opcode::CALLDATACOPY => (Some((PaneView::Calldata, 2, 3)), Some((1, 3))),
+        opcode::RETURNDATACOPY => (Some((PaneView::Returndata, 2, 3)), Some((1, 3))),
+        opcode::CALLDATALOAD => (Some((PaneView::Calldata, 1, -1i32)), None),
         opcode::CODECOPY => (None, Some((1, 3))),
         opcode::EXTCODECOPY => (None, Some((2, 4))),
-        opcode::MLOAD => (Some((DataView::Memory, 1, -1)), None),
-        opcode::MSTORE => (None, Some((1, -1))),
-        opcode::MSTORE8 => (None, Some((1, -2))),
+        opcode::MLOAD => (Some((PaneView::Memory, 1, -1i32)), None),
+        opcode::MSTORE => (None, Some((1, -1i32))),
+        opcode::MSTORE8 => (None, Some((1, -2i32))),
         opcode::LOG0 | opcode::LOG1 | opcode::LOG2 | opcode::LOG3 | opcode::LOG4 => {
-            (Some((DataView::Memory, 1, 2)), None)
+            (Some((PaneView::Memory, 1, 2)), None)
         }
-        opcode::CREATE | opcode::CREATE2 => (Some((DataView::Memory, 2, 3)), None),
-        opcode::CALL | opcode::CALLCODE => (Some((DataView::Memory, 4, 5)), None),
-        opcode::DELEGATECALL | opcode::STATICCALL => (Some((DataView::Memory, 3, 4)), None),
-        opcode::MCOPY => (Some((DataView::Memory, 2, 3)), Some((1, 3))),
+        opcode::CREATE | opcode::CREATE2 => (Some((PaneView::Memory, 2, 3)), None),
+        opcode::CALL | opcode::CALLCODE => (Some((PaneView::Memory, 4, 5)), None),
+        opcode::DELEGATECALL | opcode::STATICCALL => (Some((PaneView::Memory, 3, 4)), None),
+        opcode::MCOPY => (Some((PaneView::Memory, 2, 3)), Some((1, 3))),
         _ => Default::default(),
     };
 

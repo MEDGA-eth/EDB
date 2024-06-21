@@ -78,7 +78,7 @@ impl DebugFrontend {
     #[instrument(target = "debugger", name = "run", skip_all, ret)]
     fn try_run_real(&mut self, terminal: &mut FrontendTerminal) -> Result<ExitReason> {
         // Create the context.
-        let mut cx = FrontendContext::new(&mut self.artifact);
+        let mut cx = FrontendContext::new(&mut self.artifact)?;
 
         cx.init();
 
