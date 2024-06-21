@@ -27,6 +27,26 @@ pub(crate) enum Pane {
     OpcodePane,
 }
 
+/// Used to keep track of which kind of pane is currently active
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq)]
+pub(crate) enum PaneView {
+    // data
+    Variable,
+    Expression,
+    Memory,
+    Calldata,
+    Returndata,
+    Stack,
+
+    // code
+    Opcode,
+    Source,
+    Trace,
+
+    // terminal
+    Terminal,
+}
+
 /// The size of the screen.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum ScreenSize {

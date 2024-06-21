@@ -4,6 +4,7 @@ extern crate tracing;
 mod context;
 mod core;
 mod draw;
+mod pane;
 mod screen;
 mod utils;
 
