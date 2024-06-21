@@ -148,8 +148,8 @@ impl FrontendContext<'_> {
 
     fn draw_terminal(&mut self, f: &mut Frame<'_>, pane: PaneFlattened) {
         let title = match self.screen.terminal_mode {
-            TerminalMode::Insert => format!(" [{}] Script Terminal (Insert) ", pane.id),
-            TerminalMode::Normal => format!(" [{}] Script Terminal (Normal) ", pane.id),
+            TerminalMode::Insert => format!(" [{}] Script Terminal (Insert Mode) ", pane.id),
+            TerminalMode::Normal => format!(" [{}] Script Terminal (Normal Mode) ", pane.id),
         };
         let block = self.get_focused_block(pane.focused).title(title);
         self.terminal.set_cursor_line_style(Style::default().add_modifier(Modifier::UNDERLINED));
@@ -164,9 +164,11 @@ impl FrontendContext<'_> {
     fn draw_null(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
         let title = format!(" [{}] Empty Pane ", pane.id);
         let block = self.get_focused_block(pane.focused).title(title);
-        let paragraph = Paragraph::new(Text::from(format!("trace displaying under construction")))
-            .block(block)
-            .wrap(Wrap { trim: false });
+        let paragraph = Paragraph::new(Text::from(format!(
+            "There is no data view to show, try to assign a view to this pane"
+        )))
+        .block(block)
+        .wrap(Wrap { trim: false });
         f.render_widget(paragraph, pane.rect);
     }
 

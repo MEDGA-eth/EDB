@@ -259,7 +259,7 @@ impl PaneManager {
         manager.assign(PaneView::Calldata, 2)?;
         manager.assign(PaneView::Returndata, 2)?;
 
-        manager.assign(PaneView::Terminal, 4)?;
+        manager.assign(PaneView::Terminal, 3)?;
 
         Ok(manager)
     }
