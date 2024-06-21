@@ -21,7 +21,8 @@ use std::{
 use crate::{
     context::FrontendContext,
     pane::{PaneFlattened, PaneView},
-    screen::{FocusMode, TerminalMode},
+    screen::FocusMode,
+    terminal::TerminalMode,
     utils::opcode::OpcodeParam,
     FrontendTerminal,
 };
@@ -153,7 +154,7 @@ impl FrontendContext<'_> {
     }
 
     fn draw_terminal(&mut self, f: &mut Frame<'_>, pane: PaneFlattened) {
-        let title = match self.screen.terminal_mode {
+        let title = match self.terminal.mode {
             TerminalMode::Insert => format!(" [{}] Script Terminal (Insert Mode) ", pane.id),
             TerminalMode::Normal => format!(" [{}] Script Terminal (Normal Mode) ", pane.id),
         };

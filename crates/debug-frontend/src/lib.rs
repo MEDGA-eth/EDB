@@ -6,6 +6,7 @@ mod core;
 mod draw;
 mod pane;
 mod screen;
+mod terminal;
 mod utils;
 
 pub use core::DebugFrontend;

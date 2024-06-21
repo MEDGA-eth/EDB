@@ -6,6 +6,7 @@ use crossterm::event::{
 };
 use edb_debug_backend::artifact::debug::{DebugArtifact, DebugNodeFlat, DebugStep};
 use eyre::Result;
+use ratatui::Terminal;
 use revm_inspectors::tracing::types::CallKind;
 use std::ops::ControlFlow;
 use tui_textarea::TextArea;
@@ -13,7 +14,8 @@ use tui_textarea::TextArea;
 use crate::{
     core::ExitReason,
     pane::PaneView,
-    screen::{FocusMode, ScreenManager, TerminalMode},
+    screen::{FocusMode, ScreenManager},
+    terminal::{TerminalManager, TerminalMode},
 };
 
 /// This is currently used to remember last scroll position so screen doesn't wiggle as much.
@@ -40,7 +42,7 @@ pub struct FrontendContext<'a> {
     pub(crate) buf_utf: bool,
     pub(crate) show_shortcuts: bool,
     /// The terminal pane
-    pub(crate) terminal: TextArea<'a>,
+    pub(crate) terminal: TerminalManager<'a>,
 
     /// The current screen.
     pub(crate) screen: ScreenManager,
@@ -48,6 +50,7 @@ pub struct FrontendContext<'a> {
 
 impl<'a> FrontendContext<'a> {
     pub(crate) fn new(artifact: &'a mut DebugArtifact) -> Result<Self> {
+        let screen = ScreenManager::new()?;
         Ok(FrontendContext {
             artifact,
 
@@ -60,9 +63,9 @@ impl<'a> FrontendContext<'a> {
             stack_labels: false,
             buf_utf: false,
             show_shortcuts: true,
-            terminal: TextArea::default(),
+            terminal: TerminalManager::new(),
 
-            screen: ScreenManager::new()?,
+            screen,
         })
     }
 
@@ -158,7 +161,10 @@ impl FrontendContext<'_> {
                 KeyCode::Char('k') | KeyCode::Up => {
                     self.repeat(|this| this.screen.focus_up().unwrap())
                 }
-                KeyCode::Char('i') => self.screen.enter_terminal(TerminalMode::Insert).unwrap(),
+                KeyCode::Char('i') => {
+                    self.screen.enter_terminal().unwrap();
+                    self.terminal.enter_insert_mode();
+                }
                 KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit), /* just for test */
                 KeyCode::Enter => self.screen.enter_pane(),
                 _ => { /* Do nothing */ }
@@ -167,9 +173,9 @@ impl FrontendContext<'_> {
                 let focused_pane = self.screen.get_focused_view().unwrap();
                 match focused_pane {
                     PaneView::Terminal => {
-                        if self.screen.terminal_mode == TerminalMode::Insert {
+                        if self.terminal.mode == TerminalMode::Insert {
                             match event.code {
-                                KeyCode::Esc => self.screen.terminal_mode = TerminalMode::Normal,
+                                KeyCode::Esc => self.terminal.enter_normal_mode(),
                                 _ => {
                                     self.terminal.input(event);
                                 }
@@ -178,8 +184,8 @@ impl FrontendContext<'_> {
                             match event.code {
                                 KeyCode::Char('i') => {
                                     // We do not want to exit the full screen mode when we are in
-                                    // the terminal
-                                    self.screen.terminal_mode = TerminalMode::Insert
+                                    // the terminal, so we do not change screen
+                                    self.terminal.enter_insert_mode();
                                 }
                                 KeyCode::Esc => {
                                     if self.screen.focus_mode == FocusMode::Entered {
@@ -205,7 +211,8 @@ impl FrontendContext<'_> {
                     PaneView::Null => {
                         match event.code {
                             KeyCode::Char('i') => {
-                                self.screen.enter_terminal(TerminalMode::Insert).unwrap()
+                                self.screen.enter_terminal().unwrap();
+                                self.terminal.enter_insert_mode();
                             }
                             KeyCode::Esc => {
                                 if self.screen.focus_mode == FocusMode::Entered {
@@ -248,7 +255,8 @@ impl FrontendContext<'_> {
 
                             // Goto insert mode
                             KeyCode::Char('i') => {
-                                self.screen.enter_terminal(TerminalMode::Insert).unwrap()
+                                self.screen.enter_terminal().unwrap();
+                                self.terminal.enter_insert_mode();
                             }
 
                             // Cycle left the current focused pane

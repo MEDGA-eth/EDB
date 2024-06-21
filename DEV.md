@@ -37,6 +37,7 @@ cargo +nightly clippy --all --all-targets --all-features -- -D warnings
 + [ ] Move the dependency declarations to the top of `cargo.toml`.
 + [ ] Rewrite the subject contract, to add `pub` to all storage variables and functions.
 + [ ] Rewrite the subject contract, to enforce a storage update for each local variable update.
++ [ ] Debug session dump.
 
 ## Some Hints
 

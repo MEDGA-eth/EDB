@@ -9,13 +9,6 @@ pub const SMALL_SCREEN_STR: &str = "Defualt Small Screen";
 pub const LARGE_SCREEN_STR: &str = "Defualt Large Screen";
 
 /// The focus mode of the frontend.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TerminalMode {
-    Normal,
-    Insert,
-}
-
-/// The focus mode of the frontend.
 /// State Machine:
 /// Browse <-(ESC/ENTER)-> Entered <-(ESC/ENTER)-> FullScreen
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,7 +24,6 @@ pub struct ScreenManager {
     pub current_pane: String,
     pub use_default_pane: bool,
 
-    pub terminal_mode: TerminalMode,
     pub focus_mode: FocusMode,
 
     pub pending_mouse_move: Option<Point>,
@@ -42,7 +34,6 @@ impl ScreenManager {
         let mut manager = Self {
             panes: HashMap::new(),
             current_pane: String::new(),
-            terminal_mode: TerminalMode::Normal,
             focus_mode: FocusMode::Entered,
             use_default_pane: true,
             pending_mouse_move: None,
@@ -63,11 +54,11 @@ impl ScreenManager {
         self.get_current_pane_mut()?.get_focused_view()
     }
 
-    pub fn get_available_panes(&self) -> Vec<String> {
+    pub fn get_available_pane_profiles(&self) -> Vec<String> {
         self.panes.keys().cloned().collect()
     }
 
-    pub fn use_default_pane(&mut self, use_default_pane: bool) {
+    pub fn use_default_pane_profile(&mut self, use_default_pane: bool) {
         self.use_default_pane = use_default_pane;
     }
 
@@ -112,9 +103,8 @@ impl ScreenManager {
         self.panes.get_mut(&self.current_pane).ok_or(eyre::eyre!("No current pane"))
     }
 
-    pub fn enter_terminal(&mut self, terminal_mode: TerminalMode) -> Result<()> {
+    pub fn enter_terminal(&mut self) -> Result<()> {
         self.get_current_pane_mut()?.force_goto_by_view(PaneView::Terminal)?;
-        self.terminal_mode = terminal_mode;
         self.focus_mode = FocusMode::Entered;
 
         Ok(())
