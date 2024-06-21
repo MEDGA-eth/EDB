@@ -1,7 +1,9 @@
 //! Debugger context and event handler implementation.
 
 use alloy_primitives::Address;
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use edb_debug_backend::artifact::debug::{DebugArtifact, DebugNodeFlat, DebugStep};
 use eyre::Result;
 use revm_inspectors::tracing::types::CallKind;
@@ -392,8 +394,11 @@ impl FrontendContext<'_> {
 
     fn handle_mouse_event(&mut self, event: MouseEvent) -> ControlFlow<ExitReason> {
         match event.kind {
-            MouseEventKind::ScrollUp => self.step_back(),
-            MouseEventKind::ScrollDown => self.step(),
+            // MouseEventKind::ScrollUp => self.step_back(),
+            // MouseEventKind::ScrollDown => self.step(),
+            MouseEventKind::Down(MouseButton::Left) => {
+                self.screen.set_mouse_move(event.column, event.row)
+            }
             _ => {}
         }
 

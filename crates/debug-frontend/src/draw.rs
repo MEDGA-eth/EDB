@@ -98,6 +98,12 @@ impl FrontendContext<'_> {
             unreachable!()
         };
 
+        if let Some(point) = self.screen.pending_mouse_move {
+            let v_point = point.project(app);
+            self.screen.get_current_pane_mut().unwrap().force_goto(v_point);
+        }
+        self.screen.pending_mouse_move = None;
+
         let layout = self.screen.get_flattened_layout(app).unwrap();
 
         if self.show_shortcuts {

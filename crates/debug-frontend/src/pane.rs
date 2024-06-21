@@ -38,7 +38,7 @@ impl PaneView {
 pub struct PaneLayout(BTreeMap<PaneId, Rect>);
 
 #[derive(Debug, Clone, Copy, Default)]
-struct Point(u16, u16);
+pub struct Point(u16, u16);
 
 /// A virtual rect to help find the focused pane.
 const VIRTUAL_RECT: Rect = Rect { x: 0, y: 0, width: 2048, height: 2048 };
@@ -372,7 +372,12 @@ impl PaneManager {
         Ok(())
     }
 
-    pub fn force_goto(&mut self, view: PaneView) -> Result<()> {
+    /// Force the focus to a specific point. Make sure the point is on the focused pane.
+    pub fn force_goto(&mut self, point: Point) {
+        self.focus = point;
+    }
+
+    pub fn force_goto_by_view(&mut self, view: PaneView) -> Result<()> {
         let target_id = self.get_pane_id(view).ok_or(eyre::eyre!("pane not found (force_goto)"))?;
         let layout = self.get_layout(VIRTUAL_RECT)?;
 
@@ -538,5 +543,12 @@ impl Point {
             self.0 < rect.right() &&
             self.1 >= rect.top() &&
             self.1 < rect.bottom()
+    }
+
+    pub fn project(&self, rect: Rect) -> Point {
+        Point::new(
+            ((self.0 as u64) * (VIRTUAL_RECT.width as u64) / (rect.width as u64)) as u16,
+            ((self.1 as u64) * (VIRTUAL_RECT.height as u64) / (rect.height as u64)) as u16,
+        )
     }
 }

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use eyre::Result;
 use ratatui::layout::Rect;
 
-use crate::pane::{Pane, PaneFlattened, PaneManager, PaneView};
+use crate::pane::{Pane, PaneFlattened, PaneManager, PaneView, Point};
 
 pub const SMALL_SCREEN_STR: &str = "Defualt Small Screen";
 pub const LARGE_SCREEN_STR: &str = "Defualt Large Screen";
@@ -33,6 +33,8 @@ pub struct ScreenManager {
 
     pub terminal_mode: TerminalMode,
     pub focus_mode: FocusMode,
+
+    pub pending_mouse_move: Option<Point>,
 }
 
 impl ScreenManager {
@@ -43,6 +45,7 @@ impl ScreenManager {
             terminal_mode: TerminalMode::Normal,
             focus_mode: FocusMode::Entered,
             use_default_pane: true,
+            pending_mouse_move: None,
         };
 
         manager.add_pane_manager(SMALL_SCREEN_STR, PaneManager::default_small_screen()?);
@@ -84,6 +87,15 @@ impl ScreenManager {
         }
     }
 
+    pub fn set_mouse_move(&mut self, x: u16, y: u16) {
+        if self.focus_mode == FocusMode::FullScreen {
+            // Ignore mouse move in full screen mode.
+            return;
+        }
+        self.focus_mode = FocusMode::Entered; // Mouse move should enter the pane.
+        self.pending_mouse_move = Some(Point::new(x, y));
+    }
+
     pub fn enter_pane(&mut self) {
         self.focus_mode = FocusMode::Entered;
     }
@@ -101,7 +113,7 @@ impl ScreenManager {
     }
 
     pub fn enter_terminal(&mut self, terminal_mode: TerminalMode) -> Result<()> {
-        self.get_current_pane_mut()?.force_goto(PaneView::Terminal)?;
+        self.get_current_pane_mut()?.force_goto_by_view(PaneView::Terminal)?;
         self.terminal_mode = terminal_mode;
         self.focus_mode = FocusMode::Entered;
 
