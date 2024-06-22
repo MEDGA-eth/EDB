@@ -1,5 +1,6 @@
 mod editor;
 mod pane;
+mod popup;
 mod screen;
 
 use std::ops::{Deref, DerefMut};
@@ -8,6 +9,7 @@ use eyre::Result;
 use tui_textarea::TextArea;
 
 pub use pane::{PaneFlattened, PaneView};
+pub use popup::PopupMode;
 use screen::ScreenManager;
 
 /// The focus mode of the frontend.
@@ -22,6 +24,7 @@ pub struct Window<'a> {
     screen: ScreenManager,
 
     pub editor_mode: TerminalMode,
+    pub popup_mode: Option<PopupMode>,
 }
 
 impl<'a> Deref for Window<'a> {
@@ -44,6 +47,7 @@ impl<'a> Window<'a> {
             editor: TextArea::default(),
             editor_mode: TerminalMode::Normal,
             screen: ScreenManager::new()?,
+            popup_mode: None,
         })
     }
 }

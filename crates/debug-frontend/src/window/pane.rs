@@ -8,6 +8,17 @@ pub type PaneId = usize;
 /// Used to keep track of which kind of pane is currently active
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq)]
 pub enum PaneView {
+    // null
+    Null,
+
+    // terminal
+    Terminal,
+
+    // code
+    Trace,
+    Source,
+    Opcode,
+
     // data
     Variable,
     Expression,
@@ -15,17 +26,6 @@ pub enum PaneView {
     Calldata,
     Returndata,
     Stack,
-
-    // code
-    Opcode,
-    Source,
-    Trace,
-
-    // terminal
-    Terminal,
-
-    // Null
-    Null,
 }
 
 impl PaneView {
@@ -67,7 +67,7 @@ impl Pane {
         // We will ensure that Terminal is the only view in a pane
         if view == PaneView::Terminal {
             // let's first check whether Terminal is here
-            if !self.views.contains(&view) && !self.views.is_empty() {
+            if self.views.iter().any(|v| *v != PaneView::Terminal) {
                 return Err(eyre::eyre!("terminal has to be the only view in a pane"));
             }
 
@@ -76,6 +76,9 @@ impl Pane {
                 self.views.push(view);
             }
         } else if !self.views.contains(&view) {
+            if self.views.contains(&PaneView::Terminal) {
+                return Err(eyre::eyre!("terminal has to be the only view in a pane"));
+            }
             self.views.push(view);
         }
 

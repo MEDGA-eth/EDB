@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use eyre::{ensure, Result};
 use ratatui::layout::{Direction, Rect};
 
-use crate::window::pane::{Pane, PaneFlattened, PaneManager, PaneView, Point};
+use crate::{
+    context::RecoverableError,
+    window::pane::{Pane, PaneFlattened, PaneManager, PaneView, Point},
+};
 
 use super::pane::PaneId;
 
@@ -116,14 +119,17 @@ impl ScreenManager {
         self.get_current_pane_mut()?.focus_right()
     }
 
-    pub fn split_focused_pane(&mut self, direction: Direction, ratio: [u32; 2]) -> Result<usize> {
+    pub fn split_focused_pane(&mut self, direction: Direction, ratio: [u32; 2]) -> Result<()> {
         let id = self.get_focused_pane()?.id;
-        self.get_current_pane_mut()?.split(id, direction, ratio)
+        self.get_current_pane_mut()?.split(id, direction, ratio)?;
+        Ok(())
     }
 
     pub fn close_focused_pane(&mut self) -> Result<()> {
         let pane = self.get_focused_pane()?;
-        ensure!(pane.get_current_view() != PaneView::Terminal, "Cannot close terminal pane");
+        if pane.get_current_view() == PaneView::Terminal {
+            return Err(RecoverableError::new("You cannot close terminal pane.").into());
+        }
 
         let ori_id = pane.id;
 
@@ -165,7 +171,7 @@ impl ScreenManager {
 
         self.focus_up()?; // go back to the original pane
         ensure!(self.get_focused_pane()?.id == ori_id, "cannot move back to the original pane");
-        Err(eyre::eyre!("Cannot close the last pane"))
+        Err(RecoverableError::new("The current pane cannot be merged with others due to one of the following reasons:\n1. The current pane is the Terminal Pane, which cannot be closed.\n2. The current pane contains valid debug views and can only be merged with a Terminal Pane. To close this pane, you must first unsign all the debug views in this pane.").into())
     }
 
     pub fn get_flattened_layout(&self, app: Rect) -> Result<Vec<PaneFlattened>> {

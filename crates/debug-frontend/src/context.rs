@@ -8,6 +8,7 @@ use edb_debug_backend::artifact::debug::{DebugArtifact, DebugNodeFlat, DebugStep
 use eyre::Result;
 use ratatui::layout::Direction;
 use revm_inspectors::tracing::types::CallKind;
+use serde::de;
 use std::ops::ControlFlow;
 
 use crate::{
@@ -22,6 +23,25 @@ pub struct DrawMemory {
     pub current_buf_startline: usize,
     pub current_stack_startline: usize,
 }
+
+#[derive(Debug)]
+pub struct RecoverableError {
+    pub message: String,
+}
+
+impl RecoverableError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self { message: message.into() }
+    }
+}
+
+impl std::fmt::Display for RecoverableError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}\n\nPress the ESC key to close the pop-up window.", self.message)
+    }
+}
+
+impl std::error::Error for RecoverableError {}
 
 pub struct FrontendContext<'a> {
     pub artifact: &'a mut DebugArtifact,
@@ -130,6 +150,20 @@ impl FrontendContext<'_> {
     }
 
     fn handle_key_event(&mut self, event: KeyEvent) -> ControlFlow<ExitReason> {
+        match self.try_handle_key_event(event) {
+            Ok(control_flow) => control_flow,
+            Err(report) => {
+                if let Some(e) = report.downcast_ref::<RecoverableError>() {
+                    self.window.pop_error_message(e.to_string());
+                    ControlFlow::Continue(())
+                } else {
+                    panic!("{:?}", report);
+                }
+            }
+        }
+    }
+
+    fn try_handle_key_event(&mut self, event: KeyEvent) -> Result<ControlFlow<ExitReason>> {
         // // Breakpoints
         // if let KeyCode::Char(c) = event.code {
         //     if c.is_alphabetic() && self.key_buffer.starts_with('\'') {
@@ -140,7 +174,7 @@ impl FrontendContext<'_> {
 
         let control = event.modifiers.contains(KeyModifiers::CONTROL);
 
-        let focused_pane = self.window.get_focused_view().unwrap();
+        let focused_pane = self.window.get_focused_view()?;
         if focused_pane == PaneView::Terminal && self.window.editor_mode == TerminalMode::Insert {
             // Insert mode is a special case
             if event.code == KeyCode::Esc {
@@ -156,34 +190,26 @@ impl FrontendContext<'_> {
                     // We do not want to exit the full screen mode when we are in
                     // the terminal, so we do not change screen
                     if focused_pane != PaneView::Terminal {
-                        self.window.enter_terminal().unwrap();
+                        self.window.enter_terminal()?;
                     }
                     self.window.set_editor_insert_mode();
                 }
 
                 // Move focus to the left pane
-                KeyCode::Char('h') if control => {
-                    self.repeat(|this| this.window.focus_left().unwrap())
-                }
-                KeyCode::Left if control => self.repeat(|this| this.window.focus_left().unwrap()),
+                KeyCode::Char('h') if control => self.repeat(|this| this.window.focus_left())?,
+                KeyCode::Left if control => self.repeat(|this| this.window.focus_left())?,
 
                 // Move focus to the right pane
-                KeyCode::Char('l') if control => {
-                    self.repeat(|this| this.window.focus_right().unwrap())
-                }
-                KeyCode::Right if control => self.repeat(|this| this.window.focus_right().unwrap()),
+                KeyCode::Char('l') if control => self.repeat(|this| this.window.focus_right())?,
+                KeyCode::Right if control => self.repeat(|this| this.window.focus_right())?,
 
                 // Move focus to the down pane
-                KeyCode::Char('j') if control => {
-                    self.repeat(|this| this.window.focus_down().unwrap())
-                }
-                KeyCode::Down if control => self.repeat(|this| this.window.focus_down().unwrap()),
+                KeyCode::Char('j') if control => self.repeat(|this| this.window.focus_down())?,
+                KeyCode::Down if control => self.repeat(|this| this.window.focus_down())?,
 
                 // Move focus to the up pane
-                KeyCode::Char('k') if control => {
-                    self.repeat(|this| this.window.focus_up().unwrap())
-                }
-                KeyCode::Up if control => self.repeat(|this| this.window.focus_up().unwrap()),
+                KeyCode::Char('k') if control => self.repeat(|this| this.window.focus_up())?,
+                KeyCode::Up if control => self.repeat(|this| this.window.focus_up())?,
 
                 // Esc
                 KeyCode::Esc if self.window.full_screen => self.window.toggle_full_screen(),
@@ -192,40 +218,42 @@ impl FrontendContext<'_> {
                 KeyCode::Enter if !self.window.full_screen => self.window.toggle_full_screen(),
 
                 // Cycle left the current focused pane
-                KeyCode::Char('h') if focused_pane != PaneView::Terminal => self.repeat(|this| {
-                    let pane = this.window.get_focused_pane().unwrap();
-                    pane.prev_view();
-                }),
+                KeyCode::Char('h') if focused_pane != PaneView::Terminal => {
+                    self.repeat(|this| {
+                        this.window.get_focused_pane()?.prev_view();
+                        Ok(())
+                    })?
+                }
                 KeyCode::Left if focused_pane != PaneView::Terminal => self.repeat(|this| {
-                    let pane = this.window.get_focused_pane().unwrap();
-                    pane.prev_view();
-                }),
+                    this.window.get_focused_pane()?.prev_view();
+                    Ok(())
+                })?,
 
                 // Cycle right the current focused pane
-                KeyCode::Char('l') if focused_pane != PaneView::Terminal => self.repeat(|this| {
-                    let pane = this.window.get_focused_pane().unwrap();
-                    pane.next_view();
-                }),
+                KeyCode::Char('l') if focused_pane != PaneView::Terminal => {
+                    self.repeat(|this| {
+                        this.window.get_focused_pane()?.next_view();
+                        Ok(())
+                    })?
+                }
                 KeyCode::Right if focused_pane != PaneView::Terminal => self.repeat(|this| {
-                    let pane = this.window.get_focused_pane().unwrap();
-                    pane.next_view();
-                }),
+                    this.window.get_focused_pane()?.next_view();
+                    Ok(())
+                })?,
 
                 // Quit
-                KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit),
+                KeyCode::Char('q') => return Ok(ControlFlow::Break(ExitReason::CharExit)),
 
                 // Shortcut to split the screen: (s)plit and (d)ivide
                 KeyCode::Char('d') if control => {
-                    self.window.split_focused_pane(Direction::Vertical, [1, 1]).unwrap();
+                    self.window.split_focused_pane(Direction::Vertical, [1, 1])?
                 }
                 KeyCode::Char('s') if control => {
-                    self.window.split_focused_pane(Direction::Horizontal, [1, 1]).unwrap();
+                    self.window.split_focused_pane(Direction::Horizontal, [1, 1])?
                 }
 
                 // Shortcut to close the current pane
-                KeyCode::Char('x') if control => {
-                    self.window.close_focused_pane().unwrap();
-                }
+                KeyCode::Char('x') if control => self.window.close_focused_pane()?,
 
                 // Other view-specific key events
                 _ => match focused_pane {
@@ -342,7 +370,7 @@ impl FrontendContext<'_> {
         };
 
         self.key_buffer.clear();
-        ControlFlow::Continue(())
+        Ok(ControlFlow::Continue(()))
     }
 
     fn handle_breakpoint(&mut self, _c: char) {
@@ -394,10 +422,12 @@ impl FrontendContext<'_> {
     }
 
     /// Calls a closure `f` the number of times specified in the key buffer, and at least once.
-    fn repeat(&mut self, mut f: impl FnMut(&mut Self)) {
+    fn repeat(&mut self, mut f: impl FnMut(&mut Self) -> Result<()>) -> Result<()> {
         for _ in 0..buffer_as_number(&self.key_buffer) {
-            f(self);
+            f(self)?;
         }
+
+        Ok(())
     }
 
     fn n_steps(&self) -> usize {
