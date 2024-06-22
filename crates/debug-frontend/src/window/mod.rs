@@ -8,7 +8,6 @@ use eyre::Result;
 use tui_textarea::TextArea;
 
 pub use pane::{PaneFlattened, PaneView};
-pub use screen::FocusMode;
 use screen::ScreenManager;
 
 /// The focus mode of the frontend.
@@ -43,7 +42,7 @@ impl<'a> Window<'a> {
     pub fn new() -> Result<Self> {
         Ok(Self {
             editor: TextArea::default(),
-            editor_mode: TerminalMode::Insert,
+            editor_mode: TerminalMode::Normal,
             screen: ScreenManager::new()?,
         })
     }

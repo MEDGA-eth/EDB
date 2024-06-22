@@ -11,7 +11,7 @@ use std::ops::ControlFlow;
 
 use crate::{
     core::ExitReason,
-    window::{FocusMode, PaneView, TerminalMode, Window},
+    window::{PaneView, TerminalMode, Window},
 };
 
 /// This is currently used to remember last scroll position so screen doesn't wiggle as much.
@@ -139,212 +139,190 @@ impl FrontendContext<'_> {
 
         let control = event.modifiers.contains(KeyModifiers::CONTROL);
 
-        match self.window.focus_mode {
-            FocusMode::Browse => match event.code {
-                KeyCode::Char('h') | KeyCode::Left => {
-                    self.repeat(|this| this.window.focus_left().unwrap())
-                }
-                KeyCode::Char('l') | KeyCode::Right => {
-                    self.repeat(|this| this.window.focus_right().unwrap())
-                }
-                KeyCode::Char('j') | KeyCode::Down => {
-                    self.repeat(|this| this.window.focus_down().unwrap())
-                }
-                KeyCode::Char('k') | KeyCode::Up => {
-                    self.repeat(|this| this.window.focus_up().unwrap())
-                }
+        let focused_pane = self.window.get_focused_view().unwrap();
+        if focused_pane == PaneView::Terminal && self.window.editor_mode == TerminalMode::Insert {
+            if event.code == KeyCode::Esc {
+                self.window.set_editor_normal_mode();
+            } else {
+                self.window.handle_input(event);
+            }
+        } else {
+            // Handle common key events
+            match event.code {
+                // Shortcut to enter the terminal
                 KeyCode::Char('i') => {
-                    self.window.enter_terminal().unwrap();
+                    // We do not want to exit the full screen mode when we are in
+                    // the terminal, so we do not change screen
+                    if focused_pane != PaneView::Terminal {
+                        self.window.enter_terminal().unwrap();
+                    }
                     self.window.set_editor_insert_mode();
                 }
-                KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit), /* just for test */
-                KeyCode::Enter => self.window.enter_pane(),
-                _ => { /* Do nothing */ }
-            },
-            FocusMode::Entered | FocusMode::FullScreen => {
-                let focused_pane = self.window.get_focused_view().unwrap();
-                match focused_pane {
-                    PaneView::Terminal if self.window.editor_mode == TerminalMode::Insert => {
-                        if event.code == KeyCode::Esc {
-                            self.window.set_editor_normal_mode();
-                        } else {
-                            self.window.handle_input(event);
-                        }
-                    }
-                    _ => {
-                        // Handle common key events
-                        match event.code {
-                            // Shortcut to enter the terminal
-                            KeyCode::Char('i') => {
-                                // We do not want to exit the full screen mode when we are in
-                                // the terminal, so we do not change screen
-                                if focused_pane != PaneView::Terminal {
-                                    self.window.enter_terminal().unwrap();
-                                }
-                                self.window.set_editor_insert_mode();
-                            }
 
-                            // Esc
-                            KeyCode::Esc => {
-                                if self.window.focus_mode == FocusMode::Entered {
-                                    // from entered to browse
-                                    self.window.browse_pane();
-                                } else {
-                                    // from full screen to entered
-                                    self.window.toggle_full_screen().unwrap();
-                                }
-                            }
-
-                            // Enter
-                            KeyCode::Enter => {
-                                if self.window.focus_mode == FocusMode::Entered {
-                                    self.window.toggle_full_screen().unwrap();
-                                }
-                            }
-
-                            // Cycle left the current focused pane
-                            KeyCode::Char('h') if focused_pane != PaneView::Terminal => self
-                                .repeat(|this| {
-                                    let pane = this.window.get_focused_pane().unwrap();
-                                    pane.prev_view();
-                                }),
-                            KeyCode::Left if focused_pane != PaneView::Terminal => {
-                                self.repeat(|this| {
-                                    let pane = this.window.get_focused_pane().unwrap();
-                                    pane.prev_view();
-                                })
-                            }
-
-                            // Cycle right the current focused pane
-                            KeyCode::Char('l') if focused_pane != PaneView::Terminal => self
-                                .repeat(|this| {
-                                    let pane = this.window.get_focused_pane().unwrap();
-                                    pane.next_view();
-                                }),
-                            KeyCode::Right if focused_pane != PaneView::Terminal => {
-                                self.repeat(|this| {
-                                    let pane = this.window.get_focused_pane().unwrap();
-                                    pane.next_view();
-                                })
-                            }
-
-                            // Quit
-                            KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit),
-
-                            // Other view-specific key events
-                            _ => match focused_pane {
-                                PaneView::Terminal => self.window.handle_input(event),
-                                PaneView::Source => self.handle_key_event_in_source(event),
-                                PaneView::Trace => self.handle_key_event_in_trace(event),
-                                PaneView::Opcode => self.handle_key_event_in_opcode(event),
-                                _ => self.handle_key_even_in_data(event),
-                            },
-                            // // Scroll up the memory buffer
-                            // KeyCode::Char('k') | KeyCode::Up if control => self.repeat(|this| {
-                            //     this.draw_memory.current_buf_startline =
-                            //         this.draw_memory.current_buf_startline.saturating_sub(1);
-                            // }),
-                            // // Scroll down the memory buffer
-                            // // KeyCode::Char('j') | KeyCode::Down if control =>
-                            // self.repeat(|this| { //     let max_buf =
-                            // this.data_pane_height().saturating_sub(1);
-                            // //     if this.draw_memory.current_buf_startline < max_buf {
-                            // //         this.draw_memory.current_buf_startline += 1;
-                            // //     }
-                            // // }),
-
-                            // // Move up
-                            // KeyCode::Char('k') | KeyCode::Up => self.repeat(Self::step_back),
-                            // // Move down
-                            // KeyCode::Char('j') | KeyCode::Down => self.repeat(Self::step),
-
-                            // // Go to top of file
-                            // KeyCode::Char('g') => {
-                            //     self.draw_memory.inner_call_index = 0;
-                            //     self.current_step = 0;
-                            // }
-
-                            // // Go to bottom of file
-                            // KeyCode::Char('G') => {
-                            //     self.draw_memory.inner_call_index = self.debug_arena().len() - 1;
-                            //     self.current_step = self.n_steps() - 1;
-                            // }
-
-                            // // Go to previous call
-                            // KeyCode::Char('c') => {
-                            //     self.draw_memory.inner_call_index =
-                            //         self.draw_memory.inner_call_index.saturating_sub(1);
-                            //     self.current_step = self.n_steps() - 1;
-                            // }
-
-                            // // Go to next call
-                            // KeyCode::Char('C') => {
-                            //     if self.debug_arena().len() > self.draw_memory.inner_call_index +
-                            // 1     {
-                            //         self.draw_memory.inner_call_index += 1;
-                            //         self.current_step = 0;
-                            //     }
-                            // }
-
-                            // // Step forward
-                            // KeyCode::Char('s') => self.repeat(|this| {
-                            //     let remaining_ops = &this.opcode_list[this.current_step..];
-                            //     if let Some((i, _)) =
-                            //         remaining_ops.iter().enumerate().skip(1).find(|&(i, op)| {
-                            //             let prev = &remaining_ops[i - 1];
-                            //             let prev_is_jump =
-                            //                 prev.contains("JUMP") && prev != "JUMPDEST";
-                            //             let is_jumpdest = op == "JUMPDEST";
-                            //             prev_is_jump && is_jumpdest
-                            //         })
-                            //     {
-                            //         this.current_step += i;
-                            //     }
-                            // }),
-
-                            // // Step backwards
-                            // KeyCode::Char('a') => self.repeat(|this| {
-                            //     let ops = &this.opcode_list[..this.current_step];
-                            //     this.current_step = ops
-                            //         .iter()
-                            //         .enumerate()
-                            //         .skip(1)
-                            //         .rev()
-                            //         .find(|&(i, op)| {
-                            //             let prev = &ops[i - 1];
-                            //             let prev_is_jump =
-                            //                 prev.contains("JUMP") && prev != "JUMPDEST";
-                            //             let is_jumpdest = op == "JUMPDEST";
-                            //             prev_is_jump && is_jumpdest
-                            //         })
-                            //         .map(|(i, _)| i)
-                            //         .unwrap_or_default();
-                            // }),
-
-                            // // Toggle stack labels
-                            // KeyCode::Char('t') => self.stack_labels = !self.stack_labels,
-
-                            // // Toggle memory UTF-8 decoding
-                            // KeyCode::Char('m') => self.buf_utf = !self.buf_utf,
-
-                            // // Toggle help notice
-                            // KeyCode::Char('H') => self.show_shortcuts = !self.show_shortcuts,
-
-                            // // Numbers for repeating commands or breakpoints
-                            // KeyCode::Char(
-                            //     other @ ('0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' |
-                            //     '9' | '\''),
-                            // ) => {
-                            //     // Early return to not clear the buffer.
-                            //     self.key_buffer.push(other);
-                            //     return ControlFlow::Continue(());
-                            // }
-
-                            // // Unknown/unhandled key code
-                            // _ => {}
-                        }
-                    }
+                // Move focus to the left pane
+                KeyCode::Char('h') if control => {
+                    self.repeat(|this| this.window.focus_left().unwrap())
                 }
+                KeyCode::Left if control => self.repeat(|this| this.window.focus_left().unwrap()),
+
+                // Move focus to the right pane
+                KeyCode::Char('l') if control => {
+                    self.repeat(|this| this.window.focus_right().unwrap())
+                }
+                KeyCode::Right if control => self.repeat(|this| this.window.focus_right().unwrap()),
+
+                // Move focus to the down pane
+                KeyCode::Char('j') if control => {
+                    self.repeat(|this| this.window.focus_down().unwrap())
+                }
+                KeyCode::Down if control => self.repeat(|this| this.window.focus_down().unwrap()),
+
+                // Move focus to the up pane
+                KeyCode::Char('k') if control => {
+                    self.repeat(|this| this.window.focus_up().unwrap())
+                }
+                KeyCode::Up if control => self.repeat(|this| this.window.focus_up().unwrap()),
+
+                // Esc
+                KeyCode::Esc if self.window.full_screen => self.window.toggle_full_screen(),
+
+                // Enter
+                KeyCode::Enter if !self.window.full_screen => self.window.toggle_full_screen(),
+
+                // Cycle left the current focused pane
+                KeyCode::Char('h') if focused_pane != PaneView::Terminal => self.repeat(|this| {
+                    let pane = this.window.get_focused_pane().unwrap();
+                    pane.prev_view();
+                }),
+                KeyCode::Left if focused_pane != PaneView::Terminal => self.repeat(|this| {
+                    let pane = this.window.get_focused_pane().unwrap();
+                    pane.prev_view();
+                }),
+
+                // Cycle right the current focused pane
+                KeyCode::Char('l') if focused_pane != PaneView::Terminal => self.repeat(|this| {
+                    let pane = this.window.get_focused_pane().unwrap();
+                    pane.next_view();
+                }),
+                KeyCode::Right if focused_pane != PaneView::Terminal => self.repeat(|this| {
+                    let pane = this.window.get_focused_pane().unwrap();
+                    pane.next_view();
+                }),
+
+                // Quit
+                KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit),
+
+                // Other view-specific key events
+                _ => match focused_pane {
+                    PaneView::Terminal => self.window.handle_input(event),
+                    PaneView::Source => self.handle_key_event_in_source(event),
+                    PaneView::Trace => self.handle_key_event_in_trace(event),
+                    PaneView::Opcode => self.handle_key_event_in_opcode(event),
+                    _ => self.handle_key_even_in_data(event),
+                },
+                // // Scroll up the memory buffer
+                // KeyCode::Char('k') | KeyCode::Up if control => self.repeat(|this| {
+                //     this.draw_memory.current_buf_startline =
+                //         this.draw_memory.current_buf_startline.saturating_sub(1);
+                // }),
+                // // Scroll down the memory buffer
+                // // KeyCode::Char('j') | KeyCode::Down if control =>
+                // self.repeat(|this| { //     let max_buf =
+                // this.data_pane_height().saturating_sub(1);
+                // //     if this.draw_memory.current_buf_startline < max_buf {
+                // //         this.draw_memory.current_buf_startline += 1;
+                // //     }
+                // // }),
+
+                // // Move up
+                // KeyCode::Char('k') | KeyCode::Up => self.repeat(Self::step_back),
+                // // Move down
+                // KeyCode::Char('j') | KeyCode::Down => self.repeat(Self::step),
+
+                // // Go to top of file
+                // KeyCode::Char('g') => {
+                //     self.draw_memory.inner_call_index = 0;
+                //     self.current_step = 0;
+                // }
+
+                // // Go to bottom of file
+                // KeyCode::Char('G') => {
+                //     self.draw_memory.inner_call_index = self.debug_arena().len() - 1;
+                //     self.current_step = self.n_steps() - 1;
+                // }
+
+                // // Go to previous call
+                // KeyCode::Char('c') => {
+                //     self.draw_memory.inner_call_index =
+                //         self.draw_memory.inner_call_index.saturating_sub(1);
+                //     self.current_step = self.n_steps() - 1;
+                // }
+
+                // // Go to next call
+                // KeyCode::Char('C') => {
+                //     if self.debug_arena().len() > self.draw_memory.inner_call_index +
+                // 1     {
+                //         self.draw_memory.inner_call_index += 1;
+                //         self.current_step = 0;
+                //     }
+                // }
+
+                // // Step forward
+                // KeyCode::Char('s') => self.repeat(|this| {
+                //     let remaining_ops = &this.opcode_list[this.current_step..];
+                //     if let Some((i, _)) =
+                //         remaining_ops.iter().enumerate().skip(1).find(|&(i, op)| {
+                //             let prev = &remaining_ops[i - 1];
+                //             let prev_is_jump =
+                //                 prev.contains("JUMP") && prev != "JUMPDEST";
+                //             let is_jumpdest = op == "JUMPDEST";
+                //             prev_is_jump && is_jumpdest
+                //         })
+                //     {
+                //         this.current_step += i;
+                //     }
+                // }),
+
+                // // Step backwards
+                // KeyCode::Char('a') => self.repeat(|this| {
+                //     let ops = &this.opcode_list[..this.current_step];
+                //     this.current_step = ops
+                //         .iter()
+                //         .enumerate()
+                //         .skip(1)
+                //         .rev()
+                //         .find(|&(i, op)| {
+                //             let prev = &ops[i - 1];
+                //             let prev_is_jump =
+                //                 prev.contains("JUMP") && prev != "JUMPDEST";
+                //             let is_jumpdest = op == "JUMPDEST";
+                //             prev_is_jump && is_jumpdest
+                //         })
+                //         .map(|(i, _)| i)
+                //         .unwrap_or_default();
+                // }),
+
+                // // Toggle stack labels
+                // KeyCode::Char('t') => self.stack_labels = !self.stack_labels,
+
+                // // Toggle memory UTF-8 decoding
+                // KeyCode::Char('m') => self.buf_utf = !self.buf_utf,
+
+                // // Toggle help notice
+                // KeyCode::Char('H') => self.show_shortcuts = !self.show_shortcuts,
+
+                // // Numbers for repeating commands or breakpoints
+                // KeyCode::Char(
+                //     other @ ('0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' |
+                //     '9' | '\''),
+                // ) => {
+                //     // Early return to not clear the buffer.
+                //     self.key_buffer.push(other);
+                //     return ControlFlow::Continue(());
+                // }
+
+                // // Unknown/unhandled key code
+                // _ => {}
             }
         };
 

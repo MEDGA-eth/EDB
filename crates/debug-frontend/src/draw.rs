@@ -21,7 +21,7 @@ use std::{
 use crate::{
     context::FrontendContext,
     utils::opcode::OpcodeParam,
-    window::{FocusMode, PaneFlattened, PaneView, TerminalMode},
+    window::{PaneFlattened, PaneView, TerminalMode},
     FrontendTerminal,
 };
 
@@ -126,22 +126,15 @@ impl FrontendContext<'_> {
         }
     }
 
-    fn get_focused_block(&self, is_focus: bool) -> Block<'static> {
-        let (border_style, border_set) = match self.window.focus_mode {
-            FocusMode::Entered | FocusMode::FullScreen => {
-                if is_focus {
-                    (Style::default().fg(Color::Green), border::DOUBLE)
-                } else {
-                    (Style::default(), border::PLAIN)
-                }
+    fn get_focused_block(&self, pane: &PaneFlattened) -> Block<'static> {
+        let (border_style, border_set) = if pane.focused {
+            if self.window.editor_mode == TerminalMode::Insert && pane.view == PaneView::Terminal {
+                (Style::default().fg(Color::LightGreen), border::DOUBLE)
+            } else {
+                (Style::default().fg(Color::LightCyan), border::DOUBLE)
             }
-            FocusMode::Browse => {
-                if is_focus {
-                    (Style::default().fg(Color::LightCyan), border::DOUBLE)
-                } else {
-                    (Style::default(), border::PLAIN)
-                }
-            }
+        } else {
+            (Style::default(), border::PLAIN)
         };
 
         Block::default()
@@ -156,7 +149,7 @@ impl FrontendContext<'_> {
             TerminalMode::Insert => format!(" [{}] Script Terminal (Insert Mode) ", pane.id),
             TerminalMode::Normal => format!(" [{}] Script Terminal (Normal Mode) ", pane.id),
         };
-        let block = self.get_focused_block(pane.focused).title(title);
+        let block = self.get_focused_block(&pane).title(title);
         let editor_mut = self.window.get_editor_mut();
         editor_mut.set_cursor_line_style(Style::default().add_modifier(Modifier::UNDERLINED));
         editor_mut.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
@@ -169,7 +162,7 @@ impl FrontendContext<'_> {
     // TODO
     fn draw_null(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
         let title = format!(" [{}] Empty Pane ", pane.id);
-        let block = self.get_focused_block(pane.focused).title(title);
+        let block = self.get_focused_block(&pane).title(title);
         let paragraph = Paragraph::new(Text::from(format!(
             "There is no data view to show, try to assign a view to this pane"
         )))
@@ -181,7 +174,7 @@ impl FrontendContext<'_> {
     // TODO
     fn draw_trace(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
         let title = format!(" [{}] Trace (address: {}) ", pane.id, self.address());
-        let block = self.get_focused_block(pane.focused).title(title);
+        let block = self.get_focused_block(&pane).title(title);
         let paragraph = Paragraph::new(Text::from(format!("trace displaying under construction")))
             .block(block)
             .wrap(Wrap { trim: false });
@@ -191,7 +184,7 @@ impl FrontendContext<'_> {
     // TODO
     fn draw_variables(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
         let title = format!(" [{}] Live Variables (number: 0) ", pane.id);
-        let block = self.get_focused_block(pane.focused).title(title);
+        let block = self.get_focused_block(&pane).title(title);
         let paragraph =
             Paragraph::new(Text::from(format!("variable displaying under construction")))
                 .block(block)
@@ -202,7 +195,7 @@ impl FrontendContext<'_> {
     // TODO
     fn draw_expressions(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
         let title = format!(" [{}] Watchers (number: 0) ", pane.id);
-        let block = self.get_focused_block(pane.focused).title(title);
+        let block = self.get_focused_block(&pane).title(title);
         let paragraph =
             Paragraph::new(Text::from(format!("watcher displaying under construction")))
                 .block(block)
@@ -237,7 +230,7 @@ impl FrontendContext<'_> {
             call_kind_text,
             source_name.map(|s| format!("| {s}")).unwrap_or_default()
         );
-        let block = self.get_focused_block(pane.focused).title(title);
+        let block = self.get_focused_block(&pane).title(title);
         let paragraph = Paragraph::new(text_output).block(block).wrap(Wrap { trim: false });
         f.render_widget(paragraph, pane.rect);
     }
@@ -463,7 +456,7 @@ impl FrontendContext<'_> {
             self.current_step().pc,
             self.current_step().total_gas_used,
         );
-        let block = self.get_focused_block(pane.focused).title(title);
+        let block = self.get_focused_block(&pane).title(title);
         let list = List::new(items)
             .block(block)
             .highlight_symbol("▶")
@@ -517,7 +510,7 @@ impl FrontendContext<'_> {
             .collect();
 
         let title = format!(" [{}] Stack (depth: {})) ", pane.id, stack.len());
-        let block = self.get_focused_block(pane.focused).title(title);
+        let block = self.get_focused_block(&pane).title(title);
         let paragraph = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
         f.render_widget(paragraph, pane.rect);
     }
@@ -657,7 +650,7 @@ impl FrontendContext<'_> {
             })
             .collect();
 
-        let block = self.get_focused_block(pane.focused).title(title);
+        let block = self.get_focused_block(&pane).title(title);
         let paragraph = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
         f.render_widget(paragraph, pane.rect);
     }

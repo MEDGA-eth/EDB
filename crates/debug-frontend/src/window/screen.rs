@@ -1,31 +1,19 @@
 use std::collections::HashMap;
 
-use eyre::Result;
+use eyre::{ensure, Result};
 use ratatui::layout::Rect;
 
 use crate::window::pane::{Pane, PaneFlattened, PaneManager, PaneView, Point};
 
-pub const SMALL_SCREEN_STR: &str = "Defualt Small Screen";
-pub const LARGE_SCREEN_STR: &str = "Defualt Large Screen";
-
-/// The focus mode of the frontend.
-/// State Machine:
-/// Browse <-(ESC/ENTER)-> Entered <-(ESC/ENTER)-> FullScreen
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FocusMode {
-    Entered,
-    Browse,
-    FullScreen,
-}
+pub const SMALL_SCREEN_STR: &str = "Defualt (Small)";
+pub const LARGE_SCREEN_STR: &str = "Defualt (Large)";
 
 /// Trace the focus, to ensure the pane switching is backed by a state machine.
 pub struct ScreenManager {
     pub panes: HashMap<String, PaneManager>,
     pub current_pane: String,
     pub use_default_pane: bool,
-
-    pub focus_mode: FocusMode,
-
+    pub full_screen: bool,
     pub pending_mouse_move: Option<Point>,
 }
 
@@ -34,7 +22,7 @@ impl ScreenManager {
         let mut manager = Self {
             panes: HashMap::new(),
             current_pane: String::new(),
-            focus_mode: FocusMode::Entered,
+            full_screen: false,
             use_default_pane: true,
             pending_mouse_move: None,
         };
@@ -66,33 +54,16 @@ impl ScreenManager {
         self.panes.insert(name.to_string(), manager);
     }
 
-    pub fn toggle_full_screen(&mut self) -> Result<()> {
-        if self.focus_mode == FocusMode::FullScreen {
-            self.focus_mode = FocusMode::Entered;
-            Ok(())
-        } else if self.focus_mode == FocusMode::Entered {
-            self.focus_mode = FocusMode::FullScreen;
-            Ok(())
-        } else {
-            Err(eyre::eyre!("Cannot toggle full screen in browse mode"))
-        }
+    pub fn toggle_full_screen(&mut self) {
+        self.full_screen = !self.full_screen;
     }
 
     pub fn set_mouse_move(&mut self, x: u16, y: u16) {
-        if self.focus_mode == FocusMode::FullScreen {
+        if self.full_screen {
             // Ignore mouse move in full screen mode.
             return;
         }
-        self.focus_mode = FocusMode::Entered; // Mouse move should enter the pane.
         self.pending_mouse_move = Some(Point::new(x, y));
-    }
-
-    pub fn enter_pane(&mut self) {
-        self.focus_mode = FocusMode::Entered;
-    }
-
-    pub fn browse_pane(&mut self) {
-        self.focus_mode = FocusMode::Browse;
     }
 
     pub fn get_current_pane(&self) -> Result<&PaneManager> {
@@ -104,8 +75,8 @@ impl ScreenManager {
     }
 
     pub fn enter_terminal(&mut self) -> Result<()> {
+        ensure!(!self.full_screen, "Cannot enter terminal in full screen mode");
         self.get_current_pane_mut()?.force_goto_by_view(PaneView::Terminal)?;
-        self.focus_mode = FocusMode::Entered;
 
         Ok(())
     }
@@ -144,7 +115,7 @@ impl ScreenManager {
     }
 
     pub fn get_flattened_layout(&self, app: Rect) -> Result<Vec<PaneFlattened>> {
-        if self.focus_mode == FocusMode::FullScreen {
+        if self.full_screen {
             let pane = self.get_current_pane()?.get_focused_pane()?;
             Ok(vec![PaneFlattened {
                 view: pane.get_current_view(),
