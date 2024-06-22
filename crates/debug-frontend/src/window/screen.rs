@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use eyre::{ensure, Result};
-use ratatui::layout::Rect;
+use ratatui::layout::{Direction, Rect};
 
 use crate::window::pane::{Pane, PaneFlattened, PaneManager, PaneView, Point};
+
+use super::pane::PaneId;
 
 pub const SMALL_SCREEN_STR: &str = "Defualt (Small)";
 pub const LARGE_SCREEN_STR: &str = "Defualt (Large)";
@@ -112,6 +114,58 @@ impl ScreenManager {
 
     pub fn focus_right(&mut self) -> Result<()> {
         self.get_current_pane_mut()?.focus_right()
+    }
+
+    pub fn split_focused_pane(&mut self, direction: Direction, ratio: [u32; 2]) -> Result<usize> {
+        let id = self.get_focused_pane()?.id;
+        self.get_current_pane_mut()?.split(id, direction, ratio)
+    }
+
+    pub fn close_focused_pane(&mut self) -> Result<()> {
+        let pane = self.get_focused_pane()?;
+        ensure!(pane.get_current_view() != PaneView::Terminal, "Cannot close terminal pane");
+
+        let ori_id = pane.id;
+
+        // let's try to merge the pane with its neighbor
+
+        // 1) merge left
+        self.focus_left()?;
+        let cur_id = self.get_focused_pane()?.id;
+        if self.get_current_pane_mut()?.merge(ori_id, cur_id).is_ok() {
+            return Ok(());
+        }
+
+        // 2) merge right
+        self.focus_right()?; // go back to the original pane
+        ensure!(self.get_focused_pane()?.id == ori_id, "cannot move back to the original pane");
+        self.focus_right()?;
+        let cur_id = self.get_focused_pane()?.id;
+        if self.get_current_pane_mut()?.merge(ori_id, cur_id).is_ok() {
+            return Ok(());
+        }
+
+        // 3) merge up
+        self.focus_left()?; // go back to the original pane
+        ensure!(self.get_focused_pane()?.id == ori_id, "cannot move back to the original pane");
+        self.focus_up()?;
+        let cur_id = self.get_focused_pane()?.id;
+        if self.get_current_pane_mut()?.merge(ori_id, cur_id).is_ok() {
+            return Ok(());
+        }
+
+        // 4) merge down
+        self.focus_down()?; // go back to the original pane
+        ensure!(self.get_focused_pane()?.id == ori_id, "cannot move back to the original pane");
+        self.focus_down()?;
+        let cur_id = self.get_focused_pane()?.id;
+        if self.get_current_pane_mut()?.merge(ori_id, cur_id).is_ok() {
+            return Ok(());
+        }
+
+        self.focus_up()?; // go back to the original pane
+        ensure!(self.get_focused_pane()?.id == ori_id, "cannot move back to the original pane");
+        Err(eyre::eyre!("Cannot close the last pane"))
     }
 
     pub fn get_flattened_layout(&self, app: Rect) -> Result<Vec<PaneFlattened>> {

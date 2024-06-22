@@ -6,6 +6,7 @@ use crossterm::event::{
 };
 use edb_debug_backend::artifact::debug::{DebugArtifact, DebugNodeFlat, DebugStep};
 use eyre::Result;
+use ratatui::layout::Direction;
 use revm_inspectors::tracing::types::CallKind;
 use std::ops::ControlFlow;
 
@@ -129,18 +130,19 @@ impl FrontendContext<'_> {
     }
 
     fn handle_key_event(&mut self, event: KeyEvent) -> ControlFlow<ExitReason> {
-        // Breakpoints
-        if let KeyCode::Char(c) = event.code {
-            if c.is_alphabetic() && self.key_buffer.starts_with('\'') {
-                self.handle_breakpoint(c);
-                return ControlFlow::Continue(());
-            }
-        }
+        // // Breakpoints
+        // if let KeyCode::Char(c) = event.code {
+        //     if c.is_alphabetic() && self.key_buffer.starts_with('\'') {
+        //         self.handle_breakpoint(c);
+        //         return ControlFlow::Continue(());
+        //     }
+        // }
 
         let control = event.modifiers.contains(KeyModifiers::CONTROL);
 
         let focused_pane = self.window.get_focused_view().unwrap();
         if focused_pane == PaneView::Terminal && self.window.editor_mode == TerminalMode::Insert {
+            // Insert mode is a special case
             if event.code == KeyCode::Esc {
                 self.window.set_editor_normal_mode();
             } else {
@@ -211,6 +213,19 @@ impl FrontendContext<'_> {
 
                 // Quit
                 KeyCode::Char('q') => return ControlFlow::Break(ExitReason::CharExit),
+
+                // Shortcut to split the screen: (s)plit and (d)ivide
+                KeyCode::Char('d') if control => {
+                    self.window.split_focused_pane(Direction::Vertical, [1, 1]).unwrap();
+                }
+                KeyCode::Char('s') if control => {
+                    self.window.split_focused_pane(Direction::Horizontal, [1, 1]).unwrap();
+                }
+
+                // Shortcut to close the current pane
+                KeyCode::Char('x') if control => {
+                    self.window.close_focused_pane().unwrap();
+                }
 
                 // Other view-specific key events
                 _ => match focused_pane {

@@ -335,16 +335,8 @@ impl PaneManager {
         let rect2 = layout.0.get(&id2).ok_or(eyre::eyre!("pane not found (merge)"))?;
 
         // we should first check if the two panes are adjacent
-        if rect1.width == rect2.width {
-            if rect1.bottom() != rect2.top() && rect1.top() != rect2.bottom() {
-                return Err(eyre::eyre!("Panes are not adjacent"));
-            }
-        } else if rect1.height == rect2.height {
-            if rect1.right() != rect2.left() && rect1.left() != rect2.right() {
-                return Err(eyre::eyre!("Panes are not adjacent"));
-            }
-        } else {
-            return Err(eyre::eyre!("Panes are not adjacent"));
+        if !mergeable(rect1, rect2) {
+            return Err(eyre::eyre!("panes are not adjacent"));
         }
 
         let target1 = self.panes.get(&id1).ok_or(eyre::eyre!("pane not found (merge)"))?;
@@ -572,4 +564,21 @@ impl Point {
             ((self.1 as u64) * (VIRTUAL_RECT.height as u64) / (rect.height as u64)) as u16,
         )
     }
+}
+
+#[inline]
+fn mergeable(rect1: &Rect, rect2: &Rect) -> bool {
+    if rect1.width == rect2.width {
+        if rect1.bottom() == rect2.top() || rect1.top() == rect2.bottom() {
+            return true;
+        }
+    }
+
+    if rect1.height == rect2.height {
+        if rect1.right() == rect2.left() || rect1.left() == rect2.right() {
+            return true;
+        }
+    }
+
+    false
 }
