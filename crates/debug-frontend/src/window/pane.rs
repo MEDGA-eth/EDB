@@ -46,8 +46,8 @@ impl ToString for PaneView {
     }
 }
 
-impl From<usize> for PaneView {
-    fn from(value: usize) -> Self {
+impl From<u8> for PaneView {
+    fn from(value: u8) -> Self {
         match value {
             0 => PaneView::Terminal,
             1 => PaneView::Trace,
@@ -65,8 +65,12 @@ impl From<usize> for PaneView {
 }
 
 impl PaneView {
-    fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         !matches!(self, PaneView::Null)
+    }
+
+    pub fn num_of_valid_views() -> u8 {
+        10
     }
 }
 
@@ -324,14 +328,21 @@ impl PaneManager {
 
     pub fn assign(&mut self, view: PaneView, target: PaneId) -> Result<()> {
         ensure!(view.is_valid(), "invalid view");
+
+        // first check whether the view can be added
+        let pane = self.panes.get_mut(&target).ok_or(eyre::eyre!("pane not found (assign)"))?;
+        pane.add_view(view)?;
+
+        // update the view assignment
         if let Some(old_pane_id) = self.view_assignment.insert(view, target) {
+            if old_pane_id == target {
+                return Ok(());
+            }
+
             let old_pane =
                 self.panes.get_mut(&old_pane_id).ok_or(eyre::eyre!("pane not found (assign)"))?;
             old_pane.remove_view(view);
         }
-
-        let pane = self.panes.get_mut(&target).ok_or(eyre::eyre!("pane not found (assign)"))?;
-        pane.add_view(view)?;
 
         Ok(())
     }

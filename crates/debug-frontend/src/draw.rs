@@ -14,7 +14,12 @@ use ratatui::{
 };
 use revm::interpreter::opcode::{self, POP};
 use revm_inspectors::tracing::types::CallKind;
-use std::{collections::VecDeque, f32::MIN, fmt::Write, io};
+use std::{
+    collections::{HashSet, VecDeque},
+    f32::MIN,
+    fmt::Write,
+    io,
+};
 use tracing::instrument::WithSubscriber;
 
 const POPUP_WIDTH: u16 = 60;
@@ -198,8 +203,13 @@ impl FrontendContext<'_> {
 
         // let's first calcualte the height of the message box
         let msg_width = POPUP_WIDTH;
-        let (message, msg_height) =
-            wrap_text(&message, msg_width as usize, MIN_POPUP_HEIGHT as usize);
+        let (message, msg_height) = wrap_text(
+            &message,
+            msg_width as usize,
+            MIN_POPUP_HEIGHT as usize,
+            Some(&msg.highlights),
+            Style::new().bg(Color::LightYellow).fg(Color::Black),
+        );
 
         // Note that the chunk has borders, so we need to add 2 to the width and the height.
         let chunk_width = msg_width + 2;
@@ -226,7 +236,7 @@ impl FrontendContext<'_> {
         let block = Block::default()
             .title(format!(" [ESC] {}", title))
             .borders(Borders::ALL)
-            .style(Style::default().bg(Color::LightYellow).fg(Color::Black));
+            .style(Style::default().bg(Color::Black).fg(Color::White));
 
         let paragraph = Paragraph::new(message).block(block).alignment(alignment);
         f.render_widget(paragraph, popup_chunk);
@@ -843,24 +853,38 @@ fn get_buffer_accesses(op: u8, stack: &[U256]) -> Option<BufferAccesses> {
 ///
 /// Here is a dirty workaround to pad space to each line to ensure the previous text is cleared.
 /// Since we are doing manual line wrapping, we do not need to count the space taken by `\n`
-fn wrap_text(text: &str, width: usize, min_height: usize) -> (String, u16) {
+fn wrap_text<'a>(
+    text: &'a str,
+    width: usize,
+    min_height: usize,
+    highlights: Option<&HashSet<String>>,
+    highlight_style: Style,
+) -> (Vec<Line<'a>>, u16) {
     let mut v = vec![];
 
     for line in text.lines() {
         if line.is_empty() {
-            v.push(format!("{}\n", " ".repeat(width)));
+            v.push(Line::raw(format!("{}\n", " ".repeat(width))));
             continue;
         }
+
+        let f = |text| {
+            if highlights.map(|h| h.contains(line.trim())).unwrap_or(false) {
+                Line::styled(text, highlight_style)
+            } else {
+                Line::raw(text)
+            }
+        };
 
         let mut l = String::new();
         for word in line.split_whitespace() {
             if l.len() + word.len() + 1 == width {
-                v.push(format!("{} {}\n", l, word));
+                v.push(f(format!("{} {}\n", l, word)));
                 l.clear();
                 continue;
             }
             if l.len() + word.len() + 1 > width {
-                v.push(format!("{}\n", l));
+                v.push(f(format!("{}\n", l)));
                 l.clear();
             }
 
@@ -871,15 +895,16 @@ fn wrap_text(text: &str, width: usize, min_height: usize) -> (String, u16) {
         }
 
         if !l.is_empty() {
-            v.push(format!("{}{}\n", l, " ".repeat(width - l.len() % width)));
+            v.push(f(format!("{}{}\n", l, " ".repeat(width - l.len() % width))));
         }
     }
 
     for _ in v.len()..min_height {
-        v.push(format!("{}\n", " ".repeat(width)));
+        v.push(Line::raw(format!("{}\n", " ".repeat(width))));
     }
 
-    (v.join(""), v.len() as u16)
+    let height = v.len() as u16;
+    (v, height)
 }
 
 fn hex_bytes_spans(bytes: &[u8], spans: &mut Vec<Span<'_>>, f: impl Fn(usize, u8) -> Style) {

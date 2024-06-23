@@ -10,8 +10,8 @@ use crate::{
 
 use super::pane::PaneId;
 
-pub const SMALL_SCREEN_STR: &str = "Defualt (Small)";
-pub const LARGE_SCREEN_STR: &str = "Defualt (Large)";
+pub const SMALL_SCREEN_STR: &str = "Defualt (Small Screen)";
+pub const LARGE_SCREEN_STR: &str = "Defualt (Large Screen)";
 
 /// Trace the focus, to ensure the pane switching is backed by a state machine.
 pub struct ScreenManager {
