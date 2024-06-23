@@ -175,7 +175,15 @@ impl FrontendContext<'_> {
         let control = event.modifiers.contains(KeyModifiers::CONTROL);
 
         let focused_pane = self.window.get_focused_view()?;
-        if focused_pane == PaneView::Terminal && self.window.editor_mode == TerminalMode::Insert {
+        if self.window.has_popup() {
+            if event.code == KeyCode::Esc {
+                self.window.exit_popup();
+            } else {
+                self.window.handle_key_even_in_popup(event)?;
+            }
+        } else if focused_pane == PaneView::Terminal &&
+            self.window.editor_mode == TerminalMode::Insert
+        {
             // Insert mode is a special case
             if event.code == KeyCode::Esc {
                 self.window.set_editor_normal_mode();
@@ -205,7 +213,7 @@ impl FrontendContext<'_> {
                 KeyCode::Up if control => self.repeat(|this| this.window.focus_up())?,
 
                 // Pop up the assignment window
-                KeyCode::Char('z') if control => self.window.pop_assignment(),
+                KeyCode::Char('c') if control => self.window.pop_assignment(),
 
                 // Esc
                 KeyCode::Esc if self.window.full_screen => self.window.toggle_full_screen(),
@@ -387,16 +395,24 @@ impl FrontendContext<'_> {
     }
 
     fn handle_mouse_event(&mut self, event: MouseEvent) -> ControlFlow<ExitReason> {
+        self.try_handle_mouse_event(event).unwrap()
+    }
+
+    fn try_handle_mouse_event(&mut self, event: MouseEvent) -> Result<ControlFlow<ExitReason>> {
+        if self.window.has_popup() {
+            return Ok(ControlFlow::Continue(()));
+        }
+
         match event.kind {
-            // MouseEventKind::ScrollUp => self.step_back(),
-            // MouseEventKind::ScrollDown => self.step(),
+            MouseEventKind::ScrollUp => self.window.get_focused_pane_mut()?.prev_view(),
+            MouseEventKind::ScrollDown => self.window.get_focused_pane_mut()?.next_view(),
             MouseEventKind::Down(MouseButton::Left) => {
                 self.window.set_mouse_move(event.column, event.row)
             }
             _ => {}
         }
 
-        ControlFlow::Continue(())
+        Ok(ControlFlow::Continue(()))
     }
 
     fn step_back(&mut self) {

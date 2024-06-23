@@ -131,7 +131,7 @@ impl ScreenManager {
     pub fn close_focused_pane(&mut self) -> Result<()> {
         let pane = self.get_focused_pane()?;
         if pane.get_current_view() == PaneView::Terminal {
-            return Err(RecoverableError::new("You cannot close terminal pane.").into());
+            return Err(RecoverableError::new("You cannot close the script terminal pane.").into());
         }
 
         let ori_id = pane.id;

@@ -1,6 +1,7 @@
 //! TUI draw implementation.
 
 use alloy_primitives::U256;
+use crossterm::cursor;
 use eyre::ensure;
 use foundry_compilers::artifacts::sourcemap::SourceElement;
 use ratatui::{
@@ -159,9 +160,28 @@ impl FrontendContext<'_> {
             TerminalMode::Normal => format!(" [{}] Script Terminal (Normal Mode) ", pane.id),
         };
         let block = self.get_focused_block(&pane).title(title);
+
+        let (cursor_style, cursor_line_style) = if pane.focused {
+            if self.window.editor_mode == TerminalMode::Insert {
+                (
+                    Style::default()
+                        .add_modifier(Modifier::UNDERLINED | Modifier::REVERSED)
+                        .fg(Color::LightGreen),
+                    Style::default(),
+                )
+            } else {
+                (
+                    Style::default().add_modifier(Modifier::REVERSED),
+                    Style::default().add_modifier(Modifier::UNDERLINED),
+                )
+            }
+        } else {
+            (Style::default(), Style::default())
+        };
+
         let editor_mut = self.window.get_editor_mut();
-        editor_mut.set_cursor_line_style(Style::default().add_modifier(Modifier::UNDERLINED));
-        editor_mut.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
+        editor_mut.set_cursor_line_style(cursor_line_style);
+        editor_mut.set_cursor_style(cursor_style);
         editor_mut.set_block(block);
 
         let widget = editor_mut.widget();

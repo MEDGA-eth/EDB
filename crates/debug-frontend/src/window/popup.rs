@@ -1,5 +1,7 @@
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 use eyre::{eyre, Result};
+
+use crate::context::RecoverableError;
 
 use super::{pane::Pane, PaneView, Window};
 
@@ -32,7 +34,7 @@ impl PopupMode {
                 for i in 0..10usize {
                     let view = PaneView::from(i);
                     if !pane.has_view(&view) {
-                        message.push_str(&format!("[{}] {}\n", assign_count, view.to_string()));
+                        message.push_str(&format!("({}) {}\n", assign_count, view.to_string()));
                         assign_count += 1;
                     }
                 }
@@ -47,7 +49,7 @@ impl PopupMode {
                     let view = PaneView::from(i);
                     if pane.has_view(&view) {
                         message.push_str(&format!(
-                            "[{}] {}\n",
+                            "({}) {}\n",
                             (unassign_count + b'a') as char,
                             view.to_string()
                         ));
@@ -73,6 +75,10 @@ impl Window<'_> {
         self.popup_mode = None;
     }
 
+    pub fn has_popup(&self) -> bool {
+        self.popup_mode.is_some()
+    }
+
     /// Returns the popup message, the width, and the height.
     pub fn get_popup_message(&self) -> Result<PopupMessage> {
         let mode = self.popup_mode.as_ref().ok_or_else(|| eyre!("no popup mode is active"))?;
@@ -82,7 +88,54 @@ impl Window<'_> {
         Ok(PopupMessage { title: mode.title().to_string(), message })
     }
 
-    pub fn handle_key_even_in_popup(&mut self, event: KeyEvent) {
-        todo!();
+    pub fn handle_key_even_in_popup(&mut self, event: KeyEvent) -> Result<()> {
+        match self.popup_mode.clone() {
+            Some(PopupMode::ViewAssignment) => self.handle_assignment(event),
+            _ => Ok(()),
+        }
+    }
+
+    fn handle_assignment(&mut self, event: KeyEvent) -> Result<()> {
+        match event.code {
+            KeyCode::Char(c) => {
+                match c {
+                    '0'..='9' => {
+                        let pane = self.get_focused_pane()?;
+                        let mut count = 0u8;
+                        for i in 0..10usize {
+                            let view = PaneView::from(i);
+                            if !pane.has_view(&view) {
+                                if count == c as u8 - b'0' {
+                                    let target = pane.id;
+                                    self.get_current_pane_mut()?.assign(view, target).map_err(|e| RecoverableError::new(format!("Failed to register the selectced view ({})\n\nReason: {}", view.to_string(), e.to_string())))?;
+                                    self.exit_popup();
+                                    return Ok(());
+                                }
+                                count += 1;
+                            }
+                        }
+                    }
+                    'a'..='j' => {
+                        let pane = self.get_focused_pane()?;
+                        let mut count = 0u8;
+                        for i in 0..10usize {
+                            let view = PaneView::from(i);
+                            if pane.has_view(&view) {
+                                if count == c as u8 - b'a' {
+                                    self.get_current_pane_mut()?.unassign(view).map_err(|e| RecoverableError::new(format!("Failed to unregister the selectced view ({})\n\nReason: {}", view.to_string(), e.to_string())))?;
+                                    self.exit_popup();
+                                    return Ok(());
+                                }
+                                count += 1;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+
+        Ok(())
     }
 }
