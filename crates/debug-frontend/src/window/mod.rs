@@ -9,7 +9,7 @@ use eyre::Result;
 use tui_textarea::TextArea;
 
 pub use pane::{PaneFlattened, PaneView};
-pub use popup::PopupMode;
+pub use popup::{PopupMessage, PopupMode};
 use screen::ScreenManager;
 
 /// The focus mode of the frontend.

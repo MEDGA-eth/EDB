@@ -8,9 +8,6 @@ pub type PaneId = usize;
 /// Used to keep track of which kind of pane is currently active
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Ord, Eq)]
 pub enum PaneView {
-    // null
-    Null,
-
     // terminal
     Terminal,
 
@@ -26,6 +23,45 @@ pub enum PaneView {
     Calldata,
     Returndata,
     Stack,
+
+    // null
+    Null,
+}
+
+impl ToString for PaneView {
+    fn to_string(&self) -> String {
+        match self {
+            PaneView::Terminal => "Script Terminal".to_string(),
+            PaneView::Trace => "Call Trace".to_string(),
+            PaneView::Source => "Source Code".to_string(),
+            PaneView::Opcode => "Opcode".to_string(),
+            PaneView::Variable => "Variables".to_string(),
+            PaneView::Expression => "Customized Watchers".to_string(),
+            PaneView::Memory => "Memory".to_string(),
+            PaneView::Calldata => "Calldata".to_string(),
+            PaneView::Returndata => "Returndata".to_string(),
+            PaneView::Stack => "Stack".to_string(),
+            PaneView::Null => "Null".to_string(),
+        }
+    }
+}
+
+impl From<usize> for PaneView {
+    fn from(value: usize) -> Self {
+        match value {
+            0 => PaneView::Terminal,
+            1 => PaneView::Trace,
+            2 => PaneView::Source,
+            3 => PaneView::Opcode,
+            4 => PaneView::Variable,
+            5 => PaneView::Expression,
+            6 => PaneView::Memory,
+            7 => PaneView::Calldata,
+            8 => PaneView::Returndata,
+            9 => PaneView::Stack,
+            _ => PaneView::Null,
+        }
+    }
 }
 
 impl PaneView {
@@ -94,6 +130,10 @@ impl Pane {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.views.len()
+    }
+
     pub fn get_current_view(&self) -> PaneView {
         *self.views.get(self.current_view).unwrap_or(&PaneView::Null)
     }
@@ -118,6 +158,10 @@ impl Pane {
         if let Some(index) = self.views.iter().position(|v| v == &view) {
             self.current_view = index;
         }
+    }
+
+    pub fn has_view(&self, view: &PaneView) -> bool {
+        self.views.contains(view)
     }
 }
 
@@ -449,8 +493,8 @@ impl PaneManager {
         Ok(self.panes.get(&info.pane_id).ok_or(eyre!("invalid pane id"))?)
     }
 
-    pub fn get_focused_view(&mut self) -> Result<PaneView> {
-        let pane = self.get_focused_pane_mut()?;
+    pub fn get_focused_view(&self) -> Result<PaneView> {
+        let pane = self.get_focused_pane()?;
         Ok(pane.get_current_view())
     }
 

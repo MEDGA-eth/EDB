@@ -196,20 +196,16 @@ impl FrontendContext<'_> {
                 }
 
                 // Move focus to the left pane
-                KeyCode::Char('h') if control => self.repeat(|this| this.window.focus_left())?,
                 KeyCode::Left if control => self.repeat(|this| this.window.focus_left())?,
-
                 // Move focus to the right pane
-                KeyCode::Char('l') if control => self.repeat(|this| this.window.focus_right())?,
                 KeyCode::Right if control => self.repeat(|this| this.window.focus_right())?,
-
                 // Move focus to the down pane
-                KeyCode::Char('j') if control => self.repeat(|this| this.window.focus_down())?,
                 KeyCode::Down if control => self.repeat(|this| this.window.focus_down())?,
-
                 // Move focus to the up pane
-                KeyCode::Char('k') if control => self.repeat(|this| this.window.focus_up())?,
                 KeyCode::Up if control => self.repeat(|this| this.window.focus_up())?,
+
+                // Pop up the assignment window
+                KeyCode::Char('z') if control => self.window.pop_assignment(),
 
                 // Esc
                 KeyCode::Esc if self.window.full_screen => self.window.toggle_full_screen(),
@@ -220,24 +216,24 @@ impl FrontendContext<'_> {
                 // Cycle left the current focused pane
                 KeyCode::Char('h') if focused_pane != PaneView::Terminal => {
                     self.repeat(|this| {
-                        this.window.get_focused_pane()?.prev_view();
+                        this.window.get_focused_pane_mut()?.prev_view();
                         Ok(())
                     })?
                 }
                 KeyCode::Left if focused_pane != PaneView::Terminal => self.repeat(|this| {
-                    this.window.get_focused_pane()?.prev_view();
+                    this.window.get_focused_pane_mut()?.prev_view();
                     Ok(())
                 })?,
 
                 // Cycle right the current focused pane
                 KeyCode::Char('l') if focused_pane != PaneView::Terminal => {
                     self.repeat(|this| {
-                        this.window.get_focused_pane()?.next_view();
+                        this.window.get_focused_pane_mut()?.next_view();
                         Ok(())
                     })?
                 }
                 KeyCode::Right if focused_pane != PaneView::Terminal => self.repeat(|this| {
-                    this.window.get_focused_pane()?.next_view();
+                    this.window.get_focused_pane_mut()?.next_view();
                     Ok(())
                 })?,
 

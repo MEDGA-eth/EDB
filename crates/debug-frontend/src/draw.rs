@@ -1,6 +1,7 @@
 //! TUI draw implementation.
 
 use alloy_primitives::U256;
+use eyre::ensure;
 use foundry_compilers::artifacts::sourcemap::SourceElement;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -10,18 +11,18 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
-use revm::interpreter::opcode;
+use revm::interpreter::opcode::{self, POP};
 use revm_inspectors::tracing::types::CallKind;
-use std::{
-    collections::VecDeque,
-    fmt::Write,
-    io::{self},
-};
+use std::{collections::VecDeque, f32::MIN, fmt::Write, io};
+use tracing::instrument::WithSubscriber;
+
+const POPUP_WIDTH: u16 = 60;
+const MIN_POPUP_HEIGHT: u16 = 10;
 
 use crate::{
     context::FrontendContext,
     utils::opcode::OpcodeParam,
-    window::{PaneFlattened, PaneView, TerminalMode},
+    window::{PaneFlattened, PaneView, PopupMessage, TerminalMode},
     FrontendTerminal,
 };
 
@@ -124,12 +125,20 @@ impl FrontendContext<'_> {
                 PaneView::Null => self.draw_null(f, pane),
             }
         }
+
+        if let Ok(message) = self.window.get_popup_message() {
+            // the background of the popup will take up 4 more columns and 4 more rows than the
+            // popup itself
+            self.draw_popup(f, area, message);
+        }
     }
 
     fn get_focused_block(&self, pane: &PaneFlattened) -> Block<'static> {
         let (border_style, border_set) = if pane.focused {
             if self.window.editor_mode == TerminalMode::Insert && pane.view == PaneView::Terminal {
                 (Style::default().fg(Color::LightGreen), border::DOUBLE)
+            } else if pane.view == PaneView::Null {
+                (Style::default().fg(Color::LightRed), border::DOUBLE)
             } else {
                 (Style::default().fg(Color::LightCyan), border::DOUBLE)
             }
@@ -159,12 +168,56 @@ impl FrontendContext<'_> {
         f.render_widget(widget, pane.rect);
     }
 
+    fn draw_popup(&self, f: &mut Frame<'_>, area: Rect, msg: PopupMessage) {
+        // append a new line before and after the message
+        let title = &msg.title;
+        let message = format!("\n{}\n", msg.message);
+
+        // prepare the wrap and alignment
+        let alignment = Alignment::Left;
+
+        // let's first calcualte the height of the message box
+        let msg_width = POPUP_WIDTH;
+        let (message, msg_height) =
+            wrap_text(&message, msg_width as usize, MIN_POPUP_HEIGHT as usize);
+
+        // Note that the chunk has borders, so we need to add 2 to the width and the height.
+        let chunk_width = msg_width + 2;
+        let chunk_height = msg_height + 2;
+
+        // then, we try to get the backgroud block (there is 1-line margin)
+        let bg_rect = centered_rect(chunk_width + 2, chunk_height + 2, area);
+        let bg_block =
+            Block::default().borders(Borders::NONE).style(Style::default().bg(Color::DarkGray));
+        f.render_widget(bg_block, bg_rect);
+
+        let popup_chunk = Layout::default()
+            .direction(Direction::Horizontal)
+            .margin(1)
+            .constraints([Constraint::Percentage(100)])
+            .split(bg_rect)[0];
+        if popup_chunk.width != chunk_width || popup_chunk.height != chunk_height {
+            panic!(
+                "popup_chunk size mismatch: expected ({}, {}), got ({}, {})",
+                chunk_width, chunk_height, popup_chunk.width, popup_chunk.height
+            );
+        }
+
+        let block = Block::default()
+            .title(format!(" [ESC] {}", title))
+            .borders(Borders::ALL)
+            .style(Style::default().bg(Color::LightYellow).fg(Color::Black));
+
+        let paragraph = Paragraph::new(message).block(block).alignment(alignment);
+        f.render_widget(paragraph, popup_chunk);
+    }
+
     // TODO
     fn draw_null(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
         let title = format!(" [{}] Empty Pane ", pane.id);
         let block = self.get_focused_block(&pane).title(title);
         let paragraph = Paragraph::new(Text::from(format!(
-            "There is no data view to show, try to assign a view to this pane"
+            "There is no debug view to show.\n\nPlease try to press CTRL + c to register a view to this pane."
         )))
         .block(block)
         .wrap(Wrap { trim: false });
@@ -764,6 +817,51 @@ fn get_buffer_accesses(op: u8, stack: &[U256]) -> Option<BufferAccesses> {
     }
 }
 
+/// XXX (ZZ): There is an issue where the content in the previous tick is not cleared, rendering the
+/// display incorrect. The root cause is still unknown. Anyone interested in this project can start
+/// by trying to fix this issue.
+///
+/// Here is a dirty workaround to pad space to each line to ensure the previous text is cleared.
+/// Since we are doing manual line wrapping, we do not need to count the space taken by `\n`
+fn wrap_text(text: &str, width: usize, min_height: usize) -> (String, u16) {
+    let mut v = vec![];
+
+    for line in text.lines() {
+        if line.is_empty() {
+            v.push(format!("{}\n", " ".repeat(width)));
+            continue;
+        }
+
+        let mut l = String::new();
+        for word in line.split_whitespace() {
+            if l.len() + word.len() + 1 == width {
+                v.push(format!("{} {}\n", l, word));
+                l.clear();
+                continue;
+            }
+            if l.len() + word.len() + 1 > width {
+                v.push(format!("{}\n", l));
+                l.clear();
+            }
+
+            if !l.is_empty() {
+                l.push(' ');
+            }
+            l.push_str(word);
+        }
+
+        if !l.is_empty() {
+            v.push(format!("{}{}\n", l, " ".repeat(width - l.len() % width)));
+        }
+    }
+
+    for _ in v.len()..min_height {
+        v.push(format!("{}\n", " ".repeat(width)));
+    }
+
+    (v.join(""), v.len() as u16)
+}
+
 fn hex_bytes_spans(bytes: &[u8], spans: &mut Vec<Span<'_>>, f: impl Fn(usize, u8) -> Style) {
     for (i, &byte) in bytes.iter().enumerate() {
         if i > 0 {
@@ -785,6 +883,21 @@ fn decimal_digits(n: usize) -> usize {
 /// This is the same as `format!("{n:x}").len()`.
 fn hex_digits(n: usize) -> usize {
     n.checked_ilog(16).unwrap_or(0) as usize + 1
+}
+
+/// helper function to create a centered rect using up certain percentage of the available rect `r`
+fn centered_rect(len_x: u16, len_y: u16, r: Rect) -> Rect {
+    // Cut the given rectangle into three vertical pieces
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Fill(1), Constraint::Length(len_y), Constraint::Fill(1)])
+        .split(r);
+
+    // Then cut the middle vertical piece into three width-wise pieces
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Fill(1), Constraint::Length(len_x), Constraint::Fill(1)])
+        .split(popup_layout[1])[1] // Return the middle chunk
 }
 
 #[cfg(test)]

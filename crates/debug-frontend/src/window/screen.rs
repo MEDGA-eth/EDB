@@ -39,12 +39,15 @@ impl ScreenManager {
         Ok(manager)
     }
 
-    pub fn get_focused_pane(&mut self) -> Result<&mut Pane> {
+    pub fn get_focused_pane_mut(&mut self) -> Result<&mut Pane> {
         self.get_current_pane_mut()?.get_focused_pane_mut()
     }
+    pub fn get_focused_pane(&self) -> Result<&Pane> {
+        self.get_current_pane()?.get_focused_pane()
+    }
 
-    pub fn get_focused_view(&mut self) -> Result<PaneView> {
-        self.get_current_pane_mut()?.get_focused_view()
+    pub fn get_focused_view(&self) -> Result<PaneView> {
+        self.get_current_pane()?.get_focused_view()
     }
 
     pub fn get_available_pane_profiles(&self) -> Vec<String> {
@@ -171,7 +174,7 @@ impl ScreenManager {
 
         self.focus_up()?; // go back to the original pane
         ensure!(self.get_focused_pane()?.id == ori_id, "cannot move back to the original pane");
-        Err(RecoverableError::new("The current pane cannot be merged with others due to one of the following reasons:\n1. The current pane is the Terminal Pane, which cannot be closed.\n2. The current pane contains valid debug views and can only be merged with a Terminal Pane. To close this pane, you must first unsign all the debug views in this pane.").into())
+        Err(RecoverableError::new("The current pane cannot be merged with others due to one of the following reasons:\n\n1. The current pane is the Terminal Pane, which cannot be closed.\n\n2. The current pane contains valid debug views and can only be merged with a Terminal Pane. To close this pane, you must first unregister all the debug views in this pane.").into())
     }
 
     pub fn get_flattened_layout(&self, app: Rect) -> Result<Vec<PaneFlattened>> {
