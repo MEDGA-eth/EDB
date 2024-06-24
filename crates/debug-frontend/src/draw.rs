@@ -4,6 +4,7 @@ use alloy_primitives::U256;
 use crossterm::cursor;
 use eyre::ensure;
 use foundry_compilers::artifacts::sourcemap::SourceElement;
+use itertools::Itertools;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -139,32 +140,79 @@ impl FrontendContext<'_> {
         }
     }
 
-    fn get_focused_block(&self, pane: &PaneFlattened) -> Block<'static> {
+    fn get_focused_block<'a>(&'a self, pane: &PaneFlattened<'a>) -> Block<'static> {
+        // prepare the style
         let (border_style, border_set) = if pane.focused {
             if self.window.editor_mode == TerminalMode::Insert && pane.view == PaneView::Terminal {
                 (Style::default().fg(Color::LightGreen), border::DOUBLE)
             } else if pane.view == PaneView::Null {
                 (Style::default().fg(Color::LightRed), border::DOUBLE)
             } else {
-                (Style::default().fg(Color::LightCyan), border::DOUBLE)
+                (Style::default().fg(Color::Cyan), border::DOUBLE)
             }
         } else {
             (Style::default(), border::PLAIN)
         };
 
-        Block::default()
+        // prepare the title
+        fn get_initials(phrase: &str) -> String {
+            phrase
+                .split_whitespace() // Split the phrase into words
+                .filter_map(|word| word.chars().next()) // Get the first character of each word, if it exists
+                .collect() // Collect the characters into a String
+        }
+
+        // title format: " [id] > view1 | view2 | view3 | "
+        let long_title_n = pane.views.iter().map(|v| v.to_string().len() + 3).sum::<usize>() + 7;
+        let view_info: Vec<_> = if pane.views.is_empty() {
+            vec![("Empty".to_string(), false)]
+        } else if long_title_n < pane.rect.width as usize {
+            pane.views.iter().map(|v| (v.to_string(), *v == pane.view)).collect()
+        } else {
+            pane.views.iter().map(|v| (get_initials(&v.to_string()), *v == pane.view)).collect()
+        };
+
+        // prepare the title
+        let mut spans = Vec::with_capacity(1 + view_info.len() * 2);
+        spans.push(Span::raw(format!(" [{}] > ", pane.id)));
+        for (view, is_current_view) in view_info {
+            if is_current_view {
+                let mut style =
+                    Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+                if pane.focused && pane.views.len() > 1 {
+                    style = style.fg(Color::Yellow);
+                }
+                spans.push(Span::styled(view, style));
+            } else {
+                spans.push(Span::styled(view, Style::default()));
+            }
+            spans.push(Span::raw(" | "));
+        }
+
+        let mut block = Block::default()
             .style(Style::default())
             .borders(Borders::ALL)
             .border_style(border_style)
             .border_set(border_set)
+            .title(Line::from(spans));
+
+        // update bottom right corner with the terminal mode
+        if pane.view == PaneView::Terminal {
+            match self.window.editor_mode {
+                TerminalMode::Insert => {
+                    block = block.title_bottom(Line::from(" [ Insert Mode ] ").left_aligned())
+                }
+                TerminalMode::Normal => {
+                    block = block.title_bottom(Line::from(" [ Normal Mode ] ").left_aligned())
+                }
+            };
+        }
+
+        block
     }
 
-    fn draw_terminal(&mut self, f: &mut Frame<'_>, pane: PaneFlattened) {
-        let title = match self.window.editor_mode {
-            TerminalMode::Insert => format!(" [{}] Script Terminal (Insert Mode) ", pane.id),
-            TerminalMode::Normal => format!(" [{}] Script Terminal (Normal Mode) ", pane.id),
-        };
-        let block = self.get_focused_block(&pane).title(title);
+    fn draw_terminal<'a>(&'a self, f: &mut Frame<'_>, pane: PaneFlattened<'a>) {
+        let block = self.get_focused_block(&pane);
 
         let (cursor_style, cursor_line_style) = if pane.focused {
             if self.window.editor_mode == TerminalMode::Insert {
@@ -184,7 +232,7 @@ impl FrontendContext<'_> {
             (Style::default(), Style::default())
         };
 
-        let editor_mut = self.window.get_editor_mut();
+        let mut editor_mut = self.window.editor.borrow_mut();
         editor_mut.set_cursor_line_style(cursor_line_style);
         editor_mut.set_cursor_style(cursor_style);
         editor_mut.set_block(block);
@@ -243,9 +291,8 @@ impl FrontendContext<'_> {
     }
 
     // TODO
-    fn draw_null(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
-        let title = format!(" [{}] Empty Pane ", pane.id);
-        let block = self.get_focused_block(&pane).title(title);
+    fn draw_null<'a>(&'a self, f: &mut Frame<'_>, pane: PaneFlattened<'a>) {
+        let block = self.get_focused_block(&pane);
         let paragraph = Paragraph::new(Text::from(format!(
             "There is no debug view to show.\n\nPlease try to press CTRL + c to register a view to this pane."
         )))
@@ -255,9 +302,8 @@ impl FrontendContext<'_> {
     }
 
     // TODO
-    fn draw_trace(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
-        let title = format!(" [{}] Trace (address: {}) ", pane.id, self.address());
-        let block = self.get_focused_block(&pane).title(title);
+    fn draw_trace<'a>(&self, f: &mut Frame<'_>, pane: PaneFlattened<'a>) {
+        let block = self.get_focused_block(&pane);
         let paragraph = Paragraph::new(Text::from(format!("trace displaying under construction")))
             .block(block)
             .wrap(Wrap { trim: false });
@@ -265,9 +311,8 @@ impl FrontendContext<'_> {
     }
 
     // TODO
-    fn draw_variables(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
-        let title = format!(" [{}] Live Variables (number: 0) ", pane.id);
-        let block = self.get_focused_block(&pane).title(title);
+    fn draw_variables<'a>(&'a self, f: &mut Frame<'_>, pane: PaneFlattened<'a>) {
+        let block = self.get_focused_block(&pane);
         let paragraph =
             Paragraph::new(Text::from(format!("variable displaying under construction")))
                 .block(block)
@@ -276,9 +321,8 @@ impl FrontendContext<'_> {
     }
 
     // TODO
-    fn draw_expressions(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
-        let title = format!(" [{}] Watchers (number: 0) ", pane.id);
-        let block = self.get_focused_block(&pane).title(title);
+    fn draw_expressions<'a>(&'a self, f: &mut Frame<'_>, pane: PaneFlattened<'a>) {
+        let block = self.get_focused_block(&pane);
         let paragraph =
             Paragraph::new(Text::from(format!("watcher displaying under construction")))
                 .block(block)
@@ -297,23 +341,17 @@ impl FrontendContext<'_> {
         f.render_widget(paragraph, area);
     }
 
-    fn draw_src(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
-        let (text_output, source_name) = self.src_text(pane.rect);
-        let call_kind_text = match self.call_kind() {
-            CallKind::Create | CallKind::Create2 => "Contract creation",
-            CallKind::Call => "Contract call",
-            CallKind::StaticCall => "Contract staticcall",
-            CallKind::CallCode => "Contract callcode",
-            CallKind::DelegateCall => "Contract delegatecall",
-            CallKind::AuthCall => "Contract authcall",
-        };
-        let title = format!(
-            " [{}] {} {} ",
-            pane.id,
-            call_kind_text,
-            source_name.map(|s| format!("| {s}")).unwrap_or_default()
-        );
-        let block = self.get_focused_block(&pane).title(title);
+    fn draw_src<'a>(&'a self, f: &mut Frame<'_>, pane: PaneFlattened<'a>) {
+        let (text_output, _) = self.src_text(pane.rect);
+        // let call_kind_text = match self.call_kind() {
+        //     CallKind::Create | CallKind::Create2 => "Contract creation",
+        //     CallKind::Call => "Contract call",
+        //     CallKind::StaticCall => "Contract staticcall",
+        //     CallKind::CallCode => "Contract callcode",
+        //     CallKind::DelegateCall => "Contract delegatecall",
+        //     CallKind::AuthCall => "Contract authcall",
+        // };
+        let block = self.get_focused_block(&pane);
         let paragraph = Paragraph::new(text_output).block(block).wrap(Wrap { trim: false });
         f.render_widget(paragraph, pane.rect);
     }
@@ -515,7 +553,7 @@ impl FrontendContext<'_> {
         // Ok((source_element, source_code, source_file))
     }
 
-    fn draw_op_list(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
+    fn draw_op_list<'a>(&'a self, f: &mut Frame<'_>, pane: PaneFlattened<'a>) {
         let debug_steps = self.debug_steps();
         let max_pc = debug_steps.iter().map(|step| step.pc).max().unwrap_or(0);
         let max_pc_len = hex_digits(max_pc);
@@ -533,13 +571,7 @@ impl FrontendContext<'_> {
             })
             .collect::<Vec<_>>();
 
-        let title = format!(
-            " [{}] PC: {} | Gas used in call: {} ",
-            pane.id,
-            self.current_step().pc,
-            self.current_step().total_gas_used,
-        );
-        let block = self.get_focused_block(&pane).title(title);
+        let block = self.get_focused_block(&pane);
         let list = List::new(items)
             .block(block)
             .highlight_symbol("▶")
@@ -549,7 +581,7 @@ impl FrontendContext<'_> {
         f.render_stateful_widget(list, pane.rect, &mut state);
     }
 
-    fn draw_stack(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
+    fn draw_stack<'a>(&'a self, f: &mut Frame<'_>, pane: PaneFlattened<'a>) {
         let step = self.current_step();
         let stack = &step.stack;
 
@@ -592,27 +624,17 @@ impl FrontendContext<'_> {
             })
             .collect();
 
-        let title = format!(" [{}] Stack (depth: {})) ", pane.id, stack.len());
-        let block = self.get_focused_block(&pane).title(title);
+        let block = self.get_focused_block(&pane);
         let paragraph = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
         f.render_widget(paragraph, pane.rect);
     }
 
-    fn draw_buffer(&self, f: &mut Frame<'_>, pane: PaneFlattened) {
+    fn draw_buffer<'a>(&'a self, f: &mut Frame<'_>, pane: PaneFlattened<'a>) {
         let step = self.current_step();
-        let (buf, title) = match pane.view {
-            PaneView::Memory => (
-                step.memory.as_ref(),
-                format!(" [{}] Memory (max expansion: {} bytes) ", pane.id, step.memory.len()),
-            ),
-            PaneView::Calldata => (
-                step.calldata.as_ref(),
-                format!(" [{}] Calldata (size: {} bytes) ", pane.id, step.calldata.len()),
-            ),
-            PaneView::Returndata => (
-                step.returndata.as_ref(),
-                format!(" [{}] Returndata (size: {} bytes) ", pane.id, step.returndata.len()),
-            ),
+        let buf = match pane.view {
+            PaneView::Memory => step.memory.as_ref(),
+            PaneView::Calldata => step.calldata.as_ref(),
+            PaneView::Returndata => step.returndata.as_ref(),
             _ => unreachable!("other data kinds should be handled elsewhere"),
         };
 
@@ -733,7 +755,7 @@ impl FrontendContext<'_> {
             })
             .collect();
 
-        let block = self.get_focused_block(&pane).title(title);
+        let block = self.get_focused_block(&pane);
         let paragraph = Paragraph::new(text).block(block).wrap(Wrap { trim: true });
         f.render_widget(paragraph, pane.rect);
     }

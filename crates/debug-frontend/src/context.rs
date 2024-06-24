@@ -172,7 +172,7 @@ impl FrontendContext<'_> {
         //     }
         // }
 
-        let control = event.modifiers.contains(KeyModifiers::CONTROL);
+        let shift = event.modifiers.contains(KeyModifiers::SHIFT);
 
         let focused_pane = self.window.get_focused_view()?;
         if self.window.has_popup() {
@@ -194,16 +194,16 @@ impl FrontendContext<'_> {
             // Handle common key events
             match event.code {
                 // Move focus to the left pane
-                KeyCode::Left if control => self.repeat(|this| this.window.focus_left())?,
+                KeyCode::Left if shift => self.repeat(|this| this.window.focus_left())?,
                 // Move focus to the right pane
-                KeyCode::Right if control => self.repeat(|this| this.window.focus_right())?,
+                KeyCode::Right if shift => self.repeat(|this| this.window.focus_right())?,
                 // Move focus to the down pane
-                KeyCode::Down if control => self.repeat(|this| this.window.focus_down())?,
+                KeyCode::Down if shift => self.repeat(|this| this.window.focus_down())?,
                 // Move focus to the up pane
-                KeyCode::Up if control => self.repeat(|this| this.window.focus_up())?,
+                KeyCode::Up if shift => self.repeat(|this| this.window.focus_up())?,
 
                 // Pop up the assignment window
-                KeyCode::Char('c') if control => self.window.pop_assignment(),
+                KeyCode::Char('C') if shift => self.window.pop_assignment(),
 
                 // Shortcut to enter the terminal
                 KeyCode::Char('i') => {
@@ -222,24 +222,12 @@ impl FrontendContext<'_> {
                 KeyCode::Enter if !self.window.full_screen => self.window.toggle_full_screen(),
 
                 // Cycle left the current focused pane
-                KeyCode::Char('h') if focused_pane != PaneView::Terminal => {
-                    self.repeat(|this| {
-                        this.window.get_focused_pane_mut()?.prev_view();
-                        Ok(())
-                    })?
-                }
                 KeyCode::Left if focused_pane != PaneView::Terminal => self.repeat(|this| {
                     this.window.get_focused_pane_mut()?.prev_view();
                     Ok(())
                 })?,
 
                 // Cycle right the current focused pane
-                KeyCode::Char('l') if focused_pane != PaneView::Terminal => {
-                    self.repeat(|this| {
-                        this.window.get_focused_pane_mut()?.next_view();
-                        Ok(())
-                    })?
-                }
                 KeyCode::Right if focused_pane != PaneView::Terminal => self.repeat(|this| {
                     this.window.get_focused_pane_mut()?.next_view();
                     Ok(())
@@ -249,15 +237,15 @@ impl FrontendContext<'_> {
                 KeyCode::Char('q') => return Ok(ControlFlow::Break(ExitReason::CharExit)),
 
                 // Shortcut to split the screen: (s)plit and (d)ivide
-                KeyCode::Char('d') if control => {
+                KeyCode::Char('D') if shift => {
                     self.window.split_focused_pane(Direction::Vertical, [1, 1])?
                 }
-                KeyCode::Char('s') if control => {
+                KeyCode::Char('S') if shift => {
                     self.window.split_focused_pane(Direction::Horizontal, [1, 1])?
                 }
 
                 // Shortcut to unregister the current view
-                KeyCode::Char('x') if control => {
+                KeyCode::Char('X') if shift => {
                     let view = self.window.get_focused_view()?;
 
                     if view.is_valid() {

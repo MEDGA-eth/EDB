@@ -33,12 +33,12 @@ pub enum PaneView {
 impl ToString for PaneView {
     fn to_string(&self) -> String {
         match self {
-            PaneView::Terminal => "Script Terminal".to_string(),
+            PaneView::Terminal => "Terminal".to_string(),
             PaneView::Trace => "Call Trace".to_string(),
             PaneView::Source => "Source Code".to_string(),
             PaneView::Opcode => "Opcode".to_string(),
             PaneView::Variable => "Variables".to_string(),
-            PaneView::Expression => "Customized Watchers".to_string(),
+            PaneView::Expression => "Watchers".to_string(),
             PaneView::Memory => "Memory".to_string(),
             PaneView::Calldata => "Calldata".to_string(),
             PaneView::Returndata => "Returndata".to_string(),
@@ -85,8 +85,8 @@ pub struct Point(u16, u16);
 /// A virtual rect to help find the focused pane.
 const VIRTUAL_RECT: Rect = Rect { x: 0, y: 0, width: 2048, height: 2048 };
 
-/// 1/8 of the screen size
-const MIN_PANE_SIZE: u16 = 256;
+/// 1/4 of the screen size
+const MIN_SPLITABLE_PANE_SIZE: u16 = 512;
 
 #[derive(Debug, Clone)]
 pub struct Pane {
@@ -96,7 +96,8 @@ pub struct Pane {
 }
 
 #[derive(Debug, Clone)]
-pub struct PaneFlattened {
+pub struct PaneFlattened<'a> {
+    pub views: &'a Vec<PaneView>,
     pub rect: Rect,
     pub view: PaneView,
     pub focused: bool,
@@ -141,6 +142,10 @@ impl Pane {
 
     pub fn len(&self) -> usize {
         self.views.len()
+    }
+
+    pub fn get_views(&self) -> &Vec<PaneView> {
+        &self.views
     }
 
     pub fn get_current_view(&self) -> PaneView {
@@ -544,7 +549,7 @@ impl PaneManager {
             Direction::Vertical => rect.height,
         };
 
-        if side_len < MIN_PANE_SIZE {
+        if side_len < MIN_SPLITABLE_PANE_SIZE {
             return Err(RecoverableError::new(format!("pane is too small to split")).into())
         }
 
@@ -685,7 +690,7 @@ impl PaneManager {
         self.view_assignment.get(&view).copied()
     }
 
-    pub fn get_flattened_layout(&self, app: Rect) -> Result<Vec<PaneFlattened>> {
+    pub fn get_flattened_layout<'a>(&'a self, app: Rect) -> Result<Vec<PaneFlattened<'a>>> {
         let layout = self.get_layout(app)?;
         let focus_info = self.get_focused_info()?;
         Ok(layout
@@ -698,12 +703,13 @@ impl PaneManager {
                     .ok_or_else(|| eyre::eyre!("pane not found (get_flattened_layout)"))?;
                 Ok(PaneFlattened {
                     rect: *rect,
+                    views: pane.get_views(),
                     view: pane.get_current_view(),
                     focused: focus_info.pane_id == *id,
                     id: *id,
                 })
             })
-            .collect::<Result<Vec<PaneFlattened>>>()?)
+            .collect::<Result<Vec<PaneFlattened<'a>>>>()?)
     }
 
     pub fn get_layout(&self, app: Rect) -> Result<PaneLayout> {

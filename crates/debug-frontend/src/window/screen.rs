@@ -194,11 +194,12 @@ impl ScreenManager {
         Err(RecoverableError::new("The current pane cannot be merged with others due to one of the following reasons:\n\n1. The current pane cannot be merged with any adjacent panes.\n\n2. The current pane contains valid debug views but can only be merged with a Terminal Pane.\n\n3. The current pane has an adjacent pane, but these two are not directly split from the same parent pane.\n\nTo close this pane, you may consider unregistering some views or closing other panes first.").into())
     }
 
-    pub fn get_flattened_layout(&self, app: Rect) -> Result<Vec<PaneFlattened>> {
+    pub fn get_flattened_layout<'a>(&'a self, app: Rect) -> Result<Vec<PaneFlattened<'a>>> {
         if self.full_screen {
             let pane = self.get_current_pane()?.get_focused_pane()?;
             Ok(vec![PaneFlattened {
                 view: pane.get_current_view(),
+                views: pane.get_views(),
                 id: pane.id,
                 focused: true,
                 rect: app,

@@ -3,7 +3,11 @@ mod pane;
 mod popup;
 mod screen;
 
-use std::ops::{Deref, DerefMut};
+use std::{
+    cell::{RefCell, RefMut},
+    ops::{Deref, DerefMut},
+    rc::Rc,
+};
 
 use eyre::Result;
 use tui_textarea::TextArea;
@@ -20,9 +24,9 @@ pub enum TerminalMode {
 }
 
 pub struct Window<'a> {
-    editor: TextArea<'a>,
     screen: ScreenManager,
 
+    pub editor: Rc<RefCell<TextArea<'a>>>,
     pub editor_mode: TerminalMode,
     pub popup_mode: Option<PopupMode>,
 }
@@ -44,7 +48,7 @@ impl<'a> DerefMut for Window<'a> {
 impl<'a> Window<'a> {
     pub fn new() -> Result<Self> {
         Ok(Self {
-            editor: TextArea::default(),
+            editor: Rc::new(RefCell::new(TextArea::default())),
             editor_mode: TerminalMode::Normal,
             screen: ScreenManager::new()?,
             popup_mode: None,

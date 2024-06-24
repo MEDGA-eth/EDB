@@ -14,15 +14,7 @@ impl<'a> Window<'a> {
         self.editor_mode = TerminalMode::Normal;
     }
 
-    pub fn get_editor(&self) -> &TextArea<'a> {
-        &self.editor
-    }
-
-    pub fn get_editor_mut(&mut self) -> &mut TextArea<'a> {
-        &mut self.editor
-    }
-
     pub fn handle_input(&mut self, key: KeyEvent) {
-        self.editor.input(key);
+        self.editor.borrow_mut().input(key);
     }
 }
