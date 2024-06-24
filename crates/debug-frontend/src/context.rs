@@ -193,16 +193,6 @@ impl FrontendContext<'_> {
         } else {
             // Handle common key events
             match event.code {
-                // Shortcut to enter the terminal
-                KeyCode::Char('i') => {
-                    // We do not want to exit the full screen mode when we are in
-                    // the terminal, so we do not change screen
-                    if focused_pane != PaneView::Terminal {
-                        self.window.enter_terminal()?;
-                    }
-                    self.window.set_editor_insert_mode();
-                }
-
                 // Move focus to the left pane
                 KeyCode::Left if control => self.repeat(|this| this.window.focus_left())?,
                 // Move focus to the right pane
@@ -214,6 +204,16 @@ impl FrontendContext<'_> {
 
                 // Pop up the assignment window
                 KeyCode::Char('c') if control => self.window.pop_assignment(),
+
+                // Shortcut to enter the terminal
+                KeyCode::Char('i') => {
+                    // We do not want to exit the full screen mode when we are in
+                    // the terminal, so we do not change screen
+                    if focused_pane != PaneView::Terminal {
+                        self.window.enter_terminal()?;
+                    }
+                    self.window.set_editor_insert_mode();
+                }
 
                 // Esc
                 KeyCode::Esc if self.window.full_screen => self.window.toggle_full_screen(),
@@ -256,8 +256,22 @@ impl FrontendContext<'_> {
                     self.window.split_focused_pane(Direction::Horizontal, [1, 1])?
                 }
 
-                // Shortcut to close the current pane
-                KeyCode::Char('x') if control => self.window.close_focused_pane()?,
+                // Shortcut to unregister the current view
+                KeyCode::Char('x') if control => {
+                    let view = self.window.get_focused_view()?;
+
+                    if view.is_valid() {
+                        self.window.get_current_pane_mut()?.unassign(view)?;
+                    }
+
+                    // try to merge the pane if it is empty
+                    if !self.window.get_focused_view()?.is_valid() {
+                        if self.window.get_current_pane()?.num_of_panes() == 1 {
+                            return Err(RecoverableError::new("Cannot close the last pane.").into());
+                        }
+                        self.window.close_focused_pane()?;
+                    }
+                }
 
                 // Other view-specific key events
                 _ => match focused_pane {

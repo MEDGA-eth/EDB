@@ -617,6 +617,10 @@ impl PaneManager {
         Ok(())
     }
 
+    pub fn num_of_panes(&self) -> usize {
+        self.panes.len()
+    }
+
     pub fn focus_up(&mut self) -> Result<()> {
         let rect = self.get_focused_info()?.rect;
         ensure!(self.focus.in_rect(rect), "focus is not in the focused pane");

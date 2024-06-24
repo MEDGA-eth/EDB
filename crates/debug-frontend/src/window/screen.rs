@@ -169,10 +169,6 @@ impl ScreenManager {
 
     pub fn close_focused_pane(&mut self) -> Result<()> {
         let pane = self.get_focused_pane()?;
-        if pane.get_current_view() == PaneView::Terminal {
-            return Err(RecoverableError::new("You cannot close the script terminal pane.").into());
-        }
-
         let id = pane.id;
 
         // let's try to merge the pane with its neighbor.
@@ -195,7 +191,7 @@ impl ScreenManager {
         }
 
         ensure!(self.get_focused_pane()?.id == id, "cannot move back to the original pane");
-        Err(RecoverableError::new("The current pane cannot be merged with others due to one of the following reasons:\n\n1. The current pane cannot be merged with any adjacent panes.\n\n2. The current pane contains valid debug views and can only be merged with a Terminal Pane.\n\n3. The current pane has an adjacent pane, but these two are not directly split from the same parent pane.\n\nTo close this pane, you may consider unregistering some views or closing other panes first.").into())
+        Err(RecoverableError::new("The current pane cannot be merged with others due to one of the following reasons:\n\n1. The current pane cannot be merged with any adjacent panes.\n\n2. The current pane contains valid debug views but can only be merged with a Terminal Pane.\n\n3. The current pane has an adjacent pane, but these two are not directly split from the same parent pane.\n\nTo close this pane, you may consider unregistering some views or closing other panes first.").into())
     }
 
     pub fn get_flattened_layout(&self, app: Rect) -> Result<Vec<PaneFlattened>> {
