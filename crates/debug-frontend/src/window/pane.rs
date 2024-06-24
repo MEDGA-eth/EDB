@@ -518,6 +518,11 @@ impl PaneManager {
             new_pane.add_view(*view)?;
         }
 
+        // merge needs to update the view assignment
+        for view in &new_pane.views {
+            self.view_assignment.insert(*view, new_id);
+        }
+
         self.panes.remove(&id2);
         self.panes.insert(new_id, new_pane);
 
