@@ -140,7 +140,7 @@ impl Window<'_> {
                 if !pane.has_view(&view) {
                     if count == k {
                         let target = pane.id;
-                        self.get_current_pane_mut()?.assign(view, target).map_err(|e| {
+                        self.get_pane_manager_mut()?.assign(view, target).map_err(|e| {
                             RecoverableError::new(format!(
                                 "Failed to register the selectced view ({})\n\nReason: {}",
                                 view.to_string(),
@@ -161,7 +161,7 @@ impl Window<'_> {
                 let view = PaneView::from(i);
                 if pane.has_view(&view) {
                     if count == k {
-                        self.get_current_pane_mut()?.unassign(view).map_err(|e| {
+                        self.get_pane_manager_mut()?.unassign(view).map_err(|e| {
                             RecoverableError::new(format!(
                                 "Failed to unregister the selectced view ({})\n\nReason: {}",
                                 view.to_string(),

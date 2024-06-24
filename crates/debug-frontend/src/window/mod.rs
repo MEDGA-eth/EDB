@@ -10,9 +10,10 @@ use std::{
 };
 
 use eyre::Result;
+use ratatui::layout::Rect;
 use tui_textarea::TextArea;
 
-pub use pane::{PaneFlattened, PaneView};
+pub use pane::{PaneFlattened, PaneView, VirtCoord};
 pub use popup::{PopupMessage, PopupMode};
 use screen::ScreenManager;
 
@@ -26,6 +27,7 @@ pub enum TerminalMode {
 pub struct Window<'a> {
     screen: ScreenManager,
 
+    pub screen_size: Rect,
     pub editor: Rc<RefCell<TextArea<'a>>>,
     pub editor_mode: TerminalMode,
     pub popup_mode: Option<PopupMode>,
@@ -51,6 +53,7 @@ impl<'a> Window<'a> {
             editor: Rc::new(RefCell::new(TextArea::default())),
             editor_mode: TerminalMode::Normal,
             screen: ScreenManager::new()?,
+            screen_size: Rect::default(),
             popup_mode: None,
         })
     }

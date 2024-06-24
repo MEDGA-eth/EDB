@@ -24,7 +24,6 @@ arrayvec.workspace = true
 crossterm.workspace = true
 eyre.workspace = true
 hex.workspace = true
-itertools.workspace = true
 foundry-compilers.workspace = true
 foundry-block-explorers = { workspace = true, features = ["foundry-compilers"] }
 revm.workspace = true

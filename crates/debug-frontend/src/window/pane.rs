@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{borrow::Borrow, collections::BTreeMap};
 
 use eyre::{ensure, eyre, Result};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -80,10 +80,10 @@ impl PaneView {
 pub struct PaneLayout(BTreeMap<PaneId, Rect>);
 
 #[derive(Debug, Clone, Copy, Default)]
-pub struct Point(u16, u16);
+pub struct VirtCoord(u16, u16);
 
 /// A virtual rect to help find the focused pane.
-const VIRTUAL_RECT: Rect = Rect { x: 0, y: 0, width: 2048, height: 2048 };
+pub const VIRTUAL_RECT: Rect = Rect { x: 0, y: 0, width: 2048, height: 2048 };
 
 /// 1/4 of the screen size
 const MIN_SPLITABLE_PANE_SIZE: u16 = 512;
@@ -255,7 +255,7 @@ pub struct PaneManager {
     view_assignment: BTreeMap<PaneView, PaneId>,
 
     // A virtual focus point to help find the focused pane
-    focus: Point,
+    focus: VirtCoord,
 
     // The creator (operation id) of each border
     borders: BTreeMap<PaneId, [Option<usize>; 4]>,
@@ -282,7 +282,7 @@ impl PaneManager {
             panes,
             operations: Vec::new(),
             view_assignment: BTreeMap::new(),
-            focus: Point::new(0, 0),
+            focus: VirtCoord::new(0, 0),
             borders,
         }
     }
@@ -410,34 +410,6 @@ impl PaneManager {
         }
 
         Ok(())
-    }
-
-    pub fn split_by_view(
-        &mut self,
-        view: PaneView,
-        direction: Direction,
-        ratio: [u32; 2],
-    ) -> Result<usize> {
-        let target_id = self
-            .view_assignment
-            .get(&view)
-            .copied()
-            .ok_or(eyre::eyre!("pane not found (split_by_view)"))?;
-        self.split(target_id, direction, ratio)
-    }
-
-    pub fn merge_by_view(&mut self, input1: PaneView, input2: PaneView) -> Result<usize> {
-        let input1_id = self
-            .view_assignment
-            .get(&input1)
-            .copied()
-            .ok_or(eyre::eyre!("pane not found (merge_by_view)"))?;
-        let input2_id = self
-            .view_assignment
-            .get(&input2)
-            .copied()
-            .ok_or(eyre::eyre!("pane not found (merge_by_view)"))?;
-        self.merge(input1_id, input2_id)
     }
 
     pub fn merge(&mut self, id1: PaneId, id2: PaneId) -> Result<usize> {
@@ -604,7 +576,7 @@ impl PaneManager {
     }
 
     /// Force the focus to a specific point. Make sure the point is on the focused pane.
-    pub fn force_goto(&mut self, point: Point) {
+    pub fn force_goto(&mut self, point: VirtCoord) {
         self.focus = point;
     }
 
@@ -613,7 +585,7 @@ impl PaneManager {
         let layout = self.get_layout(VIRTUAL_RECT)?;
 
         let rect = layout.0.get(&target_id).ok_or(eyre::eyre!("pane not found (force_goto)"))?;
-        self.focus = Point::new(rect.x, rect.y);
+        self.focus = VirtCoord::new(rect.x, rect.y);
 
         let pane =
             self.panes.get_mut(&target_id).ok_or(eyre::eyre!("pane not found (force_goto)"))?;
@@ -622,7 +594,7 @@ impl PaneManager {
         Ok(())
     }
 
-    pub fn num_of_panes(&self) -> usize {
+    pub fn pane_num(&self) -> usize {
         self.panes.len()
     }
 
@@ -656,6 +628,39 @@ impl PaneManager {
 
         self.focus.0 = rect.right() % VIRTUAL_RECT.width;
         Ok(())
+    }
+
+    pub fn scale_pane(
+        &mut self,
+        id: PaneId,
+        side: BorderSide,
+        amount: i32,
+        screen: Rect,
+    ) -> Result<()> {
+        let borders = self.borders.get(&id).ok_or(eyre::eyre!("pane not found (scale_pane)"))?;
+
+        let op_id =
+            borders[side as usize].ok_or(eyre::eyre!("cannot scale the pane to this side"))?;
+        let op = self.operations.get_mut(op_id).ok_or(eyre::eyre!("operation not found"))?;
+
+        if let PaneOperation::Split(split) = op {
+            let side_len = match split.direction {
+                Direction::Horizontal => {
+                    (split.side_len as u32) * (screen.width as u32) / (VIRTUAL_RECT.width as u32)
+                }
+                Direction::Vertical => {
+                    (split.side_len as u32) * (screen.height as u32) / (VIRTUAL_RECT.height as u32)
+                }
+            };
+
+            let len1 = side_len * split.ratio[0] / (split.ratio[0] + split.ratio[1]);
+            let len2 = side_len - len1;
+            split.ratio = [(len1 as i32 + amount) as u32, (len2 as i32 - amount) as u32];
+
+            Ok(())
+        } else {
+            Err(eyre::eyre!("invalid operation"))
+        }
     }
 
     pub fn get_focused_pane_mut(&mut self) -> Result<&mut Pane> {
@@ -769,9 +774,16 @@ impl PaneManager {
     }
 }
 
-impl Point {
+impl VirtCoord {
     pub fn new(x: u16, y: u16) -> Self {
-        Point(x, y)
+        VirtCoord(x, y)
+    }
+
+    pub fn project(x: u16, y: u16, rect: Rect) -> VirtCoord {
+        VirtCoord::new(
+            ((x as u64) * (VIRTUAL_RECT.width as u64) / (rect.width as u64)) as u16,
+            ((y as u64) * (VIRTUAL_RECT.height as u64) / (rect.height as u64)) as u16,
+        )
     }
 
     pub fn in_rect(&self, rect: Rect) -> bool {
@@ -779,13 +791,6 @@ impl Point {
             self.0 < rect.right() &&
             self.1 >= rect.top() &&
             self.1 < rect.bottom()
-    }
-
-    pub fn project(&self, rect: Rect) -> Point {
-        Point::new(
-            ((self.0 as u64) * (VIRTUAL_RECT.width as u64) / (rect.width as u64)) as u16,
-            ((self.1 as u64) * (VIRTUAL_RECT.height as u64) / (rect.height as u64)) as u16,
-        )
     }
 }
 

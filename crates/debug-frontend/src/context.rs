@@ -6,14 +6,14 @@ use crossterm::event::{
 };
 use edb_debug_backend::artifact::debug::{DebugArtifact, DebugNodeFlat, DebugStep};
 use eyre::Result;
-use ratatui::layout::Direction;
+use ratatui::layout::{Direction, Rect};
 use revm_inspectors::tracing::types::CallKind;
 use serde::de;
 use std::ops::ControlFlow;
 
 use crate::{
     core::ExitReason,
-    window::{PaneView, TerminalMode, Window},
+    window::{PaneView, TerminalMode, VirtCoord, Window},
 };
 
 /// This is currently used to remember last scroll position so screen doesn't wiggle as much.
@@ -54,13 +54,14 @@ pub struct FrontendContext<'a> {
     pub opcode_list: Vec<String>,
     pub last_index: usize,
 
-    pub(crate) stack_labels: bool,
+    pub stack_labels: bool,
     /// Whether to decode active buffer as utf8 or not.
-    pub(crate) buf_utf: bool,
-    pub(crate) show_shortcuts: bool,
+    pub buf_utf: bool,
+    pub show_shortcuts: bool,
 
-    /// The display window
-    pub(crate) window: Window<'a>,
+    /// The display window (which is only aware of the layout,
+    /// without any actual data)
+    pub window: Window<'a>,
 }
 
 impl<'a> FrontendContext<'a> {
@@ -173,6 +174,8 @@ impl FrontendContext<'_> {
         // }
 
         let shift = event.modifiers.contains(KeyModifiers::SHIFT);
+        let control = event.modifiers.contains(KeyModifiers::CONTROL);
+        let screen_size = self.window.screen_size;
 
         let focused_pane = self.window.get_focused_view()?;
         if self.window.has_popup() {
@@ -193,14 +196,23 @@ impl FrontendContext<'_> {
         } else {
             // Handle common key events
             match event.code {
+                // Scale the focused pane on the left side
+                KeyCode::Left if shift && control => self.window.scale_left(1, screen_size)?,
+                // Scale the focused pane on the right side
+                KeyCode::Right if shift && control => self.window.scale_right(1, screen_size)?,
+                // Scale the focused pane on the bottom side
+                KeyCode::Down if shift && control => self.window.scale_down(1, screen_size)?,
+                // Scale the focused pane on the top side
+                KeyCode::Up if shift && control => self.window.scale_up(1, screen_size)?,
+
                 // Move focus to the left pane
-                KeyCode::Left if shift => self.repeat(|this| this.window.focus_left())?,
+                KeyCode::Left if shift => self.window.focus_left()?,
                 // Move focus to the right pane
-                KeyCode::Right if shift => self.repeat(|this| this.window.focus_right())?,
+                KeyCode::Right if shift => self.window.focus_right()?,
                 // Move focus to the down pane
-                KeyCode::Down if shift => self.repeat(|this| this.window.focus_down())?,
+                KeyCode::Down if shift => self.window.focus_down()?,
                 // Move focus to the up pane
-                KeyCode::Up if shift => self.repeat(|this| this.window.focus_up())?,
+                KeyCode::Up if shift => self.window.focus_up()?,
 
                 // Pop up the assignment window
                 KeyCode::Char('C') if shift => self.window.pop_assignment(),
@@ -234,7 +246,7 @@ impl FrontendContext<'_> {
                 })?,
 
                 // Quit
-                KeyCode::Char('q') => return Ok(ControlFlow::Break(ExitReason::CharExit)),
+                KeyCode::Char('Q') if shift => return Ok(ControlFlow::Break(ExitReason::CharExit)),
 
                 // Shortcut to split the screen: (s)plit and (d)ivide
                 KeyCode::Char('D') if shift => {
@@ -249,12 +261,12 @@ impl FrontendContext<'_> {
                     let view = self.window.get_focused_view()?;
 
                     if view.is_valid() {
-                        self.window.get_current_pane_mut()?.unassign(view)?;
+                        self.window.get_pane_manager_mut()?.unassign(view)?;
                     }
 
                     // try to merge the pane if it is empty
                     if !self.window.get_focused_view()?.is_valid() && !self.window.full_screen {
-                        if self.window.get_current_pane()?.num_of_panes() == 1 {
+                        if self.window.get_pane_manager()?.pane_num() == 1 {
                             return Err(RecoverableError::new("Cannot close the last pane.").into());
                         }
                         self.window.close_focused_pane()?;
@@ -409,7 +421,11 @@ impl FrontendContext<'_> {
             MouseEventKind::ScrollUp => self.window.get_focused_pane_mut()?.prev_view(),
             MouseEventKind::ScrollDown => self.window.get_focused_pane_mut()?.next_view(),
             MouseEventKind::Down(MouseButton::Left) => {
-                self.window.set_mouse_move(event.column, event.row)
+                if !self.window.full_screen {
+                    let v_point =
+                        VirtCoord::project(event.column, event.row, self.window.screen_size);
+                    self.window.get_pane_manager_mut().unwrap().force_goto(v_point);
+                }
             }
             _ => {}
         }

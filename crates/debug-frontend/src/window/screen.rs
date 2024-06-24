@@ -5,7 +5,7 @@ use ratatui::layout::{Direction, Rect};
 
 use crate::{
     context::RecoverableError,
-    window::pane::{Pane, PaneFlattened, PaneManager, PaneView, Point},
+    window::pane::{self, Pane, PaneFlattened, PaneManager, PaneView},
 };
 
 use super::pane::{BorderSide, PaneId};
@@ -13,13 +13,14 @@ use super::pane::{BorderSide, PaneId};
 pub const SMALL_SCREEN_STR: &str = "Defualt (Small Screen)";
 pub const LARGE_SCREEN_STR: &str = "Defualt (Large Screen)";
 
-/// Trace the focus, to ensure the pane switching is backed by a state machine.
+/// A fully abstracted screen manager that manages the layout of the screen.
+/// The screen manager is not aware of the actual terminal size, but it is aware of the layout of
+/// the screen.
 pub struct ScreenManager {
     pub panes: HashMap<String, PaneManager>,
     pub current_pane: String,
     pub use_default_pane: bool,
     pub full_screen: bool,
-    pub pending_mouse_move: Option<Point>,
 }
 
 impl ScreenManager {
@@ -29,7 +30,6 @@ impl ScreenManager {
             current_pane: String::new(),
             full_screen: false,
             use_default_pane: true,
-            pending_mouse_move: None,
         };
 
         manager.add_pane_manager(SMALL_SCREEN_STR, PaneManager::default_small_screen()?);
@@ -40,14 +40,14 @@ impl ScreenManager {
     }
 
     pub fn get_focused_pane_mut(&mut self) -> Result<&mut Pane> {
-        self.get_current_pane_mut()?.get_focused_pane_mut()
+        self.get_pane_manager_mut()?.get_focused_pane_mut()
     }
     pub fn get_focused_pane(&self) -> Result<&Pane> {
-        self.get_current_pane()?.get_focused_pane()
+        self.get_pane_manager()?.get_focused_pane()
     }
 
     pub fn get_focused_view(&self) -> Result<PaneView> {
-        self.get_current_pane()?.get_focused_view()
+        self.get_pane_manager()?.get_focused_view()
     }
 
     pub fn get_available_pane_profiles(&self) -> Vec<String> {
@@ -66,30 +66,22 @@ impl ScreenManager {
         self.full_screen = !self.full_screen;
     }
 
-    pub fn set_mouse_move(&mut self, x: u16, y: u16) {
-        if self.full_screen {
-            // Ignore mouse move in full screen mode.
-            return;
-        }
-        self.pending_mouse_move = Some(Point::new(x, y));
-    }
-
-    pub fn get_current_pane(&self) -> Result<&PaneManager> {
+    pub fn get_pane_manager(&self) -> Result<&PaneManager> {
         self.panes.get(&self.current_pane).ok_or(eyre::eyre!("No current pane"))
     }
 
-    pub fn get_current_pane_mut(&mut self) -> Result<&mut PaneManager> {
+    pub fn get_pane_manager_mut(&mut self) -> Result<&mut PaneManager> {
         self.panes.get_mut(&self.current_pane).ok_or(eyre::eyre!("No current pane"))
     }
 
     pub fn enter_terminal(&mut self) -> Result<()> {
         ensure!(!self.full_screen, "Cannot enter terminal in full screen mode");
-        self.get_current_pane_mut()?.force_goto_by_view(PaneView::Terminal)?;
+        self.get_pane_manager_mut()?.force_goto_by_view(PaneView::Terminal)?;
 
         Ok(())
     }
 
-    pub fn set_pane(&mut self, name: &str) -> Result<()> {
+    pub fn change_pane_manager(&mut self, name: &str) -> Result<()> {
         if self.panes.contains_key(name) {
             self.current_pane = name.to_string();
             Ok(())
@@ -107,24 +99,24 @@ impl ScreenManager {
     }
 
     pub fn focus_up(&mut self) -> Result<()> {
-        self.get_current_pane_mut()?.focus_up()
+        self.get_pane_manager_mut()?.focus_up()
     }
 
     pub fn focus_down(&mut self) -> Result<()> {
-        self.get_current_pane_mut()?.focus_down()
+        self.get_pane_manager_mut()?.focus_down()
     }
 
     pub fn focus_left(&mut self) -> Result<()> {
-        self.get_current_pane_mut()?.focus_left()
+        self.get_pane_manager_mut()?.focus_left()
     }
 
     pub fn focus_right(&mut self) -> Result<()> {
-        self.get_current_pane_mut()?.focus_right()
+        self.get_pane_manager_mut()?.focus_right()
     }
 
     pub fn split_focused_pane(&mut self, direction: Direction, ratio: [u32; 2]) -> Result<()> {
         let id = self.get_focused_pane()?.id;
-        self.get_current_pane_mut()?.split(id, direction, ratio)?;
+        self.get_pane_manager_mut()?.split(id, direction, ratio)?;
         Ok(())
     }
 
@@ -133,7 +125,7 @@ impl ScreenManager {
             BorderSide::Left => {
                 self.focus_left()?;
                 let new_id = self.get_focused_pane()?.id;
-                if self.get_current_pane_mut()?.merge(id, new_id).is_ok() {
+                if self.get_pane_manager_mut()?.merge(id, new_id).is_ok() {
                     return Ok(());
                 }
                 self.focus_right()?;
@@ -141,7 +133,7 @@ impl ScreenManager {
             BorderSide::Right => {
                 self.focus_right()?;
                 let new_id = self.get_focused_pane()?.id;
-                if self.get_current_pane_mut()?.merge(id, new_id).is_ok() {
+                if self.get_pane_manager_mut()?.merge(id, new_id).is_ok() {
                     return Ok(());
                 }
                 self.focus_left()?;
@@ -149,7 +141,7 @@ impl ScreenManager {
             BorderSide::Top => {
                 self.focus_up()?;
                 let new_id = self.get_focused_pane()?.id;
-                if self.get_current_pane_mut()?.merge(id, new_id).is_ok() {
+                if self.get_pane_manager_mut()?.merge(id, new_id).is_ok() {
                     return Ok(());
                 }
                 self.focus_down()?;
@@ -157,7 +149,7 @@ impl ScreenManager {
             BorderSide::Bottom => {
                 self.focus_down()?;
                 let new_id = self.get_focused_pane()?.id;
-                if self.get_current_pane_mut()?.merge(id, new_id).is_ok() {
+                if self.get_pane_manager_mut()?.merge(id, new_id).is_ok() {
                     return Ok(());
                 }
                 self.focus_up()?;
@@ -174,7 +166,7 @@ impl ScreenManager {
         // let's try to merge the pane with its neighbor.
         // we may want to first marge the latest split pane.
         let mut indexed_values: Vec<(usize, i32)> = self
-            .get_current_pane()?
+            .get_pane_manager()?
             .get_borders(id)?
             .iter()
             .map(|x| x.map(|y| y as i32).unwrap_or(-1))
@@ -196,7 +188,7 @@ impl ScreenManager {
 
     pub fn get_flattened_layout<'a>(&'a self, app: Rect) -> Result<Vec<PaneFlattened<'a>>> {
         if self.full_screen {
-            let pane = self.get_current_pane()?.get_focused_pane()?;
+            let pane = self.get_pane_manager()?.get_focused_pane()?;
             Ok(vec![PaneFlattened {
                 view: pane.get_current_view(),
                 views: pane.get_views(),
@@ -205,7 +197,67 @@ impl ScreenManager {
                 rect: app,
             }])
         } else {
-            Ok(self.get_current_pane()?.get_flattened_layout(app)?)
+            Ok(self.get_pane_manager()?.get_flattened_layout(app)?)
         }
+    }
+
+    pub fn scale_right(&mut self, amount: u32, screen: Rect) -> Result<()> {
+        let pane_manager = self.get_pane_manager_mut()?;
+        let id = pane_manager.get_focused_pane()?.id;
+
+        // let's try to scale the pane with its neighbor.
+        if pane_manager.scale_pane(id, BorderSide::Right, amount as i32, screen).is_ok() {
+            return Ok(());
+        }
+        if pane_manager.scale_pane(id, BorderSide::Left, amount as i32, screen).is_ok() {
+            return Ok(());
+        }
+
+        Err(RecoverableError::new("The current pane cannot be scaled to its right side.").into())
+    }
+
+    pub fn scale_left(&mut self, amount: u32, screen: Rect) -> Result<()> {
+        let pane_manager = self.get_pane_manager_mut()?;
+        let id = pane_manager.get_focused_pane()?.id;
+
+        // let's try to scale the pane with its neighbor.
+        if pane_manager.scale_pane(id, BorderSide::Left, -(amount as i32), screen).is_ok() {
+            return Ok(());
+        }
+        if pane_manager.scale_pane(id, BorderSide::Right, -(amount as i32), screen).is_ok() {
+            return Ok(());
+        }
+
+        Err(RecoverableError::new("The current pane cannot be scaled to its left side.").into())
+    }
+
+    pub fn scale_down(&mut self, amount: u32, screen: Rect) -> Result<()> {
+        let pane_manager = self.get_pane_manager_mut()?;
+        let id = pane_manager.get_focused_pane()?.id;
+
+        // let's try to scale the pane with its neighbor.
+        if pane_manager.scale_pane(id, BorderSide::Bottom, amount as i32, screen).is_ok() {
+            return Ok(());
+        }
+        if pane_manager.scale_pane(id, BorderSide::Top, amount as i32, screen).is_ok() {
+            return Ok(());
+        }
+
+        Err(RecoverableError::new("The current pane cannot be scaled to its bottom side.").into())
+    }
+
+    pub fn scale_up(&mut self, amount: u32, screen: Rect) -> Result<()> {
+        let pane_manager = self.get_pane_manager_mut()?;
+        let id = pane_manager.get_focused_pane()?.id;
+
+        // let's try to scale the pane with its neighbor.
+        if pane_manager.scale_pane(id, BorderSide::Top, -(amount as i32), screen).is_ok() {
+            return Ok(());
+        }
+        if pane_manager.scale_pane(id, BorderSide::Bottom, -(amount as i32), screen).is_ok() {
+            return Ok(());
+        }
+
+        Err(RecoverableError::new("The current pane cannot be scale to its top side.").into())
     }
 }

@@ -1,10 +1,7 @@
 //! TUI draw implementation.
 
 use alloy_primitives::U256;
-use crossterm::cursor;
-use eyre::ensure;
 use foundry_compilers::artifacts::sourcemap::SourceElement;
-use itertools::Itertools;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -13,15 +10,12 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
-use revm::interpreter::opcode::{self, POP};
-use revm_inspectors::tracing::types::CallKind;
+use revm::interpreter::opcode;
 use std::{
     collections::{HashSet, VecDeque},
-    f32::MIN,
     fmt::Write,
     io,
 };
-use tracing::instrument::WithSubscriber;
 
 const POPUP_WIDTH: u16 = 60;
 const MIN_POPUP_HEIGHT: u16 = 10;
@@ -105,11 +99,8 @@ impl FrontendContext<'_> {
             unreachable!()
         };
 
-        if let Some(point) = self.window.pending_mouse_move {
-            let v_point = point.project(app);
-            self.window.get_current_pane_mut().unwrap().force_goto(v_point);
-        }
-        self.window.pending_mouse_move = None;
+        // update screen size
+        self.window.screen_size = app;
 
         let layout = self.window.get_flattened_layout(app).unwrap();
 
@@ -177,8 +168,7 @@ impl FrontendContext<'_> {
         spans.push(Span::raw(format!(" [{}] > ", pane.id)));
         for (view, is_current_view) in view_info {
             if is_current_view {
-                let mut style =
-                    Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+                let mut style = Style::default().add_modifier(Modifier::BOLD);
                 if pane.focused && pane.views.len() > 1 {
                     style = style.fg(Color::Yellow);
                 }
