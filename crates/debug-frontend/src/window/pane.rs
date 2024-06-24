@@ -87,6 +87,7 @@ pub const VIRTUAL_RECT: Rect = Rect { x: 0, y: 0, width: 2048, height: 2048 };
 
 /// 1/4 of the screen size
 const MIN_SPLITABLE_PANE_SIZE: u16 = 512;
+const MIN_PANE_SIZE: u16 = MIN_SPLITABLE_PANE_SIZE / 2;
 
 #[derive(Debug, Clone)]
 pub struct Pane {
@@ -644,17 +645,24 @@ impl PaneManager {
         let op = self.operations.get_mut(op_id).ok_or(eyre::eyre!("operation not found"))?;
 
         if let PaneOperation::Split(split) = op {
-            let side_len = match split.direction {
-                Direction::Horizontal => {
-                    (split.side_len as u32) * (screen.width as u32) / (VIRTUAL_RECT.width as u32)
-                }
-                Direction::Vertical => {
-                    (split.side_len as u32) * (screen.height as u32) / (VIRTUAL_RECT.height as u32)
-                }
+            let (side_len, min_len) = match split.direction {
+                Direction::Horizontal => (
+                    (split.side_len as u32) * (screen.width as u32) / (VIRTUAL_RECT.width as u32),
+                    MIN_PANE_SIZE as u32 * screen.width as u32 / VIRTUAL_RECT.width as u32,
+                ),
+                Direction::Vertical => (
+                    (split.side_len as u32) * (screen.height as u32) / (VIRTUAL_RECT.height as u32),
+                    MIN_PANE_SIZE as u32 * screen.height as u32 / VIRTUAL_RECT.height as u32,
+                ),
             };
 
             let len1 = side_len * split.ratio[0] / (split.ratio[0] + split.ratio[1]);
             let len2 = side_len - len1;
+
+            if (len1 as i32 + amount) < min_len as i32 || (len2 as i32 - amount) < min_len as i32 {
+                return Err(eyre::eyre!("pane is too small to scale"));
+            }
+
             split.ratio = [(len1 as i32 + amount) as u32, (len2 as i32 - amount) as u32];
 
             Ok(())
