@@ -884,7 +884,7 @@ fn wrap_text<'a>(
                 continue;
             }
             if l.len() + word.len() + 1 > width {
-                v.push(f(format!("{}\n", l)));
+                v.push(f(format!("{}{}\n", l, " ".repeat(width - l.len() % width))));
                 l.clear();
             }
 

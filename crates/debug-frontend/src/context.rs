@@ -265,7 +265,7 @@ impl FrontendContext<'_> {
                     }
 
                     // try to merge the pane if it is empty
-                    if !self.window.get_focused_view()?.is_valid() {
+                    if !self.window.get_focused_view()?.is_valid() && !self.window.full_screen {
                         if self.window.get_current_pane()?.num_of_panes() == 1 {
                             return Err(RecoverableError::new("Cannot close the last pane.").into());
                         }
