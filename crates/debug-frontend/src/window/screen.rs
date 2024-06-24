@@ -8,7 +8,7 @@ use crate::{
     window::pane::{Pane, PaneFlattened, PaneManager, PaneView, Point},
 };
 
-use super::pane::PaneId;
+use super::pane::{BorderSide, PaneId};
 
 pub const SMALL_SCREEN_STR: &str = "Defualt (Small Screen)";
 pub const LARGE_SCREEN_STR: &str = "Defualt (Large Screen)";
@@ -128,53 +128,74 @@ impl ScreenManager {
         Ok(())
     }
 
+    fn merge_pane_with_neighbor(&mut self, id: PaneId, direction: BorderSide) -> Result<()> {
+        match direction {
+            BorderSide::Left => {
+                self.focus_left()?;
+                let new_id = self.get_focused_pane()?.id;
+                if self.get_current_pane_mut()?.merge(id, new_id).is_ok() {
+                    return Ok(());
+                }
+                self.focus_right()?;
+            }
+            BorderSide::Right => {
+                self.focus_right()?;
+                let new_id = self.get_focused_pane()?.id;
+                if self.get_current_pane_mut()?.merge(id, new_id).is_ok() {
+                    return Ok(());
+                }
+                self.focus_left()?;
+            }
+            BorderSide::Top => {
+                self.focus_up()?;
+                let new_id = self.get_focused_pane()?.id;
+                if self.get_current_pane_mut()?.merge(id, new_id).is_ok() {
+                    return Ok(());
+                }
+                self.focus_down()?;
+            }
+            BorderSide::Bottom => {
+                self.focus_down()?;
+                let new_id = self.get_focused_pane()?.id;
+                if self.get_current_pane_mut()?.merge(id, new_id).is_ok() {
+                    return Ok(());
+                }
+                self.focus_up()?;
+            }
+        }
+
+        Err(eyre::eyre!("Cannot merge the pane with its neighbor"))
+    }
+
     pub fn close_focused_pane(&mut self) -> Result<()> {
         let pane = self.get_focused_pane()?;
         if pane.get_current_view() == PaneView::Terminal {
             return Err(RecoverableError::new("You cannot close the script terminal pane.").into());
         }
 
-        let ori_id = pane.id;
+        let id = pane.id;
 
-        // let's try to merge the pane with its neighbor
-
-        // 1) merge left
-        self.focus_left()?;
-        let cur_id = self.get_focused_pane()?.id;
-        if self.get_current_pane_mut()?.merge(ori_id, cur_id).is_ok() {
-            return Ok(());
+        // let's try to merge the pane with its neighbor.
+        // we may want to first marge the latest split pane.
+        let mut indexed_values: Vec<(usize, i32)> = self
+            .get_current_pane()?
+            .get_borders(id)?
+            .iter()
+            .map(|x| x.map(|y| y as i32).unwrap_or(-1))
+            .enumerate()
+            .collect();
+        indexed_values.sort_by(|a, b| b.1.cmp(&a.1));
+        for (direction, v) in indexed_values {
+            if v < 0 {
+                break;
+            }
+            if self.merge_pane_with_neighbor(id, BorderSide::try_from(direction)?).is_ok() {
+                return Ok(());
+            }
         }
 
-        // 2) merge right
-        self.focus_right()?; // go back to the original pane
-        ensure!(self.get_focused_pane()?.id == ori_id, "cannot move back to the original pane");
-        self.focus_right()?;
-        let cur_id = self.get_focused_pane()?.id;
-        if self.get_current_pane_mut()?.merge(ori_id, cur_id).is_ok() {
-            return Ok(());
-        }
-
-        // 3) merge up
-        self.focus_left()?; // go back to the original pane
-        ensure!(self.get_focused_pane()?.id == ori_id, "cannot move back to the original pane");
-        self.focus_up()?;
-        let cur_id = self.get_focused_pane()?.id;
-        if self.get_current_pane_mut()?.merge(ori_id, cur_id).is_ok() {
-            return Ok(());
-        }
-
-        // 4) merge down
-        self.focus_down()?; // go back to the original pane
-        ensure!(self.get_focused_pane()?.id == ori_id, "cannot move back to the original pane");
-        self.focus_down()?;
-        let cur_id = self.get_focused_pane()?.id;
-        if self.get_current_pane_mut()?.merge(ori_id, cur_id).is_ok() {
-            return Ok(());
-        }
-
-        self.focus_up()?; // go back to the original pane
-        ensure!(self.get_focused_pane()?.id == ori_id, "cannot move back to the original pane");
-        Err(RecoverableError::new("The current pane cannot be merged with others due to one of the following reasons:\n\n1. The current pane is the Terminal Pane, which cannot be closed.\n\n2. The current pane contains valid debug views and can only be merged with a Terminal Pane. To close this pane, you must first unregister all the debug views in this pane.").into())
+        ensure!(self.get_focused_pane()?.id == id, "cannot move back to the original pane");
+        Err(RecoverableError::new("The current pane cannot be merged with others due to one of the following reasons:\n\n1. The current pane cannot be merged with any adjacent panes.\n\n2. The current pane contains valid debug views and can only be merged with a Terminal Pane.\n\n3. The current pane has an adjacent pane, but these two are not directly split from the same parent pane.\n\nTo close this pane, you may consider unregistering some views or closing other panes first.").into())
     }
 
     pub fn get_flattened_layout(&self, app: Rect) -> Result<Vec<PaneFlattened>> {

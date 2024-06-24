@@ -178,8 +178,6 @@ impl FrontendContext<'_> {
         if self.window.has_popup() {
             if event.code == KeyCode::Esc {
                 self.window.exit_popup();
-            } else if event.code == KeyCode::Char('q') {
-                return Ok(ControlFlow::Break(ExitReason::CharExit));
             } else {
                 self.window.handle_key_event_in_popup(event)?;
             }

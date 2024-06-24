@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use eyre::{ensure, eyre, Result};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
+use crate::context::RecoverableError;
+
 pub type PaneId = usize;
 
 /// Used to keep track of which kind of pane is currently active
@@ -82,6 +84,9 @@ pub struct Point(u16, u16);
 
 /// A virtual rect to help find the focused pane.
 const VIRTUAL_RECT: Rect = Rect { x: 0, y: 0, width: 2048, height: 2048 };
+
+/// 1/8 of the screen size
+const MIN_PANE_SIZE: u16 = 256;
 
 #[derive(Debug, Clone)]
 pub struct Pane {
@@ -175,6 +180,7 @@ struct SplitPane {
     output_id: [PaneId; 2],
     ratio: [u32; 2],
     direction: Direction,
+    side_len: u16,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -201,6 +207,39 @@ struct FocusInfo {
     rect: Rect,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BorderSide {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+impl TryFrom<usize> for BorderSide {
+    type Error = eyre::Error;
+
+    fn try_from(value: usize) -> Result<BorderSide> {
+        match value {
+            0 => Ok(BorderSide::Top),
+            1 => Ok(BorderSide::Bottom),
+            2 => Ok(BorderSide::Left),
+            3 => Ok(BorderSide::Right),
+            _ => Err(eyre::eyre!("invalid border side")),
+        }
+    }
+}
+
+impl From<BorderSide> for usize {
+    fn from(value: BorderSide) -> usize {
+        match value {
+            BorderSide::Top => 0,
+            BorderSide::Bottom => 1,
+            BorderSide::Left => 2,
+            BorderSide::Right => 3,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct PaneManager {
     next_id: PaneId,
@@ -212,6 +251,9 @@ pub struct PaneManager {
 
     // A virtual focus point to help find the focused pane
     focus: Point,
+
+    // The creator (operation id) of each border
+    borders: BTreeMap<PaneId, [Option<usize>; 4]>,
 }
 
 impl Default for PaneManager {
@@ -227,12 +269,16 @@ impl PaneManager {
         let mut panes = BTreeMap::new();
         panes.insert(pane.id, pane);
 
+        let mut borders = BTreeMap::new();
+        borders.insert(1, [None; 4]);
+
         PaneManager {
             next_id: 2,
             panes,
             operations: Vec::new(),
             view_assignment: BTreeMap::new(),
             focus: Point::new(0, 0),
+            borders,
         }
     }
 
@@ -347,6 +393,10 @@ impl PaneManager {
         Ok(())
     }
 
+    pub fn get_borders(&self, id: PaneId) -> Result<[Option<usize>; 4]> {
+        self.borders.get(&id).copied().ok_or(eyre::eyre!("pane not found (get_borders)"))
+    }
+
     pub fn unassign(&mut self, view: PaneView) -> Result<()> {
         ensure!(view.is_valid(), "invalid view");
         if let Some(id) = self.view_assignment.remove(&view) {
@@ -392,13 +442,74 @@ impl PaneManager {
         let rect1 = layout.0.get(&id1).ok_or(eyre::eyre!("pane not found (merge)"))?;
         let rect2 = layout.0.get(&id2).ok_or(eyre::eyre!("pane not found (merge)"))?;
 
-        // we should first check if the two panes are adjacent
-        if !mergeable(rect1, rect2) {
-            return Err(eyre::eyre!("panes are not adjacent"));
-        }
+        // We should first check if the two panes are adjacent.
+        // We will also check the rect1 is on which side of rect2
+        let side = mergeable(rect1, rect2)?;
 
         let target1 = self.panes.get(&id1).ok_or(eyre::eyre!("pane not found (merge)"))?;
         let target2 = self.panes.get(&id2).ok_or(eyre::eyre!("pane not found (merge)"))?;
+
+        // We also need to make sure the two panes are from the same parent pane
+        let borders1 = self.borders.get(&id1).ok_or(eyre::eyre!("pane not found (merge)"))?;
+        let borders2 = self.borders.get(&id2).ok_or(eyre::eyre!("pane not found (merge)"))?;
+        let new_borders = match side {
+            BorderSide::Left | BorderSide::Right => {
+                if borders1[usize::from(BorderSide::Top)] !=
+                    borders2[usize::from(usize::from(BorderSide::Top))]
+                {
+                    return Err(RecoverableError::new(format!(
+                        "the two panes are not from the same parent pane"
+                    ))
+                    .into());
+                }
+                if borders1[usize::from(BorderSide::Bottom)] !=
+                    borders2[usize::from(usize::from(BorderSide::Bottom))]
+                {
+                    return Err(RecoverableError::new(format!(
+                        "the two panes are not from the same parent pane"
+                    ))
+                    .into());
+                }
+
+                let mut new_borders = borders1.clone();
+                if side == BorderSide::Left {
+                    new_borders[usize::from(BorderSide::Right)] =
+                        borders2[usize::from(BorderSide::Right)];
+                } else {
+                    new_borders[usize::from(BorderSide::Left)] =
+                        borders2[usize::from(BorderSide::Left)];
+                }
+                new_borders
+            }
+            BorderSide::Top | BorderSide::Bottom => {
+                if borders1[usize::from(BorderSide::Left)] !=
+                    borders2[usize::from(usize::from(BorderSide::Left))]
+                {
+                    return Err(RecoverableError::new(format!(
+                        "the two panes are not from the same parent pane"
+                    ))
+                    .into());
+                }
+                if borders1[usize::from(BorderSide::Right)] !=
+                    borders2[usize::from(usize::from(BorderSide::Right))]
+                {
+                    return Err(RecoverableError::new(format!(
+                        "the two panes are not from the same parent pane"
+                    ))
+                    .into());
+                }
+
+                let mut new_borders = borders1.clone();
+                if side == BorderSide::Top {
+                    new_borders[usize::from(BorderSide::Bottom)] =
+                        borders2[usize::from(BorderSide::Bottom)];
+                } else {
+                    new_borders[usize::from(BorderSide::Top)] =
+                        borders2[usize::from(BorderSide::Top)];
+                }
+                new_borders
+            }
+        };
 
         let new_id = id1;
 
@@ -410,6 +521,9 @@ impl PaneManager {
         self.panes.remove(&id2);
         self.panes.insert(new_id, new_pane);
 
+        self.borders.remove(&id2);
+        self.borders.insert(new_id, new_borders);
+
         let merge = MergePane { input_id: [id1, id2], output_id: new_id };
         self.operations.push(PaneOperation::Merge(merge));
 
@@ -418,14 +532,42 @@ impl PaneManager {
 
     pub fn split(&mut self, id: PaneId, direction: Direction, ratio: [u32; 2]) -> Result<usize> {
         let _ = self.panes.get(&id).ok_or(eyre::eyre!("pane not found (split)"))?;
+        let layout = self.get_layout(VIRTUAL_RECT)?;
+        let rect = layout.0.get(&id).ok_or(eyre::eyre!("pane not found"))?;
+        let side_len = match direction {
+            Direction::Horizontal => rect.width,
+            Direction::Vertical => rect.height,
+        };
+
+        if side_len < MIN_PANE_SIZE {
+            return Err(RecoverableError::new(format!("pane is too small to split")).into())
+        }
 
         let new_id = self.next_id;
         self.next_id += 1;
 
-        let split = SplitPane { input_id: id, output_id: [id, new_id], ratio, direction };
+        // id is the left pane and new_id is the right pane
+        let split = SplitPane { input_id: id, output_id: [id, new_id], ratio, direction, side_len };
 
+        // update the panes
         let new_pane = Pane::new(new_id);
         self.panes.insert(new_id, new_pane);
+
+        // update the border info
+        let id1_borders = self.borders.get_mut(&id).ok_or(eyre::eyre!("pane not found (split)"))?;
+        let mut id2_borders = id1_borders.clone();
+
+        match direction {
+            Direction::Vertical => {
+                id1_borders[usize::from(BorderSide::Bottom)] = Some(self.operations.len());
+                id2_borders[usize::from(BorderSide::Top)] = Some(self.operations.len());
+            }
+            Direction::Horizontal => {
+                id1_borders[usize::from(BorderSide::Right)] = Some(self.operations.len());
+                id2_borders[usize::from(BorderSide::Left)] = Some(self.operations.len());
+            }
+        }
+        self.borders.insert(new_id, id2_borders);
 
         self.operations.push(PaneOperation::Split(split));
 
@@ -436,6 +578,14 @@ impl PaneManager {
     pub fn switch_id(&mut self, input1: PaneId, input2: PaneId) -> Result<()> {
         let _ = self.panes.get(&input1).ok_or(eyre::eyre!("pane not found (switch_id)"))?;
         let _ = self.panes.get(&input2).ok_or(eyre::eyre!("pane not found (switch_id)"))?;
+
+        // remember to update borders
+        let id1_borders =
+            self.borders.remove(&input1).ok_or(eyre::eyre!("pane not found (switch_id)"))?;
+        let id2_borders =
+            self.borders.remove(&input2).ok_or(eyre::eyre!("pane not found (switch_id)"))?;
+        self.borders.insert(input1, id2_borders);
+        self.borders.insert(input2, id1_borders);
 
         let switch = SwitchPaneId { input_id: [input1, input2] };
         self.operations.push(PaneOperation::SwitchId(switch));
@@ -625,18 +775,24 @@ impl Point {
 }
 
 #[inline]
-fn mergeable(rect1: &Rect, rect2: &Rect) -> bool {
+fn mergeable(rect1: &Rect, rect2: &Rect) -> Result<BorderSide> {
     if rect1.width == rect2.width {
-        if rect1.bottom() == rect2.top() || rect1.top() == rect2.bottom() {
-            return true;
+        if rect1.bottom() == rect2.top() {
+            return Ok(BorderSide::Top);
+        }
+        if rect1.top() == rect2.bottom() {
+            return Ok(BorderSide::Bottom);
         }
     }
 
     if rect1.height == rect2.height {
-        if rect1.right() == rect2.left() || rect1.left() == rect2.right() {
-            return true;
+        if rect1.right() == rect2.left() {
+            return Ok(BorderSide::Left);
+        }
+        if rect1.left() == rect2.right() {
+            return Ok(BorderSide::Right);
         }
     }
 
-    false
+    Err(eyre::eyre!("panes are not adjacent"))
 }
