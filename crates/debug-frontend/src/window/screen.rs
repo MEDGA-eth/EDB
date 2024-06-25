@@ -75,7 +75,6 @@ impl ScreenManager {
     }
 
     pub fn enter_terminal(&mut self) -> Result<()> {
-        ensure!(!self.full_screen, "Cannot enter terminal in full screen mode");
         self.get_pane_manager_mut()?.force_goto_by_view(PaneView::Terminal)?;
 
         Ok(())

@@ -193,22 +193,30 @@ impl FrontendContext<'_> {
             // Handle common key events
             match event.code {
                 // Scale the focused pane on the left side
-                KeyCode::Left if shift && control => self.window.scale_left(1, screen_size)?,
+                KeyCode::Left if shift && control && !self.window.full_screen => {
+                    self.window.scale_left(1, screen_size)?
+                }
                 // Scale the focused pane on the right side
-                KeyCode::Right if shift && control => self.window.scale_right(1, screen_size)?,
+                KeyCode::Right if shift && control && !self.window.full_screen => {
+                    self.window.scale_right(1, screen_size)?
+                }
                 // Scale the focused pane on the bottom side
-                KeyCode::Down if shift && control => self.window.scale_down(1, screen_size)?,
+                KeyCode::Down if shift && control && !self.window.full_screen => {
+                    self.window.scale_down(1, screen_size)?
+                }
                 // Scale the focused pane on the top side
-                KeyCode::Up if shift && control => self.window.scale_up(1, screen_size)?,
+                KeyCode::Up if shift && control && !self.window.full_screen => {
+                    self.window.scale_up(1, screen_size)?
+                }
 
                 // Move focus to the left pane
-                KeyCode::Left if shift => self.window.focus_left()?,
+                KeyCode::Left if shift && !self.window.full_screen => self.window.focus_left()?,
                 // Move focus to the right pane
-                KeyCode::Right if shift => self.window.focus_right()?,
+                KeyCode::Right if shift && !self.window.full_screen => self.window.focus_right()?,
                 // Move focus to the down pane
-                KeyCode::Down if shift => self.window.focus_down()?,
+                KeyCode::Down if shift && !self.window.full_screen => self.window.focus_down()?,
                 // Move focus to the up pane
-                KeyCode::Up if shift => self.window.focus_up()?,
+                KeyCode::Up if shift && !self.window.full_screen => self.window.focus_up()?,
 
                 // Pop up the assignment window
                 KeyCode::Char('C') if shift => self.window.pop_assignment(),
@@ -218,6 +226,9 @@ impl FrontendContext<'_> {
                     // We do not want to exit the full screen mode when we are in
                     // the terminal, so we do not change screen
                     if focused_pane != PaneView::Terminal {
+                        if self.window.full_screen {
+                            self.window.toggle_full_screen();
+                        }
                         self.window.enter_terminal()?;
                     }
                     self.window.set_editor_insert_mode();
@@ -245,10 +256,10 @@ impl FrontendContext<'_> {
                 KeyCode::Char('Q') if shift => return Ok(ControlFlow::Break(ExitReason::CharExit)),
 
                 // Shortcut to split the screen: (s)plit and (d)ivide
-                KeyCode::Char('D') if shift => {
+                KeyCode::Char('D') if shift && !self.window.full_screen => {
                     self.window.split_focused_pane(Direction::Vertical, [1, 1])?
                 }
-                KeyCode::Char('S') if shift => {
+                KeyCode::Char('S') if shift && !self.window.full_screen => {
                     self.window.split_focused_pane(Direction::Horizontal, [1, 1])?
                 }
 
