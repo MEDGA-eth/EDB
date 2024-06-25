@@ -188,11 +188,7 @@ impl FrontendContext<'_> {
             self.window.editor_mode == TerminalMode::Insert
         {
             // Insert mode is a special case
-            if event.code == KeyCode::Esc {
-                self.window.set_editor_normal_mode();
-            } else {
-                self.window.handle_input(event);
-            }
+            self.window.handle_input(event);
         } else {
             // Handle common key events
             match event.code {
@@ -218,7 +214,7 @@ impl FrontendContext<'_> {
                 KeyCode::Char('C') if shift => self.window.pop_assignment(),
 
                 // Shortcut to enter the terminal
-                KeyCode::Char('i') => {
+                KeyCode::Char('I') if shift => {
                     // We do not want to exit the full screen mode when we are in
                     // the terminal, so we do not change screen
                     if focused_pane != PaneView::Terminal {
