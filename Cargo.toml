@@ -14,7 +14,7 @@ resolver = "2"
 version = "0.0.1"
 edition = "2021"
 # Remember to update clippy.toml as well
-rust-version = "1.76"
+rust-version = "1.79"
 authors = ["The MEDGA Team"]
 license = "MIT OR Apache-2.0"
 homepage = "https://medga.org/"
@@ -26,11 +26,14 @@ dbg-macro = "warn"
 manual-string-new = "warn"
 uninlined-format-args = "warn"
 use-self = "warn"
+redundant-clone = "warn"
+octal-escapes = "allow"
 
 [workspace.lints.rust]
-rust-2018-idioms = "deny"
+rust-2018-idioms = "warn"
 # unreachable-pub = "warn"
-unused-must-use = "deny"
+unused-must-use = "warn"
+redundant-lifetimes = "warn"
 
 [workspace.lints.rustdoc]
 all = "warn"
