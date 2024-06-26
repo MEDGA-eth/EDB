@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use alloy_chains::Chain;
@@ -20,14 +20,15 @@ use revm::{
 };
 
 /// Default cache TTL for etherscan.
-/// Set to 1 hour since we only need to fetch the source code once.
-const DEFAULT_CACHE_TTL: u64 = 3600;
+/// Set to 1 day since the source code of a contract is unlikely to change frequently.
+const DEFAULT_CACHE_TTL: u64 = 86400;
 
 use crate::{
     artifact::{
         compilation::{AsCompilationArtifact, CompilationArtifact},
         debug::{DebugArtifact, DebugNodeFlat},
     },
+    etherscan_rate_limit_guard,
     inspector::{CollectInspector, DebugInspector},
     utils::evm::new_evm_with_inspector,
 };
@@ -89,9 +90,18 @@ impl DebugBackendBuilder {
         DBRef: DatabaseRef,
         DBRef::Error: std::error::Error,
     {
+        // prepare the cache dir
+        // XXX (ZZ): I personally think this should be done in the foundry_block_explorers crate
+        let cache_root =
+            CachePath::edb_etherscan_chain_cache_dir(self.chain.unwrap_or(Chain::default()));
+        if let Some(ref root) = cache_root {
+            std::fs::create_dir_all(root.join("sources"))?;
+            std::fs::create_dir_all(root.join("abi"))?;
+        }
+
         // XXX: the following code looks bad and needs to be refactored
         let cb = Client::builder().with_cache(
-            CachePath::edb_etherscan_chain_cache_dir(self.chain.unwrap_or(Chain::default())),
+            cache_root,
             self.cache_ttl.unwrap_or(Duration::from_secs(DEFAULT_CACHE_TTL)),
         );
         let cb = if let Some(chain) = self.chain { cb.chain(chain)? } else { cb };
@@ -184,14 +194,16 @@ where
         // Step 2. collect source code from etherscan
         let pb = init_progress!(self.addresses, "Collecting source code from etherscan");
         for (index, addr) in self.addresses.iter().enumerate() {
-            let mut meta = match self.etherscan.contract_source_code(*addr).await {
-                Ok(meta) => meta,
-                Err(EtherscanError::ContractCodeNotVerified(_)) => {
-                    update_progress!(pb, index);
-                    continue;
-                }
-                Err(e) => return Err(e.into()),
-            };
+            let mut meta =
+                match etherscan_rate_limit_guard!(self.etherscan.contract_source_code(*addr).await)
+                {
+                    Ok(meta) => meta,
+                    Err(EtherscanError::ContractCodeNotVerified(_)) => {
+                        update_progress!(pb, index);
+                        continue;
+                    }
+                    Err(e) => return Err(e.into()),
+                };
             eyre::ensure!(meta.items.len() == 1, "contract not found or ill-formed");
             let meta = meta.items.remove(0);
             if meta.is_vyper() {
@@ -216,8 +228,10 @@ where
             let compiler = Solc::find_or_install(&version)?;
 
             // compile the source code
+            let start = Instant::now();
             let output = CompilationArtifact::new(compiler.compile_exact(&input)?);
-            println!("output: {:#?}", output);
+            let duration = Instant::now().duration_since(start);
+            println!("compilation time: {} {} {:?}", addr, meta.contract_name, duration);
 
             self.compilation_artifacts.insert(*addr, output);
             self.identified_contracts.insert(*addr, meta.contract_name.clone());
@@ -226,6 +240,7 @@ where
             update_progress!(pb, index);
         }
 
+        todo!();
         Ok(())
     }
 

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use alloy_primitives::TxHash;
+use alloy_primitives::{TxHash, U256};
 use alloy_provider::Provider;
 use alloy_rpc_types::{BlockTransactions, BlockTransactionsKind};
 use clap::Parser;
@@ -9,15 +9,12 @@ use edb_debug_frontend::DebugFrontend;
 use edb_utils::{init_progress, update_progress};
 use eyre::{ensure, eyre, Result};
 use foundry_common::{is_known_system_sender, SYSTEM_TRANSACTION_TYPE};
-use foundry_evm::{
-    fork::database::ForkedDatabase,
-    utils::{configure_tx_env, new_evm_with_inspector},
-};
+use foundry_evm::{fork::database::ForkedDatabase, utils::new_evm_with_inspector};
 use revm::{inspectors::NoOpInspector, primitives::EnvWithHandlerCfg};
 
 use crate::{
     opts::{EtherscanOpts, RpcOpts},
-    utils::evm::{setup_block_env, setup_fork_db},
+    utils::evm::{fill_tx_env, setup_block_env, setup_fork_db},
 };
 
 /// CLI arguments for `edb replay`.
@@ -131,7 +128,8 @@ impl ReplayArgs {
 
             // execute the transaction
             trace!("Executing transaction: {:?}", tx.hash);
-            configure_tx_env(&mut env, &tx);
+
+            fill_tx_env(&mut env, &tx)?;
             let mut evm = new_evm_with_inspector(&mut db, env.clone(), NoOpInspector);
             let result = if &tx.hash == tx_hash {
                 // we don't commit the target transaction
@@ -139,6 +137,7 @@ impl ReplayArgs {
             } else {
                 evm.transact_commit()?
             };
+            drop(evm);
 
             let tx_receipt = provider
                 .get_transaction_receipt(tx.hash)

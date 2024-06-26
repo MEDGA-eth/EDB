@@ -30,6 +30,7 @@ edb-debug-frontend.workspace = true
 edb-utils.workspace = true
 
 alloy-chains = { workspace = true, features = ["serde"] }
+alloy-consensus = { workspace = true, features = ["serde"] }
 alloy-primitives = { workspace = true, features = ["serde"] }
 alloy-provider.workspace = true
 alloy-rpc-types.workspace = true
