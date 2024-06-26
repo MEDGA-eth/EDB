@@ -19,11 +19,6 @@ impl CachePath {
         Some(Self::edb_rpc_cache_dir()?.join(chain_id.into().to_string()))
     }
 
-    /// Returns the path to edb's etherscan cache dir: `~/.edb/cache/etherscan`.
-    pub fn edb_etherscan_cache_dir() -> Option<PathBuf> {
-        Some(Self::edb_cache_dir()?.join("etherscan"))
-    }
-
     /// Returns the path to the cache dir of the `block` on the `chain`:
     /// `~/.edb/cache/rpc/<chain>/<block>`
     pub fn edb_block_cache_dir(chain_id: impl Into<Chain>, block: u64) -> Option<PathBuf> {
@@ -34,5 +29,16 @@ impl CachePath {
     /// `~/.edb/cache/rpc/<chain>/<block>/storage.json`
     pub fn edb_block_cache_file(chain_id: impl Into<Chain>, block: u64) -> Option<PathBuf> {
         Some(Self::edb_block_cache_dir(chain_id, block)?.join("storage.json"))
+    }
+
+    /// Returns the path to edb's etherscan cache dir: `~/.edb/cache/etherscan`.
+    pub fn edb_etherscan_cache_dir() -> Option<PathBuf> {
+        Some(Self::edb_cache_dir()?.join("etherscan"))
+    }
+
+    /// Returns the path to edb's etherscan cache dir for `chain_id`:
+    /// `~/.edb/cache/etherscan/<chain>`
+    pub fn edb_etherscan_chain_cache_dir(chain_id: impl Into<Chain>) -> Option<PathBuf> {
+        Some(Self::edb_etherscan_cache_dir()?.join(chain_id.into().to_string()))
     }
 }

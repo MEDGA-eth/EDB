@@ -1,17 +1,34 @@
-use std::{cell::RefCell, collections::HashMap, fmt::Debug, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Debug,
+    time::Duration,
+};
 
 use alloy_chains::Chain;
-use alloy_primitives::Address;
+use alloy_primitives::{Address, Bytes};
+use edb_utils::{cache::CachePath, init_progress, update_progress};
 use eyre::{eyre, Result};
-use foundry_block_explorers::Client;
-use revm::{db::CacheDB, primitives::EnvWithHandlerCfg, DatabaseRef};
+use foundry_block_explorers::{contract::Metadata, errors::EtherscanError, Client};
+use foundry_compilers::{
+    artifacts::{output_selection::OutputSelection, SolcInput, Source},
+    solc::{Solc, SolcLanguage},
+};
+use revm::{
+    db::CacheDB,
+    primitives::{CreateScheme, EnvWithHandlerCfg},
+    DatabaseRef,
+};
+
+/// Default cache TTL for etherscan.
+/// Set to 1 hour since we only need to fetch the source code once.
+const DEFAULT_CACHE_TTL: u64 = 3600;
 
 use crate::{
     artifact::{
         compilation::{AsCompilationArtifact, CompilationArtifact},
-        debug::DebugArtifact,
+        debug::{DebugArtifact, DebugNodeFlat},
     },
-    inspector::DebugInspector,
+    inspector::{CollectInspector, DebugInspector},
     utils::evm::new_evm_with_inspector,
 };
 
@@ -19,6 +36,7 @@ use crate::{
 pub struct DebugBackendBuilder {
     chain: Option<Chain>,
     api_key: Option<String>,
+    cache_ttl: Option<Duration>,
     local_compilation_artifact: Option<CompilationArtifact>,
     identified_contracts: Option<HashMap<Address, String>>,
     compilation_artifacts: Option<HashMap<Address, CompilationArtifact>>,
@@ -27,6 +45,11 @@ pub struct DebugBackendBuilder {
 impl DebugBackendBuilder {
     pub fn chain(mut self, chain: Chain) -> Self {
         self.chain = Some(chain);
+        self
+    }
+
+    pub fn duration(mut self, duration: Duration) -> Self {
+        self.cache_ttl = Some(duration);
         self
     }
 
@@ -66,28 +89,28 @@ impl DebugBackendBuilder {
         DBRef: DatabaseRef,
         DBRef::Error: std::error::Error,
     {
-        // XXX: the following code looks not elegant and needs to be refactored
-        let cb = Client::builder();
+        // XXX: the following code looks bad and needs to be refactored
+        let cb = Client::builder().with_cache(
+            CachePath::edb_etherscan_chain_cache_dir(self.chain.unwrap_or(Chain::default())),
+            self.cache_ttl.unwrap_or(Duration::from_secs(DEFAULT_CACHE_TTL)),
+        );
         let cb = if let Some(chain) = self.chain { cb.chain(chain)? } else { cb };
         let cb = if let Some(api_key) = self.api_key { cb.with_api_key(api_key) } else { cb };
         let client = cb.build()?;
 
-        let local_compilation_artifact =
-            self.local_compilation_artifact.map(|a| Rc::new(RefCell::new(a)));
+        let local_compilation_artifact = self.local_compilation_artifact;
 
-        let identified_contracts =
-            Rc::new(RefCell::new(self.identified_contracts.unwrap_or_default()));
+        let identified_contracts = self.identified_contracts.unwrap_or_default();
 
-        let compilation_artifacts =
-            Rc::new(RefCell::new(self.compilation_artifacts.unwrap_or_default()));
-
-        let creation_code = Rc::new(RefCell::new(HashMap::new()));
+        let compilation_artifacts = self.compilation_artifacts.unwrap_or_default();
 
         Ok(DebugBackend {
             identified_contracts,
             compilation_artifacts,
             local_compilation_artifact,
-            creation_code,
+            addresses: HashSet::new(),
+            metadata: HashMap::new(),
+            creation_codes: HashMap::new(),
             etherscan: client,
             base_db: CacheDB::new(db),
             env,
@@ -97,18 +120,30 @@ impl DebugBackendBuilder {
 
 #[derive(Debug)]
 pub struct DebugBackend<DBRef> {
+    // Addresses of contracts that have been visited during the transaction
+    pub addresses: HashSet<Address>,
+
+    // Creation code of contracts that are deployed during the transaction
+    pub creation_codes: HashMap<Address, (Bytes, CreateScheme)>,
+
     /// Identified contracts.
-    pub identified_contracts: Rc<RefCell<HashMap<Address, String>>>,
+    pub identified_contracts: HashMap<Address, String>,
+
+    /// Metadata of each contract.
+    pub metadata: HashMap<Address, Metadata>,
+
     /// Map of source files. Note that each address will have a compilation artifact.
-    pub compilation_artifacts: Rc<RefCell<HashMap<Address, CompilationArtifact>>>,
+    pub compilation_artifacts: HashMap<Address, CompilationArtifact>,
 
     // Compilation artifact from local file system
-    local_compilation_artifact: Option<Rc<RefCell<CompilationArtifact>>>,
-    // Creation code for each contract
-    creation_code: Rc<RefCell<HashMap<Address, Option<u64>>>>,
+    // TODO: support local compilation artifact later
+    #[allow(dead_code)]
+    local_compilation_artifact: Option<CompilationArtifact>,
 
     // Etherscan client
     etherscan: Client,
+
+    // Transaction information
     // The base database
     base_db: CacheDB<DBRef>,
     // EVM evnironment
@@ -125,19 +160,81 @@ where
         DebugBackendBuilder::default()
     }
 
-    // The initial analyze of execution traces. It may take a while to finish.
-    pub async fn analyze(&mut self) -> Result<DebugArtifact> {
+    /// Analyze the transaction and return the debug artifact.
+    pub async fn analyze(mut self) -> Result<DebugArtifact> {
+        self.collect_compilation_artifacts().await?;
+
+        let debug_arena = self.collect_debug_trace()?;
+
+        Ok(DebugArtifact {
+            debug_arena,
+            identified_contracts: self.identified_contracts,
+            compilation_artifacts: self.compilation_artifacts,
+        })
+    }
+
+    async fn collect_compilation_artifacts(&mut self) -> Result<()> {
+        // Step 1. collect addresses of contracts that are visited during the transaction,
+        // as well as the creation codes of contracts that are deployed during the transaction
+        let mut inspect = CollectInspector::new(&mut self.addresses, &mut self.creation_codes);
+        let mut evm = new_evm_with_inspector(&mut self.base_db, self.env.clone(), &mut inspect);
+        evm.transact().map_err(|err| eyre!("failed to transact: {}", err))?;
+        drop(evm);
+
+        // Step 2. collect source code from etherscan
+        let pb = init_progress!(self.addresses, "Collecting source code from etherscan");
+        for (index, addr) in self.addresses.iter().enumerate() {
+            let mut meta = match self.etherscan.contract_source_code(*addr).await {
+                Ok(meta) => meta,
+                Err(EtherscanError::ContractCodeNotVerified(_)) => {
+                    update_progress!(pb, index);
+                    continue;
+                }
+                Err(e) => return Err(e.into()),
+            };
+            eyre::ensure!(meta.items.len() == 1, "contract not found or ill-formed");
+            let meta = meta.items.remove(0);
+            if meta.is_vyper() {
+                // TODO: support Vyper later
+                update_progress!(pb, index);
+                continue;
+            }
+
+            // prepare the input for solc
+            let mut settings = meta.settings()?;
+            // enforce compiler output all possible outputs
+            settings.output_selection = OutputSelection::complete_output_selection();
+            let sources = meta
+                .sources()
+                .into_iter()
+                .map(|(k, v)| (k.into(), Source::new(v.content)))
+                .collect();
+            let input = SolcInput::new(SolcLanguage::Solidity, sources, settings);
+
+            // prepare the compiler
+            let version = meta.compiler_version()?;
+            let compiler = Solc::find_or_install(&version)?;
+
+            // compile the source code
+            let output = CompilationArtifact::new(compiler.compile_exact(&input)?);
+            println!("output: {:#?}", output);
+
+            self.compilation_artifacts.insert(*addr, output);
+            self.identified_contracts.insert(*addr, meta.contract_name.clone());
+            self.metadata.insert(*addr, meta);
+
+            update_progress!(pb, index);
+        }
+
+        Ok(())
+    }
+
+    fn collect_debug_trace(&mut self) -> Result<Vec<DebugNodeFlat>> {
         let mut inspector = DebugInspector::new();
         let mut evm = new_evm_with_inspector(&mut self.base_db, self.env.clone(), &mut inspector);
         evm.transact().map_err(|err| eyre!("failed to transact: {}", err))?;
         drop(evm);
 
-        let debug_arena: Vec<_> =
-            inspector.arena.arena.into_iter().map(|n| n.into_flat()).collect();
-        Ok(DebugArtifact {
-            debug_arena,
-            identified_contracts: self.identified_contracts.borrow().clone(),
-            compilation_artifacts: self.compilation_artifacts.borrow().clone(),
-        })
+        Ok(inspector.arena.arena.into_iter().map(|n| n.into_flat()).collect())
     }
 }

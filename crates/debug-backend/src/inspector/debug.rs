@@ -1,13 +1,11 @@
-use alloy_primitives::{Address, Bytes};
+use alloy_primitives::Address;
 use alloy_sol_types::SolError;
 use arrayvec::ArrayVec;
-use foundry_compilers::compilers::vyper::input;
 use revm::{
     interpreter::{
         opcode, CallInputs, CallOutcome, CreateInputs, CreateOutcome, Gas, InstructionResult,
         Interpreter, InterpreterResult,
     },
-    primitives::EVMError,
     Database, EvmContext, Inspector,
 };
 use revm_inspectors::tracing::types::CallKind;

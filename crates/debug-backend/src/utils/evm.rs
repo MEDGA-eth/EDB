@@ -38,12 +38,6 @@ pub fn gas_used(spec: SpecId, spent: u64, refunded: u64) -> u64 {
     spent - (refunded).min(spent / refund_quotient)
 }
 
-/// Get the encoded revert data
-#[inline]
-pub fn abi_encode_revert<T: std::error::Error>(err: &T) -> Bytes {
-    alloy_sol_types::Revert::from(err.to_string()).abi_encode().into()
-}
-
 /// Creates a new EVM with the given inspector.
 #[inline]
 pub fn new_evm_with_inspector<'a, DB, I>(

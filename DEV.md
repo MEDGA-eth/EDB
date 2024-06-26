@@ -30,14 +30,14 @@ cargo +nightly clippy --all --all-targets --all-features -- -D warnings
 
 ## Todo
 
-+ [ ] Migrate the Foundry Debugger into EDB.
-+ [X] Redesign the UI to support complex user input.
++ [x] Migrate the Foundry Debugger into EDB.
++ [x] Redesign the UI to support complex user input.
 + [ ] Support command history.
 + [ ] Support caching in the debugger.
-+ [ ] Move the dependency declarations to the top of `cargo.toml`.
-+ [ ] Rewrite the subject contract, to add `pub` to all storage variables and functions.
++ [x] Move the dependency declarations to the top of `cargo.toml`.
++ [ ] Rewrite the subject contract, to add `public` to all storage variables and functions.
 + [ ] Rewrite the subject contract, to enforce a storage update for each local variable update.
-+ [ ] Debug session dump.
++ [ ] Debug session layout dump.
 
 ## Some Hints
 

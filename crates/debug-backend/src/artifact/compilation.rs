@@ -1,28 +1,34 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 
-use foundry_compilers::artifacts::ContractBytecodeSome;
+use foundry_compilers::artifacts::{CompilerOutput, ContractBytecodeSome};
 use rustc_hash::FxHashMap;
-
-#[derive(Clone, Debug)]
-pub struct BytecodeData {
-    pub bytecode: ContractBytecodeSome,
-    pub build_id: String,
-    pub file_id: u32,
-}
-
-#[derive(Clone, Debug)]
-pub struct SourceData {
-    pub source: Arc<String>,
-    pub name: String,
-}
 
 /// Contract source code and bytecode data used for debugger.
 #[derive(Clone, Debug, Default)]
-pub struct CompilationArtifact {
-    /// Map over build_id -> file_id -> (source code, language)
-    pub sources_by_id: HashMap<String, FxHashMap<u32, SourceData>>,
-    /// Map over contract name -> Vec<(bytecode, build_id, file_id)>
-    pub artifacts_by_name: HashMap<String, Vec<BytecodeData>>,
+pub struct CompilationArtifact(CompilerOutput);
+
+impl CompilationArtifact {
+    pub fn new(output: CompilerOutput) -> Self {
+        Self(output)
+    }
+}
+
+impl Deref for CompilationArtifact {
+    type Target = CompilerOutput;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for CompilationArtifact {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
 pub trait AsCompilationArtifact {

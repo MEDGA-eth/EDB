@@ -6,6 +6,7 @@ use alloy_rpc_types::{BlockTransactions, BlockTransactionsKind};
 use clap::Parser;
 use edb_debug_backend::DebugBackend;
 use edb_debug_frontend::DebugFrontend;
+use edb_utils::{init_progress, update_progress};
 use eyre::{ensure, eyre, Result};
 use foundry_common::{is_known_system_sender, SYSTEM_TRANSACTION_TYPE};
 use foundry_evm::{
@@ -15,9 +16,7 @@ use foundry_evm::{
 use revm::{inspectors::NoOpInspector, primitives::EnvWithHandlerCfg};
 
 use crate::{
-    init_progress,
     opts::{EtherscanOpts, RpcOpts},
-    update_progress,
     utils::evm::{setup_block_env, setup_fork_db},
 };
 
@@ -58,7 +57,7 @@ impl ReplayArgs {
     }
 
     pub async fn debug(&self, db: ForkedDatabase, env: EnvWithHandlerCfg) -> Result<()> {
-        let mut backend = DebugBackend::<ForkedDatabase>::builder()
+        let backend = DebugBackend::<ForkedDatabase>::builder()
             .chain(self.etherscan.chain.unwrap_or_default())
             .etherscan_api_key(self.etherscan.key().unwrap_or_default())
             .build::<ForkedDatabase>(&db, env)?;
@@ -117,17 +116,16 @@ impl ReplayArgs {
         };
         txs.push(tx.inner.clone());
 
-        let pb = init_progress!(txs, "replaying preceeding txs");
+        let pb = init_progress!(txs, "Setting up the replay environment");
         pb.set_position(0);
         for (index, tx) in txs.into_iter().enumerate() {
-            update_progress!(pb, index);
-
             // System transactions such as on L2s don't contain any pricing info so
             // we skip them otherwise this would cause
             // reverts
             if is_known_system_sender(tx.from) ||
                 tx.transaction_type == Some(SYSTEM_TRANSACTION_TYPE)
             {
+                update_progress!(pb, index);
                 continue;
             }
 
@@ -157,6 +155,7 @@ impl ReplayArgs {
                 cumulative_gas_used,
                 tx_receipt.inner.inner.inner.receipt.cumulative_gas_used
             );
+            update_progress!(pb, index);
         }
 
         Ok((db, env))
