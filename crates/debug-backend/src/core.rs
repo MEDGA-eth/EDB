@@ -1,7 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use alloy_chains::Chain;
@@ -228,10 +228,7 @@ where
             let compiler = Solc::find_or_install(&version)?;
 
             // compile the source code
-            let start = Instant::now();
             let output = CompilationArtifact::new(compiler.compile_exact(&input)?);
-            let duration = Instant::now().duration_since(start);
-            println!("compilation time: {} {} {:?}", addr, meta.contract_name, duration);
 
             self.compilation_artifacts.insert(*addr, output);
             self.identified_contracts.insert(*addr, meta.contract_name.clone());
@@ -240,8 +237,7 @@ where
             update_progress!(pb, index);
         }
 
-        todo!();
-        Ok(())
+        todo!()
     }
 
     fn collect_debug_trace(&mut self) -> Result<Vec<DebugNodeFlat>> {

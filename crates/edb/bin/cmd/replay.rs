@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use alloy_primitives::{TxHash, U256};
+use alloy_primitives::TxHash;
 use alloy_provider::Provider;
 use alloy_rpc_types::{BlockTransactions, BlockTransactionsKind};
 use clap::Parser;

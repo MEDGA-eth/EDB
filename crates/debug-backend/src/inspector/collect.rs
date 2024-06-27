@@ -32,8 +32,21 @@ where
     DB::Error: std::error::Error,
 {
     #[inline]
-    fn call(&mut self, _: &mut EvmContext<DB>, inputs: &mut CallInputs) -> Option<CallOutcome> {
+    fn call(
+        &mut self,
+        context: &mut EvmContext<DB>,
+        inputs: &mut CallInputs,
+    ) -> Option<CallOutcome> {
         let address = inputs.bytecode_address;
+
+        // check whether it is an EoA
+        if let Ok((account, _)) = context.load_account(address) {
+            if account.info.is_empty_code_hash() {
+                return None;
+            }
+        }
+
+        // update addresses
         self.addresses.insert(address);
 
         None
