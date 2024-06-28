@@ -208,6 +208,13 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    async fn test_solidity_v0_8_18() {
+        let addr = Address::from_str("0xe45dfc26215312edc131e34ea9299fbca53275ca").unwrap();
+        download_and_compile(Chain::default(), addr).await.unwrap();
+    }
+
+    #[tokio::test]
+    #[serial]
     async fn test_solidity_v0_7_6() {
         let addr = Address::from_str("0x1f98431c8ad98523631ae4a59f267346ea31f984").unwrap();
         download_and_compile(Chain::default(), addr).await.unwrap();
