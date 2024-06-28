@@ -196,7 +196,7 @@ where
         drop(evm);
 
         // Step 2. collect source code from etherscan
-        let pb = init_progress!(self.addresses, "Collecting source code from etherscan");
+        let pb = init_progress!(self.addresses, "Compiling source code from etherscan");
         for (index, addr) in self.addresses.iter().enumerate() {
             let mut meta =
                 match etherscan_rate_limit_guard!(self.etherscan.contract_source_code(*addr).await)
@@ -231,14 +231,26 @@ where
             let version = meta.compiler_version()?;
             let compiler = Solc::find_or_install(&version)?;
 
-            println!("{:#?}", addr);
+            println!("{:#?} {}", addr, version);
 
             // compile the source code
-            let mut output = CompilationArtifact::new(compiler.compile_exact(&input)?);
+            let mut output = match compiler.compile_exact(&input) {
+                Ok(compiler_output) => CompilationArtifact::new(compiler_output),
+                Err(_) if version.major == 0 && version.minor == 4 => {
+                    // check compiler version
+                    // it is known that Solc 0.4.x does not support --standard-json
+                    warn!("Solc 0.4.x does not support --standard-json, skipping");
+                    println!("Solc 0.4.x does not support --standard-json, skipping");
+                    update_progress!(pb, index);
+                    continue;
+                }
+                Err(e) => {
+                    return Err(eyre!("failed to compile contract: {}", e));
+                }
+            };
             for (path, contract) in output.sources.iter_mut() {
                 let _ =
                     ASTPruner::convert(contract.ast.as_mut().ok_or(eyre!("AST does not exist"))?)?;
-                // println!("{:#?}: {} {:#?}", path, contract.id, ast)
             }
 
             self.compilation_artifacts.insert(*addr, output);

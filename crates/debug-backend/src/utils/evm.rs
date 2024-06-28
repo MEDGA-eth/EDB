@@ -2,7 +2,6 @@
 
 use revm::{
     inspector_handle_register,
-    interpreter::OpCode,
     primitives::{EnvWithHandlerCfg, SpecId},
     Context, Database, Evm, EvmContext, Handler, Inspector,
 };

@@ -1,13 +1,15 @@
+use std::{fs::File, io::Write};
+
 use eyre::{eyre, Result};
 use foundry_compilers::artifacts::{Ast, Node, NodeType, SourceUnit};
 
-/// We prune the AST to remove or refine nodes that are not strongly related to debugging.
+/// We prune the AST to remove or refine nodes that are not strongly related to analysis.
 /// We do this because the Solidity compiler has changed the AST structure over time, but
-/// we want to maintain a consistently parsaable AST structure for debugging purposes.
+/// we want to maintain a consistently parsable AST structure for debugging purposes.
 ///
 /// Note that it does not mean we will not show the original source code to the user. The
-/// pruned AST is only used for analysis, and the original source code will still be shown
-/// to the user.
+/// pruned AST is only used for *source-byte alignment analysis*, and the original source
+/// code will still be shown to the user.
 ///
 /// Specifically, we will perform the following operations:
 /// - Remove the `documentation` field from all nodes.
@@ -15,12 +17,18 @@ use foundry_compilers::artifacts::{Ast, Node, NodeType, SourceUnit};
 ///    - Add an empty YulBlock node to the AST field
 ///    - Set the `externalReferences` field to an empty array
 ///    - Remove the `operations` field
+/// - If the node is an ImportDirective
+///    - Set the `symbolAliases` as an empty array
+///  
 pub struct ASTPruner {}
 
 impl ASTPruner {
     pub fn convert(ast: &mut Ast) -> Result<SourceUnit> {
         Self::prune(ast)?;
         let serialized = serde_json::to_string(ast)?;
+
+        let mut file = File::create("/tmp/txt.json")?;
+        file.write_all(serialized.as_bytes())?;
 
         Ok(serde_json::from_str(&serialized)?)
     }
@@ -62,6 +70,12 @@ impl ASTPruner {
                 // we remove the operations field
                 node.other.remove("operations");
             }
+        }
+
+        // check ImportDirective nodes
+        if matches!(node.node_type, NodeType::ImportDirective) {
+            // we set the symbolAliases field to an empty array
+            node.other.insert("symbolAliases".to_string(), serde_json::json!([]));
         }
 
         // prune documentation
@@ -107,6 +121,14 @@ impl ASTPruner {
 
                         // we remove the operations field
                         obj.remove("operations");
+                    }
+                }
+
+                // check for ImportDirective nodes
+                if let Some(node_type) = obj.get("nodeType") {
+                    if node_type.as_str() == Some("ImportDirective") {
+                        // we set the symbolAliases field to an empty array
+                        obj.insert("symbolAliases".to_string(), serde_json::json!([]));
                     }
                 }
 
