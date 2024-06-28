@@ -2,6 +2,7 @@
 //!
 //! EDB's core debugging backend.
 
+mod analysis;
 pub mod artifact;
 mod core;
 mod handler;

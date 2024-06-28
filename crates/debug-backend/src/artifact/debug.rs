@@ -5,7 +5,7 @@ use revm_inspectors::tracing::types::CallKind;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::utils::evm;
+use crate::utils::opcode;
 
 use crate::artifact::compilation::CompilationArtifact;
 
@@ -232,7 +232,7 @@ impl DebugStep {
 
     /// Returns `true` if the opcode modifies memory.
     pub fn opcode_modifies_memory(&self) -> bool {
-        OpCode::new(self.instruction).map_or(false, evm::is_memory_modifying_opcode)
+        OpCode::new(self.instruction).map_or(false, opcode::is_memory_modifying_opcode)
     }
 }
 

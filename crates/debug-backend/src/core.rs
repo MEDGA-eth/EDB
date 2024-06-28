@@ -10,7 +10,7 @@ use edb_utils::{cache::CachePath, init_progress, update_progress};
 use eyre::{eyre, Result};
 use foundry_block_explorers::{contract::Metadata, errors::EtherscanError, Client};
 use foundry_compilers::{
-    artifacts::{output_selection::OutputSelection, SolcInput, Source},
+    artifacts::{output_selection::OutputSelection, SolcInput, Source, SourceUnit},
     solc::{Solc, SolcLanguage},
 };
 use revm::{
@@ -24,6 +24,10 @@ use revm::{
 const DEFAULT_CACHE_TTL: u64 = 86400;
 
 use crate::{
+    analysis::{
+        self,
+        prune::{self, ASTPruner},
+    },
     artifact::{
         compilation::{AsCompilationArtifact, CompilationArtifact},
         debug::{DebugArtifact, DebugNodeFlat},
@@ -227,8 +231,15 @@ where
             let version = meta.compiler_version()?;
             let compiler = Solc::find_or_install(&version)?;
 
+            println!("{:#?}", addr);
+
             // compile the source code
-            let output = CompilationArtifact::new(compiler.compile_exact(&input)?);
+            let mut output = CompilationArtifact::new(compiler.compile_exact(&input)?);
+            for (path, contract) in output.sources.iter_mut() {
+                let _ =
+                    ASTPruner::convert(contract.ast.as_mut().ok_or(eyre!("AST does not exist"))?)?;
+                // println!("{:#?}: {} {:#?}", path, contract.id, ast)
+            }
 
             self.compilation_artifacts.insert(*addr, output);
             self.identified_contracts.insert(*addr, meta.contract_name.clone());
