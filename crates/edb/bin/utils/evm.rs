@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use alloy_chains::NamedChain;
 use alloy_consensus::TxType;
@@ -116,6 +116,7 @@ pub async fn setup_fork_db<
     provider: Arc<P>,
     eth_rpc_url: &str,
     fork_block_number: Option<u64>,
+    cache_path: Option<PathBuf>,
 ) -> Result<ForkedDatabase> {
     let env = setup_block_env(Arc::clone(&provider), fork_block_number).await?;
 
@@ -125,7 +126,7 @@ pub async fn setup_fork_db<
     let meta = BlockchainDbMeta::new(*env.env.clone(), eth_rpc_url.to_string());
     let block_chain_db = BlockchainDb::new_skip_check(
         meta,
-        CachePath::edb_block_cache_file(chain_id, fork_block_number),
+        cache_path.or(CachePath::edb_block_cache_file(chain_id, fork_block_number)),
     );
 
     // This will spawn the background thread that will use the provider to fetch

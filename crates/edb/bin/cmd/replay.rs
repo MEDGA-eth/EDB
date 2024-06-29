@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use alloy_primitives::TxHash;
 use alloy_provider::Provider;
@@ -48,7 +48,7 @@ impl ReplayArgs {
             self.no_validation = true;
         }
 
-        let (db, env) = self.prepare().await?;
+        let (db, env) = self.prepare(None).await?;
         self.debug(db, env).await?;
         Ok(())
     }
@@ -58,12 +58,19 @@ impl ReplayArgs {
             .chain(self.etherscan.chain.unwrap_or_default())
             .etherscan_api_key(self.etherscan.key().unwrap_or_default())
             .build::<ForkedDatabase>(&db, env)?;
-        let mut frontend = DebugFrontend::builder().build(backend.analyze().await?);
+        let debug_artifact = backend.analyze().await?;
+        let mut frontend = DebugFrontend::builder().build(debug_artifact);
         frontend.render().await?;
         Ok(())
     }
 
-    pub async fn prepare(&self) -> Result<(ForkedDatabase, EnvWithHandlerCfg)> {
+    /// Prepare the environment and database for the replay.
+    ///  - cache_root: the path to the rpc cache directory. If not provided, the default cache
+    ///    directory will be used.
+    pub async fn prepare(
+        &self,
+        cache_root: Option<PathBuf>,
+    ) -> Result<(ForkedDatabase, EnvWithHandlerCfg)> {
         let Self { tx_hash, quick, rpc, no_validation, etherscan: EtherscanOpts { chain, .. } } =
             self;
         let fork_url = rpc.url(true)?.unwrap().to_string();
@@ -99,8 +106,13 @@ impl ReplayArgs {
 
         // step 2. set enviroment and database
         // note that database should be set to tx_block_number - 1
-        let mut db =
-            setup_fork_db(Arc::clone(&provider), &fork_url, Some(tx_block_number - 1)).await?;
+        let mut db = setup_fork_db(
+            Arc::clone(&provider),
+            &fork_url,
+            Some(tx_block_number - 1),
+            cache_root.map(|p| p.join(format!("{}", tx_block_number - 1))),
+        )
+        .await?;
         let mut env = setup_block_env(Arc::clone(&provider), Some(tx_block_number)).await?;
 
         // step 3. replay all transactions before the target transaction
@@ -158,5 +170,75 @@ impl ReplayArgs {
         }
 
         Ok((db, env))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{str::FromStr, time::Duration};
+
+    use super::*;
+    use serial_test::serial;
+
+    fn init_test(tx_hash: &str) -> Result<(ReplayArgs, PathBuf, PathBuf)> {
+        let args = ReplayArgs {
+            tx_hash: TxHash::from_str(tx_hash)?,
+            quick: false,
+            no_validation: false,
+            etherscan: EtherscanOpts::default(),
+            rpc: RpcOpts {
+                url: Some("https://rpc.mevblocker.io".to_string()),
+                jwt_secret: None,
+                no_rate_limit: false,
+                flashbots: false,
+                compute_units_per_second: None,
+            },
+        };
+
+        let rpc_cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/cache/rpc");
+        let etherscan_cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../testdata/cache/etherscan")
+        .join(args.etherscan.chain.unwrap_or_default().to_string());
+
+        Ok((args, rpc_cache_root, etherscan_cache_root))
+    }
+
+    async fn run_e2e_test(tx_hash: &str) -> Result<()> {
+        let (args, rpc_cache_root, etherscan_cache_root) =
+            init_test(tx_hash)?;
+        let (db, env) = args.prepare(Some(rpc_cache_root)).await?;
+        let backend = DebugBackend::<ForkedDatabase>::builder()
+            .chain(args.etherscan.chain.unwrap_or_default())
+            .etherscan_api_key(args.etherscan.key().unwrap_or_default())
+            .cache_root(etherscan_cache_root)
+            .cache_ttl(Duration::from_secs(u32::MAX as u64)) // we don't want the cache to expire
+            .build::<ForkedDatabase>(&db, env)?;
+        let _ = backend.analyze().await?;
+
+        Ok(())
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial]
+    async fn test_e2e_tx1() {
+        run_e2e_test("0x1282e09bb5118f619da81b6a24c97999e7057ee9975628562c7cecbb4aa9f5af").await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial]
+    async fn test_e2e_tx2() {
+        run_e2e_test("0xd253e3b563bf7b8894da2a69db836a4e98e337157564483d8ac72117df355a9d").await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial]
+    async fn test_e2e_tx3() {
+        run_e2e_test("0x6f4d3b21b69335e210202c8f47867761315e824c5c360d1ab8910f5d7ce5d526").await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial]
+    async fn test_e2e_tx4() {
+        run_e2e_test("0x0fe2542079644e107cbf13690eb9c2c65963ccb79089ff96bfaf8dced2331c92").await.unwrap();
     }
 }

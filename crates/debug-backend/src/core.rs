@@ -1,6 +1,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
+    path::PathBuf,
     time::Duration,
 };
 
@@ -41,28 +42,48 @@ use crate::{
 pub struct DebugBackendBuilder {
     chain: Option<Chain>,
     api_key: Option<String>,
+    cache_root: Option<PathBuf>,
     cache_ttl: Option<Duration>,
+
+    // Compilation artifact from local file system
+    // XXX (ZZ): let's support them later
     local_compilation_artifact: Option<CompilationArtifact>,
     identified_contracts: Option<HashMap<Address, String>>,
     compilation_artifacts: Option<HashMap<Address, CompilationArtifact>>,
 }
 
 impl DebugBackendBuilder {
+    /// Set the chain to use.
+    /// If not set, the default chain will be used.
     pub fn chain(mut self, chain: Chain) -> Self {
         self.chain = Some(chain);
         self
     }
 
-    pub fn duration(mut self, duration: Duration) -> Self {
+    /// Set the cache root directory.
+    /// If not set, the default cache directory will be used.
+    pub fn cache_root(mut self, path: PathBuf) -> Self {
+        self.cache_root = Some(path);
+        self
+    }
+
+    /// Set the cache TTL.
+    /// If not set, the default cache TTL will be used.
+    pub fn cache_ttl(mut self, duration: Duration) -> Self {
         self.cache_ttl = Some(duration);
         self
     }
 
+    /// Set the etherscan API key.
+    /// If not set, a blank API key will be used.
     pub fn etherscan_api_key(mut self, etherscan_api_key: String) -> Self {
         self.api_key = Some(etherscan_api_key);
         self
     }
 
+    // XXX (ZZ): let's support them later
+    /// Set the local compilation artifact.
+    /// If not set, the local compilation artifact will not be used.
     pub fn local_compilation_artifact(
         mut self,
         local_compilation_artifact: impl AsCompilationArtifact,
@@ -71,11 +92,17 @@ impl DebugBackendBuilder {
         self
     }
 
+    // XXX (ZZ): let's support them later
+    /// Set the identified contracts.
+    /// If not set, the identified contracts will not be used.
     pub fn identified_contracts(mut self, identified_contracts: HashMap<Address, String>) -> Self {
         self.identified_contracts = Some(identified_contracts);
         self
     }
 
+    // XXX (ZZ): let's support them later
+    /// Set the compilation artifacts.
+    /// If not set, the compilation artifacts will not be used.
     pub fn compilation_artifacts(
         mut self,
         compilation_artifacts: HashMap<Address, impl AsCompilationArtifact>,
@@ -89,6 +116,7 @@ impl DebugBackendBuilder {
         self
     }
 
+    /// Build the debug backend.
     pub fn build<DBRef>(self, db: &DBRef, env: EnvWithHandlerCfg) -> Result<DebugBackend<&DBRef>>
     where
         DBRef: DatabaseRef,
@@ -96,8 +124,9 @@ impl DebugBackendBuilder {
     {
         // prepare the cache dir
         // XXX (ZZ): I personally think this should be done in the foundry_block_explorers crate
-        let cache_root =
-            CachePath::edb_etherscan_chain_cache_dir(self.chain.unwrap_or(Chain::default()));
+        let cache_root = self
+            .cache_root
+            .or(CachePath::edb_etherscan_chain_cache_dir(self.chain.unwrap_or(Chain::default())));
         if let Some(ref root) = cache_root {
             std::fs::create_dir_all(root.join("sources"))?;
             std::fs::create_dir_all(root.join("abi"))?;
@@ -260,7 +289,7 @@ where
             update_progress!(pb, index);
         }
 
-        todo!()
+        Ok(())
     }
 
     fn collect_debug_trace(&mut self) -> Result<Vec<DebugNodeFlat>> {

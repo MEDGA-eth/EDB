@@ -174,8 +174,7 @@ mod tests {
 
     async fn download_and_compile(chain: Chain, addr: Address) -> Result<()> {
         let cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("testdata")
-            .join("etherscan_cache")
+            .join("../../testdata/cache/etherscan")
             .join(chain.to_string());
         let cache_ttl = Duration::from_secs(u32::MAX as u64); // we don't want the cache to expire
         let client =
@@ -206,35 +205,42 @@ mod tests {
         Ok(())
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     #[serial]
     async fn test_solidity_v0_8_18() {
         let addr = Address::from_str("0xe45dfc26215312edc131e34ea9299fbca53275ca").unwrap();
         download_and_compile(Chain::default(), addr).await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial]
+    async fn test_solidity_v0_8_17() {
+        let addr = Address::from_str("0x1111111254eeb25477b68fb85ed929f73a960582").unwrap();
+        download_and_compile(Chain::default(), addr).await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     #[serial]
     async fn test_solidity_v0_7_6() {
         let addr = Address::from_str("0x1f98431c8ad98523631ae4a59f267346ea31f984").unwrap();
         download_and_compile(Chain::default(), addr).await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     #[serial]
     async fn test_solidity_v0_6_12() {
         let addr = Address::from_str("0x1eb4cf3a948e7d72a198fe073ccb8c7a948cd853").unwrap();
         download_and_compile(Chain::default(), addr).await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     #[serial]
     async fn test_solidity_v0_5_17() {
         let addr = Address::from_str("0xee39E4A6820FFc4eDaA80fD3b5A59788D515832b").unwrap();
         download_and_compile(Chain::default(), addr).await.unwrap();
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     #[serial]
     async fn test_solidity_v0_4_24() {
         let addr = Address::from_str("0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48").unwrap();

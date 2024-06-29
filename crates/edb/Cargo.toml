@@ -24,6 +24,9 @@ vergen = { workspace = true, default-features = false, features = [
     "gitcl",
 ] }
 
+[dev-dependencies]
+serial_test.workspace = true
+
 [dependencies]
 edb-debug-backend.workspace = true
 edb-debug-frontend.workspace = true
