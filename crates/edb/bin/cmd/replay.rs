@@ -60,6 +60,7 @@ impl ReplayArgs {
             .build::<ForkedDatabase>(&db, env)?;
         let debug_artifact = backend.analyze().await?;
         let mut frontend = DebugFrontend::builder().build(debug_artifact);
+        todo!();
         frontend.render().await?;
         Ok(())
     }
@@ -195,17 +196,17 @@ mod tests {
             },
         };
 
-        let rpc_cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/cache/rpc");
+        let rpc_cache_root =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/cache/rpc");
         let etherscan_cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../testdata/cache/etherscan")
-        .join(args.etherscan.chain.unwrap_or_default().to_string());
+            .join("../../testdata/cache/etherscan")
+            .join(args.etherscan.chain.unwrap_or_default().to_string());
 
         Ok((args, rpc_cache_root, etherscan_cache_root))
     }
 
     async fn run_e2e_test(tx_hash: &str) -> Result<()> {
-        let (args, rpc_cache_root, etherscan_cache_root) =
-            init_test(tx_hash)?;
+        let (args, rpc_cache_root, etherscan_cache_root) = init_test(tx_hash)?;
         let (db, env) = args.prepare(Some(rpc_cache_root)).await?;
         let backend = DebugBackend::<ForkedDatabase>::builder()
             .chain(args.etherscan.chain.unwrap_or_default())
@@ -221,24 +222,48 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
     async fn test_e2e_tx1() {
-        run_e2e_test("0x1282e09bb5118f619da81b6a24c97999e7057ee9975628562c7cecbb4aa9f5af").await.unwrap();
+        run_e2e_test("0x1282e09bb5118f619da81b6a24c97999e7057ee9975628562c7cecbb4aa9f5af")
+            .await
+            .unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
     async fn test_e2e_tx2() {
-        run_e2e_test("0xd253e3b563bf7b8894da2a69db836a4e98e337157564483d8ac72117df355a9d").await.unwrap();
+        run_e2e_test("0xd253e3b563bf7b8894da2a69db836a4e98e337157564483d8ac72117df355a9d")
+            .await
+            .unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
     async fn test_e2e_tx3() {
-        run_e2e_test("0x6f4d3b21b69335e210202c8f47867761315e824c5c360d1ab8910f5d7ce5d526").await.unwrap();
+        run_e2e_test("0x6f4d3b21b69335e210202c8f47867761315e824c5c360d1ab8910f5d7ce5d526")
+            .await
+            .unwrap();
     }
 
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
     async fn test_e2e_tx4() {
-        run_e2e_test("0x0fe2542079644e107cbf13690eb9c2c65963ccb79089ff96bfaf8dced2331c92").await.unwrap();
+        run_e2e_test("0x0fe2542079644e107cbf13690eb9c2c65963ccb79089ff96bfaf8dced2331c92")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial]
+    async fn test_e2e_constract_with_library() {
+        run_e2e_test("0x9404771a145b4df4a6694a9896509d263448f5f27c2fd55ec8c47f37c9468b76")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial]
+    async fn test_e2e_creation() {
+        run_e2e_test("0x1e20cd6d47d7021ae7e437792823517eeadd835df09dde17ab45afd7a5df4603")
+            .await
+            .unwrap();
     }
 }

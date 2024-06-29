@@ -207,6 +207,13 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
+    async fn test_solidity_external_library() {
+        let addr = Address::from_str("0x0F6E8eF18FB5bb61D545fEe60f779D8aED60408F").unwrap();
+        download_and_compile(Chain::default(), addr).await.unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial]
     async fn test_solidity_v0_8_18() {
         let addr = Address::from_str("0xe45dfc26215312edc131e34ea9299fbca53275ca").unwrap();
         download_and_compile(Chain::default(), addr).await.unwrap();

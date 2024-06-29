@@ -11,7 +11,7 @@ use edb_utils::{cache::CachePath, init_progress, update_progress};
 use eyre::{eyre, Result};
 use foundry_block_explorers::{contract::Metadata, errors::EtherscanError, Client};
 use foundry_compilers::{
-    artifacts::{output_selection::OutputSelection, SolcInput, Source, SourceUnit},
+    artifacts::{output_selection::OutputSelection, SolcInput, Source},
     solc::{Solc, SolcLanguage},
 };
 use revm::{
@@ -25,10 +25,6 @@ use revm::{
 const DEFAULT_CACHE_TTL: u64 = 86400;
 
 use crate::{
-    analysis::{
-        self,
-        prune::{self, ASTPruner},
-    },
     artifact::{
         compilation::{AsCompilationArtifact, CompilationArtifact},
         debug::{DebugArtifact, DebugNodeFlat},
@@ -87,9 +83,10 @@ impl DebugBackendBuilder {
     pub fn local_compilation_artifact(
         mut self,
         local_compilation_artifact: impl AsCompilationArtifact,
-    ) -> Self {
-        self.local_compilation_artifact = Some(local_compilation_artifact.into());
-        self
+    ) -> Result<Self> {
+        self.local_compilation_artifact =
+            Some(local_compilation_artifact.as_compilation_artifact()?);
+        Ok(self)
     }
 
     // XXX (ZZ): let's support them later
@@ -106,14 +103,17 @@ impl DebugBackendBuilder {
     pub fn compilation_artifacts(
         mut self,
         compilation_artifacts: HashMap<Address, impl AsCompilationArtifact>,
-    ) -> Self {
-        self.compilation_artifacts = Some(
-            compilation_artifacts
-                .into_iter()
-                .map(|(k, v)| (k, v.into()))
-                .collect::<HashMap<Address, CompilationArtifact>>(),
-        );
-        self
+    ) -> Result<Self> {
+        let result: Result<HashMap<Address, CompilationArtifact>, _> = compilation_artifacts
+            .into_iter()
+            .map(|(k, v)| {
+                let artifact = v.as_compilation_artifact()?;
+                Ok::<_, eyre::Error>((k, artifact))
+            })
+            .collect();
+
+        self.compilation_artifacts = Some(result?);
+        Ok(self)
     }
 
     /// Build the debug backend.
@@ -217,16 +217,26 @@ where
     }
 
     async fn collect_compilation_artifacts(&mut self) -> Result<()> {
+        // We need to commit the transaction first (to a newly cloned cache db) before we can
+        // collect the compilation artifacts.
+        //
+        // The major reason is that, since the transaction may create/deploy new contracts, without
+        // actually committing the transaction, we cannot know the deployed code of the new
+        // contracts.
+        let mut db = CacheDB::new(&self.base_db);
+
         // Step 1. collect addresses of contracts that are visited during the transaction,
         // as well as the creation codes of contracts that are deployed during the transaction
         let mut inspect = CollectInspector::new(&mut self.addresses, &mut self.creation_codes);
-        let mut evm = new_evm_with_inspector(&mut self.base_db, self.env.clone(), &mut inspect);
-        evm.transact().map_err(|err| eyre!("failed to transact: {}", err))?;
+        let mut evm = new_evm_with_inspector(&mut db, self.env.clone(), &mut inspect);
+        evm.transact_commit().map_err(|err| eyre!("failed to transact: {}", err))?;
         drop(evm);
 
         // Step 2. collect source code from etherscan
         let pb = init_progress!(self.addresses, "Compiling source code from etherscan");
         for (index, addr) in self.addresses.iter().enumerate() {
+            println!("{:#?} {}", addr, self.creation_codes.contains_key(addr));
+
             let mut meta =
                 match etherscan_rate_limit_guard!(self.etherscan.contract_source_code(*addr).await)
                 {
@@ -245,6 +255,36 @@ where
                 continue;
             }
 
+            // get contract name
+            let contract_name = meta.contract_name.as_str();
+
+            // get the deployed bytecode
+            let deployed_bytecode = if let Some(ref bytecode) = db
+                .load_account(*addr)
+                .map_err(|e| {
+                    eyre!(format!("the account ({}) does not exist: {}", addr, e.to_string()))
+                })?
+                .info
+                .code
+            {
+                bytecode.clone()
+            } else {
+                let code_hash = db
+                    .load_account(*addr)
+                    .map_err(|e| {
+                        eyre!(format!("the account ({}) does not exist: {}", addr, e.to_string()))
+                    })?
+                    .info
+                    .code_hash();
+                db.code_by_hash_ref(code_hash).map_err(|e| {
+                    eyre!(format!(
+                        "the code hash ({}) does not exist: {}",
+                        code_hash,
+                        e.to_string()
+                    ))
+                })?
+            };
+
             // prepare the input for solc
             let mut settings = meta.settings()?;
             // enforce compiler output all possible outputs
@@ -260,16 +300,13 @@ where
             let version = meta.compiler_version()?;
             let compiler = Solc::find_or_install(&version)?;
 
-            println!("{:#?} {}", addr, version);
-
             // compile the source code
-            let mut output = match compiler.compile_exact(&input) {
-                Ok(compiler_output) => CompilationArtifact::new(compiler_output),
+            let output = match compiler.compile_exact(&input) {
+                Ok(compiler_output) => compiler_output,
                 Err(_) if version.major == 0 && version.minor == 4 => {
                     // check compiler version
                     // it is known that Solc 0.4.x does not support --standard-json
                     warn!("Solc 0.4.x does not support --standard-json, skipping");
-                    println!("Solc 0.4.x does not support --standard-json, skipping");
                     update_progress!(pb, index);
                     continue;
                 }
@@ -277,12 +314,11 @@ where
                     return Err(eyre!("failed to compile contract: {}", e));
                 }
             };
-            for (path, contract) in output.sources.iter_mut() {
-                let _ =
-                    ASTPruner::convert(contract.ast.as_mut().ok_or(eyre!("AST does not exist"))?)?;
-            }
 
-            self.compilation_artifacts.insert(*addr, output);
+            let artifact = (contract_name, deployed_bytecode, &input.sources, output)
+                .as_compilation_artifact()?;
+
+            self.compilation_artifacts.insert(*addr, artifact);
             self.identified_contracts.insert(*addr, meta.contract_name.clone());
             self.metadata.insert(*addr, meta);
 

@@ -15,7 +15,4 @@ Cargo.lock
 
 # Cache for rpc.
 # HashMaps in the cache is stored on disck but without order. We hence need to ignore them during git commit
-testdata/cache/rpc/13499637
-testdata/cache/rpc/13499797
-testdata/cache/rpc/20099788
-testdata/cache/rpc/20176154
+testdata/cache/rpc/*
