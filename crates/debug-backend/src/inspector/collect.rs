@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    str::FromStr,
-};
+use std::collections::{HashMap, HashSet};
 
 use alloy_primitives::{Address, Bytes};
 use alloy_sol_types::SolError;

@@ -44,7 +44,6 @@ pub struct DebugBackendBuilder {
     // Compilation artifact from local file system
     // XXX (ZZ): let's support them later
     local_compilation_artifact: Option<CompilationArtifact>,
-    identified_contracts: Option<HashMap<Address, String>>,
     compilation_artifacts: Option<HashMap<Address, CompilationArtifact>>,
 }
 
@@ -84,17 +83,8 @@ impl DebugBackendBuilder {
         mut self,
         local_compilation_artifact: impl AsCompilationArtifact,
     ) -> Result<Self> {
-        self.local_compilation_artifact =
-            Some(local_compilation_artifact.as_compilation_artifact()?);
+        self.local_compilation_artifact = Some(local_compilation_artifact.as_artifact()?);
         Ok(self)
-    }
-
-    // XXX (ZZ): let's support them later
-    /// Set the identified contracts.
-    /// If not set, the identified contracts will not be used.
-    pub fn identified_contracts(mut self, identified_contracts: HashMap<Address, String>) -> Self {
-        self.identified_contracts = Some(identified_contracts);
-        self
     }
 
     // XXX (ZZ): let's support them later
@@ -107,7 +97,7 @@ impl DebugBackendBuilder {
         let result: Result<HashMap<Address, CompilationArtifact>, _> = compilation_artifacts
             .into_iter()
             .map(|(k, v)| {
-                let artifact = v.as_compilation_artifact()?;
+                let artifact = v.as_artifact()?;
                 Ok::<_, eyre::Error>((k, artifact))
             })
             .collect();
@@ -122,19 +112,11 @@ impl DebugBackendBuilder {
         DBRef: DatabaseRef,
         DBRef::Error: std::error::Error,
     {
-        // prepare the cache dir
-        // XXX (ZZ): I personally think this should be done in the foundry_block_explorers crate
-        let cache_root = self
-            .cache_root
-            .or(CachePath::edb_etherscan_chain_cache_dir(self.chain.unwrap_or(Chain::default())));
-        if let Some(ref root) = cache_root {
-            std::fs::create_dir_all(root.join("sources"))?;
-            std::fs::create_dir_all(root.join("abi"))?;
-        }
-
         // XXX: the following code looks bad and needs to be refactored
         let cb = Client::builder().with_cache(
-            cache_root,
+            self.cache_root.or(CachePath::edb_etherscan_chain_cache_dir(
+                self.chain.unwrap_or(Chain::default()),
+            )),
             self.cache_ttl.unwrap_or(Duration::from_secs(DEFAULT_CACHE_TTL)),
         );
         let cb = if let Some(chain) = self.chain { cb.chain(chain)? } else { cb };
@@ -143,12 +125,9 @@ impl DebugBackendBuilder {
 
         let local_compilation_artifact = self.local_compilation_artifact;
 
-        let identified_contracts = self.identified_contracts.unwrap_or_default();
-
         let compilation_artifacts = self.compilation_artifacts.unwrap_or_default();
 
         Ok(DebugBackend {
-            identified_contracts,
             compilation_artifacts,
             local_compilation_artifact,
             addresses: HashSet::new(),
@@ -168,9 +147,6 @@ pub struct DebugBackend<DBRef> {
 
     // Creation code of contracts that are deployed during the transaction
     pub creation_codes: HashMap<Address, (Bytes, CreateScheme)>,
-
-    /// Identified contracts.
-    pub identified_contracts: HashMap<Address, String>,
 
     /// Metadata of each contract.
     pub metadata: HashMap<Address, Metadata>,
@@ -209,11 +185,7 @@ where
 
         let debug_arena = self.collect_debug_trace()?;
 
-        Ok(DebugArtifact {
-            debug_arena,
-            identified_contracts: self.identified_contracts,
-            compilation_artifacts: self.compilation_artifacts,
-        })
+        Ok(DebugArtifact { debug_arena, compilation_artifacts: self.compilation_artifacts })
     }
 
     async fn collect_compilation_artifacts(&mut self) -> Result<()> {
@@ -315,11 +287,10 @@ where
                 }
             };
 
-            let artifact = (contract_name, deployed_bytecode, &input.sources, output)
-                .as_compilation_artifact()?;
+            let artifact =
+                (contract_name, deployed_bytecode, &input.sources, output).as_artifact()?;
 
             self.compilation_artifacts.insert(*addr, artifact);
-            self.identified_contracts.insert(*addr, meta.contract_name.clone());
             self.metadata.insert(*addr, meta);
 
             update_progress!(pb, index);

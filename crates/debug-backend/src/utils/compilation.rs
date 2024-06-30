@@ -15,7 +15,7 @@ pub fn link_contracts_fakely(contract: &mut DeployedBytecode, addr: Option<Addre
         .collect();
 
     for (file, library) in references {
-        bytecode.link(file, library, addr);
+        bytecode.link(&file, &library, addr);
     }
 
     bytecode.object.resolve().ok_or(eyre!("object linking failed"))?;

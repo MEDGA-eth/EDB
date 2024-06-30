@@ -2,7 +2,9 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use alloy_json_abi::JsonAbi;
 use eyre::{eyre, Result};
-use foundry_compilers::artifacts::{CompilerOutput, DeployedBytecode, Evm, Source, SourceUnit};
+use foundry_compilers::artifacts::{
+    CompilerOutput, DeployedBytecode, Evm, Source, SourceUnit, Sources,
+};
 use revm::primitives::Bytecode as RevmBytecode;
 
 use crate::{
@@ -32,7 +34,7 @@ pub struct CompilationArtifact {
 }
 
 pub trait AsCompilationArtifact {
-    fn as_compilation_artifact(self) -> Result<CompilationArtifact>;
+    fn as_artifact(self) -> Result<CompilationArtifact>;
 }
 
 /// This trait is used to convert a tuple of contract name, bytecode, sources and compiler output
@@ -42,8 +44,8 @@ pub trait AsCompilationArtifact {
 /// The bytecode is the on-chain bytecode of the subject contract.
 /// The source map is the source code of all contracts involved in the compilation process.
 /// The compiler output is the output of the compiler.
-impl AsCompilationArtifact for (&str, RevmBytecode, &BTreeMap<PathBuf, Source>, CompilerOutput) {
-    fn as_compilation_artifact(self) -> Result<CompilationArtifact> {
+impl AsCompilationArtifact for (&str, RevmBytecode, &Sources, CompilerOutput) {
+    fn as_artifact(self) -> Result<CompilationArtifact> {
         let (contract_name, bytecode, input_sources, mut output) = self;
         let bytecode = bytecode.original_byte_slice();
 
@@ -62,8 +64,7 @@ impl AsCompilationArtifact for (&str, RevmBytecode, &BTreeMap<PathBuf, Source>, 
         let mut selected = None;
         let mut max_similarity = 0.0;
         for (path, contracts) in output.contracts.iter() {
-            for (name, contract) in
-                contracts.iter().filter(|(name, _)| name.as_str() == contract_name)
+            for (_, contract) in contracts.iter().filter(|(name, _)| name.as_str() == contract_name)
             {
                 if let Some(Evm {
                     deployed_bytecode:
