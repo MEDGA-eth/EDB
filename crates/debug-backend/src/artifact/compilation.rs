@@ -2,9 +2,7 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use alloy_json_abi::JsonAbi;
 use eyre::{eyre, Result};
-use foundry_compilers::artifacts::{
-    CompilerOutput, DeployedBytecode, Evm, Source, SourceUnit, Sources,
-};
+use foundry_compilers::artifacts::{CompilerOutput, DeployedBytecode, Evm, SourceUnit, Sources};
 use revm::primitives::Bytecode as RevmBytecode;
 
 use crate::{

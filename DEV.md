@@ -39,6 +39,7 @@ cargo +nightly clippy --all --all-targets --all-features -- -D warnings
 + [ ] Rewrite the subject contract, to enforce a storage update for each local variable update.
 + [ ] Debug session layout dump.
 + [ ] When Etherscan's source code is not available, we should go for Blockscout.
++ [ ] Make compilation multi-threaded.
 
 ## Some Hints
 

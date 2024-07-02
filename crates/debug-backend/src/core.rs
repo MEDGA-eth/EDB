@@ -25,6 +25,7 @@ use revm::{
 const DEFAULT_CACHE_TTL: u64 = 86400;
 
 use crate::{
+    analysis::source_map::SourceMapAnalysis,
     artifact::{
         compilation::{AsCompilationArtifact, CompilationArtifact},
         debug::{DebugArtifact, DebugNodeFlat},
@@ -182,10 +183,19 @@ where
     /// Analyze the transaction and return the debug artifact.
     pub async fn analyze(mut self) -> Result<DebugArtifact> {
         self.collect_compilation_artifacts().await?;
+        self.analyze_source_map()?;
 
         let debug_arena = self.collect_debug_trace()?;
 
         Ok(DebugArtifact { debug_arena, compilation_artifacts: self.compilation_artifacts })
+    }
+
+    fn analyze_source_map(&mut self) -> Result<()> {
+        for (_, artifact) in &self.compilation_artifacts {
+            SourceMapAnalysis::analyze(artifact)?;
+        }
+
+        Ok(())
     }
 
     async fn collect_compilation_artifacts(&mut self) -> Result<()> {
