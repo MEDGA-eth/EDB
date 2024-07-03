@@ -3,7 +3,6 @@ members = [
     "crates/backend/",
     "crates/frontend/",
     "crates/edb/",
-    "crates/etherscan-adapter/",
     "crates/foundry-adapter/",
     "crates/hardhat-adapter/",
     "crates/utils/",
@@ -75,7 +74,6 @@ codegen-units = 1
 edb = { path = "crates/edb" }
 edb-backend = { path = "crates/backend" }
 edb-frontend = { path = "crates/frontend" }
-edb-etherscan-adapter = { path = "crates/etherscan-adapter" }
 edb-foundry-adapter = { path = "crates/foundry-adapter" }
 edb-hardhat-adapter = { path = "crates/hardhat-adapter" }
 edb-utils = { path = "crates/utils" }
