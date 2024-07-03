@@ -39,8 +39,8 @@ use crate::{
 pub struct DebugBackendBuilder {
     chain: Option<Chain>,
     api_key: Option<String>,
-    cache_root: Option<PathBuf>,
-    cache_ttl: Option<Duration>,
+    provider_cache_root: Option<PathBuf>,
+    provider_cache_ttl: Option<Duration>,
 
     // Compilation artifact from local file system
     // XXX (ZZ): let's support them later
@@ -58,15 +58,15 @@ impl DebugBackendBuilder {
 
     /// Set the cache root directory.
     /// If not set, the default cache directory will be used.
-    pub fn cache_root(mut self, path: PathBuf) -> Self {
-        self.cache_root = Some(path);
+    pub fn provider_cache_root(mut self, path: PathBuf) -> Self {
+        self.provider_cache_root = Some(path);
         self
     }
 
     /// Set the cache TTL.
     /// If not set, the default cache TTL will be used.
-    pub fn cache_ttl(mut self, duration: Duration) -> Self {
-        self.cache_ttl = Some(duration);
+    pub fn provider_cache_ttl(mut self, duration: Duration) -> Self {
+        self.provider_cache_ttl = Some(duration);
         self
     }
 
@@ -115,10 +115,10 @@ impl DebugBackendBuilder {
     {
         // XXX: the following code looks bad and needs to be refactored
         let cb = Client::builder().with_cache(
-            self.cache_root.or(CachePath::edb_etherscan_chain_cache_dir(
+            self.provider_cache_root.or(CachePath::edb_etherscan_chain_cache_dir(
                 self.chain.unwrap_or(Chain::default()),
             )),
-            self.cache_ttl.unwrap_or(Duration::from_secs(DEFAULT_CACHE_TTL)),
+            self.provider_cache_ttl.unwrap_or(Duration::from_secs(DEFAULT_CACHE_TTL)),
         );
         let cb = if let Some(chain) = self.chain { cb.chain(chain)? } else { cb };
         let cb = if let Some(api_key) = self.api_key { cb.with_api_key(api_key) } else { cb };
@@ -191,7 +191,8 @@ where
     }
 
     fn analyze_source_map(&mut self) -> Result<()> {
-        for (_, artifact) in &self.compilation_artifacts {
+        for (addr, artifact) in &self.compilation_artifacts {
+            println!("Working on: {:#?}", addr);
             SourceMapAnalysis::analyze(artifact)?;
         }
 

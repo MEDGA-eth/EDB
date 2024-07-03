@@ -28,8 +28,8 @@ vergen = { workspace = true, default-features = false, features = [
 serial_test.workspace = true
 
 [dependencies]
-edb-debug-backend.workspace = true
-edb-debug-frontend.workspace = true
+edb-backend.workspace = true
+edb-frontend.workspace = true
 edb-utils.workspace = true
 
 alloy-chains = { workspace = true, features = ["serde"] }

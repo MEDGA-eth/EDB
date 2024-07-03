@@ -4,11 +4,10 @@ use alloy_primitives::Address;
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
-use edb_debug_backend::artifact::debug::{DebugArtifact, DebugNodeFlat, DebugStep};
+use edb_backend::artifact::debug::{DebugArtifact, DebugNodeFlat, DebugStep};
 use eyre::Result;
-use ratatui::layout::{Direction, Rect};
+use ratatui::layout::Direction;
 use revm_inspectors::tracing::types::CallKind;
-use serde::de;
 use std::ops::ControlFlow;
 
 use crate::{

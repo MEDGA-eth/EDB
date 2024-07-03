@@ -34,6 +34,7 @@ cargo +nightly clippy --all --all-targets --all-features -- -D warnings
 + [x] Redesign the UI to support complex user input.
 + [ ] Support command history.
 + [ ] Support caching in the debugger.
++ [ ] Support compilation cache
 + [x] Move the dependency declarations to the top of `cargo.toml`.
 + [ ] Rewrite the subject contract, to add `public` to all storage variables and functions.
 + [ ] Rewrite the subject contract, to enforce a storage update for each local variable update.

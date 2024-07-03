@@ -4,8 +4,8 @@ use alloy_primitives::TxHash;
 use alloy_provider::Provider;
 use alloy_rpc_types::{BlockTransactions, BlockTransactionsKind};
 use clap::Parser;
-use edb_debug_backend::DebugBackend;
-use edb_debug_frontend::DebugFrontend;
+use edb_backend::DebugBackend;
+use edb_frontend::DebugFrontend;
 use edb_utils::{init_progress, update_progress};
 use eyre::{ensure, eyre, Result};
 use foundry_common::{is_known_system_sender, SYSTEM_TRANSACTION_TYPE};
@@ -211,8 +211,8 @@ mod tests {
         let backend = DebugBackend::<ForkedDatabase>::builder()
             .chain(args.etherscan.chain.unwrap_or_default())
             .etherscan_api_key(args.etherscan.key().unwrap_or_default())
-            .cache_root(etherscan_cache_root)
-            .cache_ttl(Duration::from_secs(u32::MAX as u64)) // we don't want the cache to expire
+            .provider_cache_root(etherscan_cache_root)
+            .provider_cache_ttl(Duration::from_secs(u32::MAX as u64)) // we don't want the cache to expire
             .build::<ForkedDatabase>(&db, env)?;
         let _ = backend.analyze().await?;
 

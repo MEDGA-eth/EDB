@@ -11,7 +11,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use edb_debug_backend::artifact::debug::DebugArtifact;
+use edb_backend::artifact::debug::DebugArtifact;
 use eyre::Result;
 use ratatui::{
     backend::{Backend, CrosstermBackend},

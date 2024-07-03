@@ -1,5 +1,5 @@
 [package]
-name = "edb-debug-backend"
+name = "edb-backend"
 description = "EDB's backend providing comprehensive debugging functionalities"
 
 version.workspace = true
@@ -35,5 +35,6 @@ revm-inspectors.workspace = true
 rustc-hash.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+solang-parser.workspace = true
 tracing.workspace = true
 tokio.workspace = true

@@ -1,5 +1,5 @@
 [package]
-name = "edb-debug-frontend"
+name = "edb-frontend"
 description = "Frontend UI for EDB debugger"
 
 version.workspace = true
@@ -15,7 +15,7 @@ exclude.workspace = true
 workspace = true
 
 [dependencies]
-edb-debug-backend.workspace = true
+edb-backend.workspace = true
 
 alloy-primitives.workspace = true
 alloy-chains.workspace = true
