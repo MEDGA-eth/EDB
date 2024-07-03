@@ -15,9 +15,14 @@ exclude.workspace = true
 workspace = true
 
 [dependencies]
-alloy-chains = { workspace = true, features = ["serde"] }
+alloy-chains.workspace = true
+alloy-json-abi.workspace = true
+alloy-primitives.workspace = true
+alloy-sol-types.workspace = true
 dirs-next = "2"
 eyre.workspace = true
+foundry-compilers = { workspace = true, features = ["svm-solc", "async"] }
+foundry-block-explorers = { workspace = true, features = ["foundry-compilers"] }
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["full"] }

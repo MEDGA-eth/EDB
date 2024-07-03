@@ -160,15 +160,10 @@ mod tests {
 
     use alloy_chains::Chain;
     use alloy_primitives::Address;
+    use edb_utils::onchain_compiler;
     use eyre::Result;
     use foundry_block_explorers::Client;
-    use foundry_compilers::{
-        artifacts::{output_selection::OutputSelection, SolcInput, Source},
-        solc::{Solc, SolcLanguage},
-    };
     use serial_test::serial;
-
-    use crate::etherscan_rate_limit_guard;
 
     use super::*;
 
@@ -177,27 +172,16 @@ mod tests {
             .join("../../testdata/cache/etherscan")
             .join(chain.to_string());
         let cache_ttl = Duration::from_secs(u32::MAX as u64); // we don't want the cache to expire
-        let client =
+        let mut client =
             Client::builder().chain(chain)?.with_cache(Some(cache_root), cache_ttl).build()?;
 
-        // download the source code
-        let mut meta = etherscan_rate_limit_guard!(client.contract_source_code(addr).await)?;
-        eyre::ensure!(meta.items.len() == 1, "contract not found or ill-formed");
-        let meta = meta.items.remove(0);
+        let compiler_cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/cache/solc")
+            .join(chain.to_string());
 
-        // prepare the input for solc
-        let mut settings = meta.settings()?;
-        // enforce compiler output all possible outputs
-        settings.output_selection = OutputSelection::complete_output_selection();
-        let sources =
-            meta.sources().into_iter().map(|(k, v)| (k.into(), Source::new(v.content))).collect();
-        let input = SolcInput::new(SolcLanguage::Solidity, sources, settings);
-
-        // prepare the compiler
-        let version = meta.compiler_version()?;
-        let compiler = Solc::find_or_install(&version)?;
-
-        let mut output = compiler.compile_exact(&input)?;
+        let (_, _, mut output) = onchain_compiler::compile(&mut client, addr, &compiler_cache_root)
+            .await?
+            .ok_or(eyre!("missing compiler output"))?;
         for (_, contract) in output.sources.iter_mut() {
             ASTPruner::convert(contract.ast.as_mut().ok_or(eyre!("AST does not exist"))?)?;
         }

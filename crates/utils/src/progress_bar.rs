@@ -16,6 +16,7 @@ macro_rules! init_progress {
                 .with_key("eta", eta_key)
                 .progress_chars("#>-"),
         );
+        pb.set_position(0);
         pb
     }};
 }

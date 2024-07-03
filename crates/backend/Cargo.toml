@@ -20,9 +20,9 @@ serial_test.workspace = true
 [dependencies]
 edb-utils.workspace = true
 
-alloy-primitives.workspace = true
 alloy-chains.workspace = true
 alloy-json-abi.workspace = true
+alloy-primitives.workspace = true
 alloy-sol-types.workspace = true
 arrayvec.workspace = true
 eyre.workspace = true

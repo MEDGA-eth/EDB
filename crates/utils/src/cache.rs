@@ -41,4 +41,15 @@ impl CachePath {
     pub fn edb_etherscan_chain_cache_dir(chain_id: impl Into<Chain>) -> Option<PathBuf> {
         Some(Self::edb_etherscan_cache_dir()?.join(chain_id.into().to_string()))
     }
+
+    /// Returns the path to edb's compiler cache dir: `~/.edb/cache/solc`.
+    pub fn edb_compiler_cache_dir() -> Option<PathBuf> {
+        Some(Self::edb_cache_dir()?.join("solc"))
+    }
+
+    /// Returns the path to edb's compiler cache dir for `chain_id`:
+    /// `~/.edb/cache/solc/<chain>`
+    pub fn edb_compiler_chain_cache_dir(chain_id: impl Into<Chain>) -> Option<PathBuf> {
+        Some(Self::edb_compiler_cache_dir()?.join(chain_id.into().to_string()))
+    }
 }

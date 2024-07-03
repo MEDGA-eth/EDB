@@ -35,7 +35,7 @@ impl SourceMapAnalysis {
                 .code
                 .as_str();
 
-            println!("{}", source_with_primative_statements(source, stmts));
+            // println!("{}", source_with_primative_statements(source, stmts));
         }
 
         Ok(units)

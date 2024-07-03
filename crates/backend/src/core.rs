@@ -7,13 +7,9 @@ use std::{
 
 use alloy_chains::Chain;
 use alloy_primitives::{Address, Bytes};
-use edb_utils::{cache::CachePath, init_progress, update_progress};
+use edb_utils::{cache::CachePath, init_progress, onchain_compiler, update_progress};
 use eyre::{eyre, Result};
-use foundry_block_explorers::{contract::Metadata, errors::EtherscanError, Client};
-use foundry_compilers::{
-    artifacts::{output_selection::OutputSelection, SolcInput, Source},
-    solc::{Solc, SolcLanguage},
-};
+use foundry_block_explorers::{contract::Metadata, Client};
 use revm::{
     db::CacheDB,
     primitives::{CreateScheme, EnvWithHandlerCfg},
@@ -30,7 +26,6 @@ use crate::{
         compilation::{AsCompilationArtifact, CompilationArtifact},
         debug::{DebugArtifact, DebugNodeFlat},
     },
-    etherscan_rate_limit_guard,
     inspector::{CollectInspector, DebugInspector},
     utils::evm::new_evm_with_inspector,
 };
@@ -41,6 +36,7 @@ pub struct DebugBackendBuilder {
     api_key: Option<String>,
     provider_cache_root: Option<PathBuf>,
     provider_cache_ttl: Option<Duration>,
+    compiler_cache_root: Option<PathBuf>,
 
     // Compilation artifact from local file system
     // XXX (ZZ): let's support them later
@@ -67,6 +63,13 @@ impl DebugBackendBuilder {
     /// If not set, the default cache TTL will be used.
     pub fn provider_cache_ttl(mut self, duration: Duration) -> Self {
         self.provider_cache_ttl = Some(duration);
+        self
+    }
+
+    /// Set the compiler cache root directory.
+    /// If not set, the default compiler cache directory will be used.
+    pub fn compiler_cache_root(mut self, path: PathBuf) -> Self {
+        self.compiler_cache_root = Some(path);
         self
     }
 
@@ -122,7 +125,13 @@ impl DebugBackendBuilder {
         );
         let cb = if let Some(chain) = self.chain { cb.chain(chain)? } else { cb };
         let cb = if let Some(api_key) = self.api_key { cb.with_api_key(api_key) } else { cb };
+        let chain_id = cb.get_chain().unwrap_or_default();
         let client = cb.build()?;
+
+        let compiler_cache_root = self
+            .compiler_cache_root
+            .or(CachePath::edb_compiler_chain_cache_dir(chain_id))
+            .ok_or(eyre::eyre!("missing cache_root"))?;
 
         let local_compilation_artifact = self.local_compilation_artifact;
 
@@ -131,6 +140,7 @@ impl DebugBackendBuilder {
         Ok(DebugBackend {
             compilation_artifacts,
             local_compilation_artifact,
+            compiler_cache_root,
             addresses: HashSet::new(),
             metadata: HashMap::new(),
             creation_codes: HashMap::new(),
@@ -162,6 +172,9 @@ pub struct DebugBackend<DBRef> {
 
     // Etherscan client
     etherscan: Client,
+
+    // Compiler cache root directory
+    compiler_cache_root: PathBuf,
 
     // Transaction information
     // The base database
@@ -220,27 +233,6 @@ where
         for (index, addr) in self.addresses.iter().enumerate() {
             println!("{:#?} {}", addr, self.creation_codes.contains_key(addr));
 
-            let mut meta =
-                match etherscan_rate_limit_guard!(self.etherscan.contract_source_code(*addr).await)
-                {
-                    Ok(meta) => meta,
-                    Err(EtherscanError::ContractCodeNotVerified(_)) => {
-                        update_progress!(pb, index);
-                        continue;
-                    }
-                    Err(e) => return Err(e.into()),
-                };
-            eyre::ensure!(meta.items.len() == 1, "contract not found or ill-formed");
-            let meta = meta.items.remove(0);
-            if meta.is_vyper() {
-                // TODO: support Vyper later
-                update_progress!(pb, index);
-                continue;
-            }
-
-            // get contract name
-            let contract_name = meta.contract_name.as_str();
-
             // get the deployed bytecode
             let deployed_bytecode = if let Some(ref bytecode) = db
                 .load_account(*addr)
@@ -268,38 +260,22 @@ where
                 })?
             };
 
-            // prepare the input for solc
-            let mut settings = meta.settings()?;
-            // enforce compiler output all possible outputs
-            settings.output_selection = OutputSelection::complete_output_selection();
-            let sources = meta
-                .sources()
-                .into_iter()
-                .map(|(k, v)| (k.into(), Source::new(v.content)))
-                .collect();
-            let input = SolcInput::new(SolcLanguage::Solidity, sources, settings);
-
-            // prepare the compiler
-            let version = meta.compiler_version()?;
-            let compiler = Solc::find_or_install(&version)?;
-
             // compile the source code
-            let output = match compiler.compile_exact(&input) {
-                Ok(compiler_output) => compiler_output,
-                Err(_) if version.major == 0 && version.minor == 4 => {
-                    // check compiler version
-                    // it is known that Solc 0.4.x does not support --standard-json
-                    warn!("Solc 0.4.x does not support --standard-json, skipping");
-                    update_progress!(pb, index);
-                    continue;
-                }
-                Err(e) => {
-                    return Err(eyre!("failed to compile contract: {}", e));
-                }
+            let (meta, sources, output) = if let Some((meta, sources, output)) =
+                onchain_compiler::compile(&self.etherscan, *addr, &self.compiler_cache_root).await?
+            {
+                (meta, sources, output)
+            } else {
+                update_progress!(pb, index);
+                continue;
             };
 
-            let artifact =
-                (contract_name, deployed_bytecode, &input.sources, output).as_artifact()?;
+            // get contract name
+            let contract_name = meta.contract_name.as_str();
+
+            println!("prepare artifact");
+            let artifact = (contract_name, deployed_bytecode, &sources, output).as_artifact()?;
+            println!("prepare artifact done");
 
             self.compilation_artifacts.insert(*addr, artifact);
             self.metadata.insert(*addr, meta);
