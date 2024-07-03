@@ -160,7 +160,7 @@ mod tests {
 
     use alloy_chains::Chain;
     use alloy_primitives::Address;
-    use edb_utils::onchain_compiler;
+    use edb_utils::onchain_compiler::OnchainCompiler;
     use eyre::Result;
     use foundry_block_explorers::Client;
     use serial_test::serial;
@@ -172,16 +172,16 @@ mod tests {
             .join("../../testdata/cache/etherscan")
             .join(chain.to_string());
         let cache_ttl = Duration::from_secs(u32::MAX as u64); // we don't want the cache to expire
-        let mut client =
+        let client =
             Client::builder().chain(chain)?.with_cache(Some(cache_root), cache_ttl).build()?;
 
         let compiler_cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../testdata/cache/solc")
             .join(chain.to_string());
+        let compiler = OnchainCompiler::new(compiler_cache_root)?;
 
-        let (_, _, mut output) = onchain_compiler::compile(&mut client, addr, &compiler_cache_root)
-            .await?
-            .ok_or(eyre!("missing compiler output"))?;
+        let (_, _, mut output) =
+            compiler.compile(&client, addr).await?.ok_or(eyre!("missing compiler output"))?;
         for (_, contract) in output.sources.iter_mut() {
             ASTPruner::convert(contract.ast.as_mut().ok_or(eyre!("AST does not exist"))?)?;
         }

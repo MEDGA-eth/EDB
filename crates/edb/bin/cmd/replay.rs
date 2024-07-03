@@ -140,7 +140,7 @@ impl ReplayArgs {
             }
 
             // execute the transaction
-            trace!("Executing transaction: {:?}", tx.hash);
+            trace!("replay transaction: {:?}", tx.hash);
 
             fill_tx_env(&mut env, &tx)?;
             let mut evm = new_evm_with_inspector(&mut db, env.clone(), NoOpInspector);
@@ -181,7 +181,7 @@ mod tests {
     use super::*;
     use serial_test::serial;
 
-    fn init_test(tx_hash: &str) -> Result<(ReplayArgs, PathBuf, PathBuf, PathBuf)> {
+    async fn run_e2e_test(tx_hash: &str) -> Result<()> {
         let args = ReplayArgs {
             tx_hash: TxHash::from_str(tx_hash)?,
             quick: false,
@@ -197,19 +197,18 @@ mod tests {
         };
 
         let rpc_cache_root =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/cache/rpc");
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/cache/rpc")
+            .join(args.etherscan.chain.unwrap_or_default().to_string());
         let etherscan_cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../testdata/cache/etherscan")
             .join(args.etherscan.chain.unwrap_or_default().to_string());
         let compiler_cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../testdata/cache/solc")
             .join(args.etherscan.chain.unwrap_or_default().to_string());
+        let backend_cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/cache/backend")
+            .join(args.etherscan.chain.unwrap_or_default().to_string());
 
-        Ok((args, rpc_cache_root, etherscan_cache_root, compiler_cache_root))
-    }
-
-    async fn run_e2e_test(tx_hash: &str) -> Result<()> {
-        let (args, rpc_cache_root, etherscan_cache_root, compiler_cache_root) = init_test(tx_hash)?;
         let (db, env) = args.prepare(Some(rpc_cache_root)).await?;
         let backend = DebugBackend::<ForkedDatabase>::builder()
             .chain(args.etherscan.chain.unwrap_or_default())
@@ -217,6 +216,7 @@ mod tests {
             .provider_cache_root(etherscan_cache_root)
             .provider_cache_ttl(Duration::from_secs(u32::MAX as u64)) // we don't want the cache to expire
             .compiler_cache_root(compiler_cache_root)
+            .cache_root(backend_cache_root)
             .build::<ForkedDatabase>(&db, env)?;
         let _ = backend.analyze().await?;
 

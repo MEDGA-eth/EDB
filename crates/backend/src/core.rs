@@ -7,9 +7,14 @@ use std::{
 
 use alloy_chains::Chain;
 use alloy_primitives::{Address, Bytes};
-use edb_utils::{cache::CachePath, init_progress, onchain_compiler, update_progress};
+use edb_utils::{
+    cache::{Cache, CachePath},
+    init_progress,
+    onchain_compiler::OnchainCompiler,
+    update_progress,
+};
 use eyre::{eyre, Result};
-use foundry_block_explorers::{contract::Metadata, Client};
+use foundry_block_explorers::Client;
 use revm::{
     db::CacheDB,
     primitives::{CreateScheme, EnvWithHandlerCfg},
@@ -23,25 +28,25 @@ const DEFAULT_CACHE_TTL: u64 = 86400;
 use crate::{
     analysis::source_map::SourceMapAnalysis,
     artifact::{
-        compilation::{AsCompilationArtifact, CompilationArtifact},
         debug::{DebugArtifact, DebugNodeFlat},
+        deploy::{AsDeployArtifact, DeployArtifact},
     },
     inspector::{CollectInspector, DebugInspector},
-    utils::evm::new_evm_with_inspector,
+    utils::{db, evm::new_evm_with_inspector},
 };
 
 #[derive(Debug, Default)]
 pub struct DebugBackendBuilder {
     chain: Option<Chain>,
     api_key: Option<String>,
+    cache_root: Option<PathBuf>,
+    compiler_cache_root: Option<PathBuf>,
     provider_cache_root: Option<PathBuf>,
     provider_cache_ttl: Option<Duration>,
-    compiler_cache_root: Option<PathBuf>,
 
-    // Compilation artifact from local file system
+    // Deployment artifact from local file system
     // XXX (ZZ): let's support them later
-    local_compilation_artifact: Option<CompilationArtifact>,
-    compilation_artifacts: Option<HashMap<Address, CompilationArtifact>>,
+    deploy_artifacts: Option<HashMap<Address, DeployArtifact>>,
 }
 
 impl DebugBackendBuilder {
@@ -73,6 +78,13 @@ impl DebugBackendBuilder {
         self
     }
 
+    /// Set the backend cache root directory.
+    /// If not set, the default backend cache directory will be used.
+    pub fn cache_root(mut self, path: PathBuf) -> Self {
+        self.cache_root = Some(path);
+        self
+    }
+
     /// Set the etherscan API key.
     /// If not set, a blank API key will be used.
     pub fn etherscan_api_key(mut self, etherscan_api_key: String) -> Self {
@@ -81,24 +93,13 @@ impl DebugBackendBuilder {
     }
 
     // XXX (ZZ): let's support them later
-    /// Set the local compilation artifact.
-    /// If not set, the local compilation artifact will not be used.
-    pub fn local_compilation_artifact(
+    /// Set the deployment artifacts.
+    /// If not set, the deployment artifacts will not be used.
+    pub fn deploy_artifacts(
         mut self,
-        local_compilation_artifact: impl AsCompilationArtifact,
+        deploy_artifacts: HashMap<Address, impl AsDeployArtifact>,
     ) -> Result<Self> {
-        self.local_compilation_artifact = Some(local_compilation_artifact.as_artifact()?);
-        Ok(self)
-    }
-
-    // XXX (ZZ): let's support them later
-    /// Set the compilation artifacts.
-    /// If not set, the compilation artifacts will not be used.
-    pub fn compilation_artifacts(
-        mut self,
-        compilation_artifacts: HashMap<Address, impl AsCompilationArtifact>,
-    ) -> Result<Self> {
-        let result: Result<HashMap<Address, CompilationArtifact>, _> = compilation_artifacts
+        let result: Result<HashMap<Address, DeployArtifact>, _> = deploy_artifacts
             .into_iter()
             .map(|(k, v)| {
                 let artifact = v.as_artifact()?;
@@ -106,7 +107,7 @@ impl DebugBackendBuilder {
             })
             .collect();
 
-        self.compilation_artifacts = Some(result?);
+        self.deploy_artifacts = Some(result?);
         Ok(self)
     }
 
@@ -133,19 +134,24 @@ impl DebugBackendBuilder {
             .or(CachePath::edb_compiler_chain_cache_dir(chain_id))
             .ok_or(eyre::eyre!("missing cache_root"))?;
 
-        let local_compilation_artifact = self.local_compilation_artifact;
+        let deploy_artifacts = self.deploy_artifacts.unwrap_or_default();
+        let compiler = OnchainCompiler::new(&compiler_cache_root)?;
 
-        let compilation_artifacts = self.compilation_artifacts.unwrap_or_default();
+        let cache_root = self
+            .cache_root
+            .or(CachePath::edb_backend_chain_cache_dir(chain_id))
+            .ok_or(eyre::eyre!("missing cache_root"))?;
+        // We do not set the cache TTL for the backend cache.
+        let cache = Cache::new(cache_root, None)?;
 
         Ok(DebugBackend {
-            compilation_artifacts,
-            local_compilation_artifact,
-            compiler_cache_root,
+            deploy_artifacts,
+            compiler,
             addresses: HashSet::new(),
-            metadata: HashMap::new(),
             creation_codes: HashMap::new(),
             etherscan: client,
             base_db: CacheDB::new(db),
+            cache,
             env,
         })
     }
@@ -159,22 +165,17 @@ pub struct DebugBackend<DBRef> {
     // Creation code of contracts that are deployed during the transaction
     pub creation_codes: HashMap<Address, (Bytes, CreateScheme)>,
 
-    /// Metadata of each contract.
-    pub metadata: HashMap<Address, Metadata>,
+    /// Map of source files. Note that each address will have a deployment artifact.
+    pub deploy_artifacts: HashMap<Address, DeployArtifact>,
 
-    /// Map of source files. Note that each address will have a compilation artifact.
-    pub compilation_artifacts: HashMap<Address, CompilationArtifact>,
-
-    // Compilation artifact from local file system
-    // TODO: support local compilation artifact later
-    #[allow(dead_code)]
-    local_compilation_artifact: Option<CompilationArtifact>,
+    /// Cache for backend
+    pub cache: Cache<DeployArtifact>,
 
     // Etherscan client
     etherscan: Client,
 
-    // Compiler cache root directory
-    compiler_cache_root: PathBuf,
+    // Onchain compiler
+    compiler: OnchainCompiler,
 
     // Transaction information
     // The base database
@@ -195,26 +196,26 @@ where
 
     /// Analyze the transaction and return the debug artifact.
     pub async fn analyze(mut self) -> Result<DebugArtifact> {
-        self.collect_compilation_artifacts().await?;
+        self.collect_deploy_artifacts().await?;
         self.analyze_source_map()?;
 
         let debug_arena = self.collect_debug_trace()?;
 
-        Ok(DebugArtifact { debug_arena, compilation_artifacts: self.compilation_artifacts })
+        Ok(DebugArtifact { debug_arena, deploy_artifacts: self.deploy_artifacts })
     }
 
     fn analyze_source_map(&mut self) -> Result<()> {
-        for (addr, artifact) in &self.compilation_artifacts {
-            println!("Working on: {:#?}", addr);
+        for (addr, artifact) in &self.deploy_artifacts {
+            trace!("work on: {:#?}", addr);
             SourceMapAnalysis::analyze(artifact)?;
         }
 
         Ok(())
     }
 
-    async fn collect_compilation_artifacts(&mut self) -> Result<()> {
+    async fn collect_deploy_artifacts(&mut self) -> Result<()> {
         // We need to commit the transaction first (to a newly cloned cache db) before we can
-        // collect the compilation artifacts.
+        // collect the deployment artifacts.
         //
         // The major reason is that, since the transaction may create/deploy new contracts, without
         // actually committing the transaction, we cannot know the deployed code of the new
@@ -231,54 +232,35 @@ where
         // Step 2. collect source code from etherscan
         let pb = init_progress!(self.addresses, "Compiling source code from etherscan");
         for (index, addr) in self.addresses.iter().enumerate() {
-            println!("{:#?} {}", addr, self.creation_codes.contains_key(addr));
+            trace!("collect deployment artifact for {:#?} (created in this tx: {})", addr, self.creation_codes.contains_key(addr));
 
-            // get the deployed bytecode
-            let deployed_bytecode = if let Some(ref bytecode) = db
-                .load_account(*addr)
-                .map_err(|e| {
-                    eyre!(format!("the account ({}) does not exist: {}", addr, e.to_string()))
-                })?
-                .info
-                .code
-            {
-                bytecode.clone()
-            } else {
-                let code_hash = db
-                    .load_account(*addr)
-                    .map_err(|e| {
-                        eyre!(format!("the account ({}) does not exist: {}", addr, e.to_string()))
-                    })?
-                    .info
-                    .code_hash();
-                db.code_by_hash_ref(code_hash).map_err(|e| {
-                    eyre!(format!(
-                        "the code hash ({}) does not exist: {}",
-                        code_hash,
-                        e.to_string()
-                    ))
-                })?
+            let artifact = match self.cache.load_cache(addr.to_string()) {
+                Some(output) => output,
+                None => {
+                    // get the deployed bytecode
+                    let deployed_bytecode = db::get_code(&mut db, *addr)?;
+
+                    // compile the source code
+                    if let Some((meta, sources, output)) =
+                        self.compiler.compile(&mut self.etherscan, *addr).await?
+                    {
+                        // get contract name
+                        let contract_name = meta.contract_name.to_string();
+
+                        let artifact = (contract_name, sources, output, meta, deployed_bytecode)
+                            .as_artifact()?;
+
+                        self.cache.save_cache(addr.to_string(), &artifact)?;
+
+                        artifact
+                    } else {
+                        update_progress!(pb, index);
+                        continue;
+                    }
+                }
             };
 
-            // compile the source code
-            let (meta, sources, output) = if let Some((meta, sources, output)) =
-                onchain_compiler::compile(&self.etherscan, *addr, &self.compiler_cache_root).await?
-            {
-                (meta, sources, output)
-            } else {
-                update_progress!(pb, index);
-                continue;
-            };
-
-            // get contract name
-            let contract_name = meta.contract_name.as_str();
-
-            println!("prepare artifact");
-            let artifact = (contract_name, deployed_bytecode, &sources, output).as_artifact()?;
-            println!("prepare artifact done");
-
-            self.compilation_artifacts.insert(*addr, artifact);
-            self.metadata.insert(*addr, meta);
+            self.deploy_artifacts.insert(*addr, artifact);
 
             update_progress!(pb, index);
         }

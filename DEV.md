@@ -27,6 +27,7 @@ cargo +nightly clippy --all --all-targets --all-features -- -D warnings
 + The `anvil` dependency is safe to use as it does not depend on any debugger crates (recommended to use only in the `edb` crate).
 + The `utils` crate is intended for functions that should either be used by other projects like Foundry or generally by all EDB crates. Functions used exclusively by a single EDB crate should be placed within that crate.
 + Error message does not need to start with a capital letter.
++ Tracing messages should be in lowercase.
 
 ## Todo
 
@@ -34,7 +35,7 @@ cargo +nightly clippy --all --all-targets --all-features -- -D warnings
 + [x] Redesign the UI to support complex user input.
 + [ ] Support command history.
 + [ ] Support caching in the debugger.
-+ [ ] Support compilation cache
++ [x] Support compilation cache
 + [x] Move the dependency declarations to the top of `cargo.toml`.
 + [ ] Rewrite the subject contract, to add `public` to all storage variables and functions.
 + [ ] Rewrite the subject contract, to enforce a storage update for each local variable update.

@@ -19,6 +19,7 @@ alloy-chains.workspace = true
 alloy-json-abi.workspace = true
 alloy-primitives.workspace = true
 alloy-sol-types.workspace = true
+chrono.workspace = true
 dirs-next = "2"
 eyre.workspace = true
 foundry-compilers = { workspace = true, features = ["svm-solc", "async"] }

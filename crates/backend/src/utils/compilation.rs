@@ -2,6 +2,7 @@ use alloy_primitives::Address;
 use eyre::{eyre, Result};
 use foundry_compilers::artifacts::DeployedBytecode;
 
+#[inline]
 pub fn link_contracts_fakely(contract: &mut DeployedBytecode, addr: Option<Address>) -> Result<()> {
     let addr = addr.unwrap_or_default();
     let bytecode = contract.bytecode.as_mut().ok_or(eyre!("missing bytecode"))?;
@@ -23,6 +24,7 @@ pub fn link_contracts_fakely(contract: &mut DeployedBytecode, addr: Option<Addre
     Ok(())
 }
 
+#[inline]
 pub fn bytecode_similarity(bytecode1: &[u8], bytecode2: &[u8]) -> f64 {
     let len_s1 = bytecode1.len();
     let len_s2 = bytecode2.len();

@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 use debug_unit::{PrimativeUnitVisitor, PrimitiveUnits};
 
-use crate::{
-    artifact::compilation::CompilationArtifact, utils::ast::source_with_primative_statements,
-};
+use crate::{artifact::deploy::DeployArtifact, utils::ast::source_with_primative_statements};
 
 use eyre::{eyre, Result};
 
@@ -17,7 +15,7 @@ pub struct SourceMapAnalysis {}
 
 impl SourceMapAnalysis {
     /// Analyze the source map of a compilation artifact.
-    pub fn analyze(artifact: &CompilationArtifact) -> Result<PrimitiveUnits> {
+    pub fn analyze(artifact: &DeployArtifact) -> Result<PrimitiveUnits> {
         // Step 1. collect primitive debugging units.
         let mut visitor = PrimativeUnitVisitor::new();
         for (id, source) in artifact.sources.iter() {

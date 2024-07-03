@@ -4,6 +4,7 @@ use foundry_compilers::artifacts::{ast::SourceLocation, Expression};
 
 use crate::analysis::source_map::debug_unit::UnitLocation;
 
+#[inline]
 pub fn get_source_location_for_expression(expr: &Expression) -> &SourceLocation {
     // node_group! {
     //     Expression;

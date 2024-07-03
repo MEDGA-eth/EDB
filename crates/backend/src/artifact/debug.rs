@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use crate::utils::opcode;
 
-use crate::artifact::compilation::CompilationArtifact;
+use crate::artifact::deploy::DeployArtifact;
 
 /// An arena of [DebugNode]s
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -250,5 +250,5 @@ pub struct DebugArtifact {
     /// Debug traces returned from the EVM execution.
     pub debug_arena: Vec<DebugNodeFlat>,
     /// Map of source files. Note that each address will have a compilation artifact.
-    pub compilation_artifacts: HashMap<Address, CompilationArtifact>,
+    pub deploy_artifacts: HashMap<Address, DeployArtifact>,
 }
