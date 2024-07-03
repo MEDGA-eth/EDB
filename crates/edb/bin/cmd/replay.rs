@@ -196,8 +196,8 @@ mod tests {
             },
         };
 
-        let rpc_cache_root =
-            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/cache/rpc")
+        let rpc_cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../testdata/cache/rpc")
             .join(args.etherscan.chain.unwrap_or_default().to_string());
         let etherscan_cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../testdata/cache/etherscan")

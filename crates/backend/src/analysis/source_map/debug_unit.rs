@@ -506,7 +506,6 @@ impl PrimativeUnitVisitor {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::{path::PathBuf, str::FromStr};
@@ -526,7 +525,8 @@ mod tests {
             .join("../../testdata/cache/backend")
             .join(chain.to_string());
         let cache = Cache::new(cache_root, None)?;
-        let artifact: DeployArtifact = cache.load_cache(addr.to_string()).ok_or(eyre!("missing artifact"))?;
+        let artifact: DeployArtifact =
+            cache.load_cache(addr.to_string()).ok_or(eyre!("missing artifact"))?;
 
         let mut visitor = PrimativeUnitVisitor::new();
         for (id, source) in artifact.sources.iter() {
@@ -540,6 +540,10 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
     async fn test_usd() {
-        run_test(Chain::mainnet(), Address::from_str("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48").unwrap()).unwrap();
+        run_test(
+            Chain::mainnet(),
+            Address::from_str("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48").unwrap(),
+        )
+        .unwrap();
     }
 }

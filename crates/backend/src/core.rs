@@ -232,7 +232,11 @@ where
         // Step 2. collect source code from etherscan
         let pb = init_progress!(self.addresses, "Compiling source code from etherscan");
         for (index, addr) in self.addresses.iter().enumerate() {
-            trace!("collect deployment artifact for {:#?} (created in this tx: {})", addr, self.creation_codes.contains_key(addr));
+            trace!(
+                "collect deployment artifact for {:#?} (created in this tx: {})",
+                addr,
+                self.creation_codes.contains_key(addr)
+            );
 
             let artifact = match self.cache.load_cache(addr.to_string()) {
                 Some(output) => output,
