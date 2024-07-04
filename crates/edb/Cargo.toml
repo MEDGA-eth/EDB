@@ -47,6 +47,7 @@ eyre.workspace = true
 foundry-block-explorers = { workspace = true, features = ["foundry-compilers"] }
 foundry-common.workspace = true
 foundry-evm.workspace = true
+foundry-fork-db.workspace = true
 indicatif.workspace = true
 revm.workspace = true
 serde.workspace = true

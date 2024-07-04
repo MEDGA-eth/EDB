@@ -10,9 +10,9 @@ use anvil::Hardfork;
 use eyre::{eyre, Result};
 use foundry_common::constants::NON_ARCHIVE_NODE_WARNING;
 use foundry_evm::{
-    fork::{database::ForkedDatabase, BlockchainDb, BlockchainDbMeta, SharedBackend},
-    utils::apply_chain_and_block_specific_env_changes,
+    fork::database::ForkedDatabase, utils::apply_chain_and_block_specific_env_changes,
 };
+use foundry_fork_db::{cache::BlockchainDbMeta, BlockchainDb, SharedBackend};
 use revm::primitives::{BlobExcessGasAndPrice, BlockEnv, Env, EnvWithHandlerCfg};
 
 use edb_utils::cache::CachePath;
