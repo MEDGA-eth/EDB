@@ -15,6 +15,7 @@ use edb_utils::{
 };
 use eyre::{eyre, Result};
 use foundry_block_explorers::Client;
+use foundry_compilers::artifacts::Severity;
 use revm::{
     db::CacheDB,
     primitives::{CreateScheme, EnvWithHandlerCfg},
@@ -248,6 +249,24 @@ where
                     if let Some((meta, sources, output)) =
                         self.compiler.compile(&mut self.etherscan, *addr).await?
                     {
+                        if output.errors.iter().any(|err| err.severity == Severity::Error) {
+                            return Err(eyre!(format!(
+                                "compilation error ({}):\n{}",
+                                addr,
+                                output
+                                    .errors
+                                    .iter()
+                                    .filter(|err| err.severity == Severity::Error)
+                                    .map(|err| err
+                                        .formatted_message
+                                        .as_ref()
+                                        .map(|s| s.as_str())
+                                        .unwrap_or_default())
+                                    .collect::<Vec<_>>()
+                                    .join("\n\n")
+                            )));
+                        }
+
                         // get contract name
                         let contract_name = meta.contract_name.to_string();
 

@@ -81,7 +81,7 @@ pub fn subscriber() {
     tracing_subscriber::Registry::default()
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .with(ErrorLayer::default())
-        .with(tracing_subscriber::fmt::layer())
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
         .init()
 }
 

@@ -50,6 +50,8 @@ pub trait AsDeployArtifact {
 impl AsDeployArtifact for (String, Sources, CompilerOutput, Metadata, RevmBytecode) {
     fn as_artifact(self) -> Result<DeployArtifact> {
         let (contract_name, input_sources, mut output, meta, bytecode) = self;
+
+        trace!("building deployment artifact for {}", contract_name);
         let bytecode = bytecode.original_byte_slice();
 
         // let first link the contracts, to have a more accurate similarity check
@@ -67,6 +69,11 @@ impl AsDeployArtifact for (String, Sources, CompilerOutput, Metadata, RevmByteco
         let mut selected = None;
         let mut max_similarity = 0.0;
         for (path, contracts) in output.contracts.iter() {
+            trace!(
+                "all compiled contracts: {}",
+                contracts.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>().join(", ")
+            );
+
             for (_, contract) in contracts.iter().filter(|(name, _)| name.as_str() == contract_name)
             {
                 if let Some(Evm {
@@ -82,7 +89,7 @@ impl AsDeployArtifact for (String, Sources, CompilerOutput, Metadata, RevmByteco
                         .as_ref();
 
                     let similarity = bytecode_similarity(bytecode, bytecod_to_check);
-                    println!("similarity: {}", similarity);
+                    trace!("similarity of contracts with the same name: {}", similarity);
 
                     if similarity > max_similarity {
                         max_similarity = similarity;
@@ -93,7 +100,10 @@ impl AsDeployArtifact for (String, Sources, CompilerOutput, Metadata, RevmByteco
         }
 
         if max_similarity < SIMILARITY_THRESHOLD {
-            return Err(eyre!("no similar contract found"));
+            return Err(eyre!(format!(
+                "no similar contract found, with the max similarity of {}",
+                max_similarity
+            )));
         }
 
         let (compilation_ref, path_ref) =

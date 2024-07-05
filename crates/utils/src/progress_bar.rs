@@ -6,6 +6,7 @@ macro_rules! init_progress {
         }
 
         let pb = indicatif::ProgressBar::new($local.len() as u64);
+
         let mut template =
             "{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {pos}/{len} ".to_string();
         template += $label;
@@ -16,6 +17,8 @@ macro_rules! init_progress {
                 .with_key("eta", eta_key)
                 .progress_chars("#>-"),
         );
+
+        pb.set_draw_target(indicatif::ProgressDrawTarget::stdout());
         pb.set_position(0);
         pb
     }};

@@ -6,7 +6,11 @@ use std::{
 
 use alloy_primitives::Address;
 use eyre::Result;
-use foundry_block_explorers::{contract::Metadata, errors::EtherscanError, Client};
+use foundry_block_explorers::{
+    contract::{Metadata, SourceCodeMetadata},
+    errors::EtherscanError,
+    Client,
+};
 use foundry_compilers::{
     artifacts::{output_selection::OutputSelection, CompilerOutput, SolcInput, Source, Sources},
     solc::{Solc, SolcLanguage},
@@ -48,6 +52,7 @@ impl OnchainCompiler {
                 };
             eyre::ensure!(meta.items.len() == 1, "contract not found or ill-formed");
             let meta = meta.items.remove(0);
+
             if meta.is_vyper() {
                 // We do not cache if the contract is a Vyper contract.
                 return Ok(None);
@@ -57,6 +62,9 @@ impl OnchainCompiler {
             let mut settings = meta.settings()?;
             // enforce compiler output all possible outputs
             settings.output_selection = OutputSelection::complete_output_selection();
+            trace!("using settings: {:?}", settings);
+
+            // prepare the sources
             let sources = meta
                 .sources()
                 .into_iter()
@@ -67,6 +75,7 @@ impl OnchainCompiler {
             // prepare the compiler
             let version = meta.compiler_version()?;
             let compiler = Solc::find_or_install(&version)?;
+            trace!("using compiler: {:?}", compiler);
 
             // compile the source code
             let output = match compiler.compile_exact(&input) {
