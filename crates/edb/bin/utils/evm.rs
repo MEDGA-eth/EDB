@@ -64,6 +64,7 @@ latest block number: {latest_block}"
         }
         return Err(eyre!("failed to get block for block number: {fork_block_number}"));
     };
+    trace!("current block header: {:?}", block.header);
 
     // we only use the gas limit value of the block if it is non-zero and the block gas
     // limit is enabled, since there are networks where this is not used and is always
@@ -75,12 +76,12 @@ latest block number: {latest_block}"
         number: U256::from(fork_block_number),
         timestamp: U256::from(block.header.timestamp),
         difficulty: block.header.difficulty,
-        // ensures prevrandao is set
+        // Ensures prevrandao is set.
         prevrandao: Some(block.header.mix_hash.unwrap_or_default()),
         gas_limit: U256::from(gas_limit),
-        // Keep previous `coinbase` and `basefee` value
-        coinbase: env.block.coinbase,
-        basefee: env.block.basefee,
+        // Ensures coinbase is set (since coinbase will always be treated as a warm account in EVM
+        // after EIP-3651).
+        coinbase: block.header.miner,
         ..Default::default()
     };
 

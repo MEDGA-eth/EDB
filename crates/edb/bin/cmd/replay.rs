@@ -140,9 +140,10 @@ impl ReplayArgs {
             }
 
             // execute the transaction
-            trace!("replay transaction: {:?}", tx.hash);
+            trace!("replay transaction ({:?}): {:?}", tx.hash, tx);
 
             fill_tx_env(&mut env, &tx)?;
+            trace!("revm env: {:?}", env);
             let mut evm = new_evm_with_inspector(&mut db, env.clone(), NoOpInspector);
             let result = if &tx.hash == tx_hash {
                 // we don't commit the target transaction
@@ -150,6 +151,7 @@ impl ReplayArgs {
             } else {
                 evm.transact_commit()?
             };
+            trace!("reply result: {:?}", result);
             drop(evm);
 
             let tx_receipt = provider
@@ -176,7 +178,7 @@ impl ReplayArgs {
 
 #[cfg(test)]
 mod tests {
-    use std::{str::FromStr, time::Duration};
+    use std::{env, str::FromStr, time::Duration};
 
     use super::*;
     use serial_test::serial;
@@ -223,6 +225,15 @@ mod tests {
         Ok(())
     }
 
+    /// Fetch the analysis results into cache, so that other tests can directly use the cache.
+    #[tokio::test(flavor = "multi_thread")]
+    #[ignore = "this test is used to dump mock data from Etherscan"]
+    async fn test_dump_cache() {
+        run_e2e_test("0xc445aa7724e2b8b96a3e3b0c4d921a9329c12a9b2dda00368bb5f7b5da0b3e96")
+            .await
+            .unwrap();
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
     async fn test_e2e_tx1() {
@@ -267,6 +278,14 @@ mod tests {
     #[serial]
     async fn test_e2e_creation() {
         run_e2e_test("0x1e20cd6d47d7021ae7e437792823517eeadd835df09dde17ab45afd7a5df4603")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial]
+    async fn test_coinbase_consistency() {
+        run_e2e_test("0xc445aa7724e2b8b96a3e3b0c4d921a9329c12a9b2dda00368bb5f7b5da0b3e96")
             .await
             .unwrap();
     }

@@ -1,4 +1,5 @@
 pub mod evm;
+pub mod inspector;
 
 use eyre::EyreHandler;
 use std::{error::Error, future::Future};
