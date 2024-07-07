@@ -1,11 +1,10 @@
 use alloy_primitives::Address;
 use eyre::{eyre, Result};
-use foundry_compilers::artifacts::DeployedBytecode;
+use foundry_compilers::artifacts::Bytecode;
 
 #[inline]
-pub fn link_contracts_fakely(contract: &mut DeployedBytecode, addr: Option<Address>) -> Result<()> {
+pub fn link_contracts_fakely(bytecode: &mut Bytecode, addr: Option<Address>) -> Result<()> {
     let addr = addr.unwrap_or_default();
-    let bytecode = contract.bytecode.as_mut().ok_or(eyre!("missing bytecode"))?;
 
     let references: Vec<_> = bytecode
         .link_references

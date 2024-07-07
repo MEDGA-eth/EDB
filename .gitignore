@@ -13,6 +13,12 @@ Cargo.lock
 # MSVC Windows builds of rustc generate these, which store debugging information
 *.pdb
 
+# Editor
+.*.swp
+.*.swo
+.vscode/
+.vscode-server/
+
 # Cache for rpc.
 # HashMaps in the cache is stored on disck but without order. We hence need to ignore them during git commit
 testdata/cache/rpc/*

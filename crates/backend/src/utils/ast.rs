@@ -2,8 +2,6 @@ use std::collections::BTreeMap;
 
 use foundry_compilers::artifacts::{ast::SourceLocation, Expression};
 
-use crate::analysis::source_map::debug_unit::UnitLocation;
-
 #[inline]
 pub fn get_source_location_for_expression(expr: &Expression) -> &SourceLocation {
     // node_group! {
@@ -42,10 +40,11 @@ pub fn get_source_location_for_expression(expr: &Expression) -> &SourceLocation 
     }
 }
 
+#[cfg(debug_assertions)]
 /// Print the given source code with highlighted primative statements.
 pub fn source_with_primative_statements(
     source: &str,
-    stmts: &BTreeMap<usize, UnitLocation>,
+    stmts: &BTreeMap<usize, crate::analysis::source_map::debug_unit::DebugUnit>,
 ) -> String {
     let colors = ["\x1b[31m", "\x1b[33m", "\x1b[34m", "\x1b[32m"]; // Red, Yellow, Blue, Green
     let reset = "\x1b[0m"; // Reset color
@@ -54,8 +53,8 @@ pub fn source_with_primative_statements(
     let mut current_index = 0;
 
     for (i, (_, stmt)) in stmts.iter().enumerate() {
-        let offset = stmt.start;
-        let length = stmt.length;
+        let offset = stmt.start();
+        let length = stmt.length();
         // Append the text before the segment
         if current_index < offset {
             result.push_str(&source[current_index..offset]);

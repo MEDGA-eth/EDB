@@ -120,6 +120,7 @@ where
 
     pub fn load_cache(&self, label: impl Into<String>) -> Option<T> {
         let cache_file = self.cache_dir.join(format!("{}.json", label.into()));
+        trace!("loading cache: {:?}", cache_file);
         if !cache_file.exists() {
             return None;
         }
@@ -145,6 +146,8 @@ where
 
     pub fn save_cache(&self, label: impl Into<String>, data: &T) -> Result<()> {
         let cache_file = self.cache_dir.join(format!("{}.json", label.into()));
+        trace!("saving cache: {:?}", cache_file);
+
         let cache = CacheWrapper::new(data, self.cache_ttl);
         let content = serde_json::to_string(&cache)?;
         fs::write(&cache_file, content)?;

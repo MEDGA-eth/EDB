@@ -42,8 +42,8 @@ pub struct DebugBackendBuilder {
     api_key: Option<String>,
     cache_root: Option<PathBuf>,
     compiler_cache_root: Option<PathBuf>,
-    provider_cache_root: Option<PathBuf>,
-    provider_cache_ttl: Option<Duration>,
+    etherscan_cache_root: Option<PathBuf>,
+    etherscan_cache_ttl: Option<Duration>,
 
     // Deployment artifact from local file system
     // XXX (ZZ): let's support them later
@@ -60,15 +60,15 @@ impl DebugBackendBuilder {
 
     /// Set the cache root directory.
     /// If not set, the default cache directory will be used.
-    pub fn provider_cache_root(mut self, path: PathBuf) -> Self {
-        self.provider_cache_root = Some(path);
+    pub fn etherscan_cache_root(mut self, path: PathBuf) -> Self {
+        self.etherscan_cache_root = Some(path);
         self
     }
 
     /// Set the cache TTL.
     /// If not set, the default cache TTL will be used.
-    pub fn provider_cache_ttl(mut self, duration: Duration) -> Self {
-        self.provider_cache_ttl = Some(duration);
+    pub fn etherscan_cache_ttl(mut self, duration: Duration) -> Self {
+        self.etherscan_cache_ttl = Some(duration);
         self
     }
 
@@ -118,12 +118,14 @@ impl DebugBackendBuilder {
         DBRef: DatabaseRef,
         DBRef::Error: std::error::Error,
     {
+        debug!("building debug backend with {:?}", self);
+
         // XXX: the following code looks bad and needs to be refactored
         let cb = Client::builder().with_cache(
-            self.provider_cache_root.or(CachePath::edb_etherscan_chain_cache_dir(
+            self.etherscan_cache_root.or(CachePath::edb_etherscan_chain_cache_dir(
                 self.chain.unwrap_or(Chain::default()),
             )),
-            self.provider_cache_ttl.unwrap_or(Duration::from_secs(DEFAULT_CACHE_TTL)),
+            self.etherscan_cache_ttl.unwrap_or(Duration::from_secs(DEFAULT_CACHE_TTL)),
         );
         let cb = if let Some(chain) = self.chain { cb.chain(chain)? } else { cb };
         let cb = if let Some(api_key) = self.api_key { cb.with_api_key(api_key) } else { cb };
@@ -207,7 +209,7 @@ where
 
     fn analyze_source_map(&mut self) -> Result<()> {
         for (addr, artifact) in &self.deploy_artifacts {
-            trace!("work on: {:#?}", addr);
+            println!("analyzing source map for {:#?}", addr);
             SourceMapAnalysis::analyze(artifact)?;
         }
 

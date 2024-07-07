@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use alloy_primitives::TxHash;
 use alloy_provider::Provider;
@@ -30,8 +30,12 @@ pub struct ReplayArgs {
     #[arg(long, short)]
     pub quick: bool,
 
+    /// Do not use any cached data.
+    #[arg(long)]
+    pub no_cache: bool,
+
     /// Skips validation of transactions replayed before the target transaction.
-    #[arg(long, short)]
+    #[arg(long)]
     pub no_validation: bool,
 
     #[command(flatten)]
@@ -54,12 +58,28 @@ impl ReplayArgs {
     }
 
     pub async fn debug(&self, db: ForkedDatabase, env: EnvWithHandlerCfg) -> Result<()> {
-        let backend = DebugBackend::<ForkedDatabase>::builder()
-            .chain(self.etherscan.chain.unwrap_or_default())
-            .etherscan_api_key(self.etherscan.key().unwrap_or_default())
-            .build::<ForkedDatabase>(&db, env)?;
-        let debug_artifact = backend.analyze().await?;
+        let debug_artifact = if !self.no_cache {
+            DebugBackend::<ForkedDatabase>::builder()
+                .chain(self.etherscan.chain.unwrap_or_default())
+                .etherscan_api_key(self.etherscan.key().unwrap_or_default())
+                .build::<ForkedDatabase>(&db, env)?
+                .analyze()
+                .await?
+        } else {
+            DebugBackend::<ForkedDatabase>::builder()
+                .chain(self.etherscan.chain.unwrap_or_default())
+                .etherscan_api_key(self.etherscan.key().unwrap_or_default())
+                .compiler_cache_root(tempfile::tempdir()?.path().to_path_buf())
+                .etherscan_cache_root(tempfile::tempdir()?.path().to_path_buf())
+                .etherscan_cache_ttl(Duration::from_secs(u32::MAX as u64))
+                .cache_root(tempfile::tempdir()?.path().to_path_buf())
+                .build::<ForkedDatabase>(&db, env)?
+                .analyze()
+                .await?
+        };
+
         let mut frontend = DebugFrontend::builder().build(debug_artifact);
+
         todo!();
         frontend.render().await?;
         Ok(())
@@ -72,8 +92,9 @@ impl ReplayArgs {
         &self,
         cache_root: Option<PathBuf>,
     ) -> Result<(ForkedDatabase, EnvWithHandlerCfg)> {
-        let Self { tx_hash, quick, rpc, no_validation, etherscan: EtherscanOpts { chain, .. } } =
-            self;
+        let Self {
+            tx_hash, quick, rpc, no_validation, etherscan: EtherscanOpts { chain, .. }, ..
+        } = self;
         let fork_url = rpc.url(true)?.unwrap().to_string();
 
         // step 0. prepare rpc provider
@@ -188,6 +209,7 @@ mod tests {
             tx_hash: TxHash::from_str(tx_hash)?,
             quick: false,
             no_validation: false,
+            no_cache: false,
             etherscan: EtherscanOpts::default(),
             rpc: RpcOpts {
                 url: Some("https://rpc.mevblocker.io".to_string()),
@@ -215,8 +237,8 @@ mod tests {
         let backend = DebugBackend::<ForkedDatabase>::builder()
             .chain(args.etherscan.chain.unwrap_or_default())
             .etherscan_api_key(args.etherscan.key().unwrap_or_default())
-            .provider_cache_root(etherscan_cache_root)
-            .provider_cache_ttl(Duration::from_secs(u32::MAX as u64)) // we don't want the cache to expire
+            .etherscan_cache_root(etherscan_cache_root)
+            .etherscan_cache_ttl(Duration::from_secs(u32::MAX as u64)) // we don't want the cache to expire
             .compiler_cache_root(compiler_cache_root)
             .cache_root(backend_cache_root)
             .build::<ForkedDatabase>(&db, env)?;
@@ -229,7 +251,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "this test is used to dump mock data from Etherscan"]
     async fn test_dump_cache() {
-        run_e2e_test("0xc445aa7724e2b8b96a3e3b0c4d921a9329c12a9b2dda00368bb5f7b5da0b3e96")
+        run_e2e_test("0x4dcac542d48648279c05ec45e542ca1a5cf919d48920571cb05c78391436b215")
             .await
             .unwrap();
     }

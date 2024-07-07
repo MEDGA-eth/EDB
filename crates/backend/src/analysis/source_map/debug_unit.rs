@@ -1,24 +1,64 @@
 use std::{
     collections::BTreeMap,
-    ops::{Deref, DerefMut},
+    fmt::{self, Debug},
     sync::Arc,
 };
 
-use eyre::{eyre, Result};
+use eyre::{eyre, OptionExt, Result};
 use foundry_compilers::artifacts::{
     ast::SourceLocation,
     yul::{YulExpression, YulStatement},
-    ExpressionOrVariableDeclarationStatement, InlineAssembly, Statement,
+    ContractDefinition, ExpressionOrVariableDeclarationStatement, FunctionDefinition,
+    InlineAssembly, ModifierDefinition, Statement,
 };
 use solang_parser::{lexer, pt};
 
-use crate::{analysis::ast_visitor::Visitor, utils::ast::get_source_location_for_expression};
+use crate::{
+    analysis::ast_visitor::{Visitor, Walk},
+    artifact::deploy::DeployArtifact,
+    utils::ast::get_source_location_for_expression,
+};
 
-#[derive(Clone, Debug)]
+/// A source location.
+#[derive(Clone, Debug, Hash)]
 pub struct UnitLocation {
     pub start: usize,
     pub length: usize,
     pub index: usize,
+    pub code: Arc<String>,
+}
+
+impl PartialEq for UnitLocation {
+    fn eq(&self, other: &Self) -> bool {
+        self.start == other.start && self.length == other.length && self.index == other.index
+    }
+}
+
+impl Eq for UnitLocation {}
+
+impl PartialOrd for UnitLocation {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for UnitLocation {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        if self.index != other.index {
+            self.index.cmp(&other.index)
+        } else if self.start != other.start {
+            self.start.cmp(&other.start)
+        } else {
+            self.length.cmp(&other.length)
+        }
+    }
+}
+
+impl fmt::Display for UnitLocation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let source = &self.code.as_str()[self.start..self.start + self.length];
+        write!(f, "{}", source)
+    }
 }
 
 impl TryFrom<&SourceLocation> for UnitLocation {
@@ -29,7 +69,7 @@ impl TryFrom<&SourceLocation> for UnitLocation {
         let length = src.length.ok_or_else(|| eyre!("invalid source location"))? as usize;
         let index = src.index.ok_or_else(|| eyre!("invalid source location"))? as usize;
 
-        Ok(Self { start, length, index })
+        Ok(Self { start, length, index, code: Arc::default() })
     }
 }
 
@@ -51,15 +91,115 @@ impl AsSourceLocation for pt::Loc {
 }
 
 /// A hyper unit is a collection of primitive units whose compiled opcodes are fused together.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub struct HyperUnit {
     pub id: u32,
     pub location: UnitLocation,
-    pub code: Arc<String>,
     pub children: Vec<UnitLocation>,
 }
 
-pub type PrimitiveUnits = BTreeMap<usize, BTreeMap<usize, UnitLocation>>;
+impl PartialEq for HyperUnit {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for HyperUnit {}
+
+impl PartialOrd for HyperUnit {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for HyperUnit {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.id.cmp(&other.id)
+    }
+}
+
+/// Different kind of debugging units.
+#[derive(Clone, Debug, Hash, PartialEq, Ord, Eq, PartialOrd)]
+pub enum DebugUnit {
+    Primitive(UnitLocation),
+    Function(UnitLocation, bool),
+    Contract(UnitLocation),
+
+    // A hyper unit is a collection of primitive units whose compiled opcodes are fused together.
+    Hyper(HyperUnit),
+}
+
+impl DebugUnit {
+    pub fn location(&self) -> &UnitLocation {
+        match self {
+            DebugUnit::Primitive(loc) => loc,
+            DebugUnit::Function(loc, _) => loc,
+            DebugUnit::Contract(loc) => loc,
+            DebugUnit::Hyper(hyper) => &hyper.location,
+        }
+    }
+
+    pub fn start(&self) -> usize {
+        self.location().start
+    }
+
+    pub fn length(&self) -> usize {
+        self.location().length
+    }
+
+    pub fn index(&self) -> usize {
+        self.location().index
+    }
+
+    pub fn contains(&self, start: usize, length: usize) -> bool {
+        let loc = self.location();
+        start >= loc.start && start + length <= loc.start + loc.length
+    }
+
+    pub fn matches(&self, start: usize, length: usize) -> bool {
+        let loc = self.location();
+        start == loc.start && length == loc.length
+    }
+}
+
+impl fmt::Display for DebugUnit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DebugUnit::Primitive(loc) |
+            DebugUnit::Function(loc, _) |
+            DebugUnit::Contract(loc) |
+            DebugUnit::Hyper(HyperUnit { location: loc, .. }) => {
+                write!(f, "{}", loc)
+            }
+        }
+    }
+}
+
+/// Debugging units is a mapping from the source index to a mapping from the start position to the
+/// corresponding debugging unit.
+///
+/// Note that at each start position, there is only one debugging unit (contract, function,
+/// primitive, and hyper).
+#[derive(Clone, Debug, Default)]
+pub struct DebugUnits {
+    units: BTreeMap<usize, BTreeMap<usize, DebugUnit>>,
+    functions: BTreeMap<DebugUnit, DebugUnit>,
+    contracts: BTreeMap<DebugUnit, DebugUnit>,
+}
+
+impl DebugUnits {
+    pub fn units_per_file(&self, index: usize) -> Option<&BTreeMap<usize, DebugUnit>> {
+        self.units.get(&index)
+    }
+
+    pub fn function(&self, unit: &DebugUnit) -> Option<&DebugUnit> {
+        self.functions.get(unit)
+    }
+
+    pub fn contract(&self, unit: &DebugUnit) -> Option<&DebugUnit> {
+        self.contracts.get(unit)
+    }
+}
 
 /// Visitor to collect all primative "statements", i.e., debugging unit.
 ///
@@ -67,34 +207,41 @@ pub type PrimitiveUnits = BTreeMap<usize, BTreeMap<usize, UnitLocation>>;
 /// block statement). A primative unit can also be the condition of a loop or if statement.
 /// Primative debugging units are the basic stepping blocks for debugging.
 /// This visitor will collect all primative statements and their locations.
-#[derive(Clone, Debug)]
-pub struct PrimativeUnitVisitor(pub PrimitiveUnits, pub BTreeMap<usize, Arc<String>>);
+#[derive(Clone, Debug, Default)]
+pub struct DebugUnitVisitor {
+    units: BTreeMap<usize, BTreeMap<usize, DebugUnit>>,
+    sources: BTreeMap<usize, Arc<String>>,
 
-impl PrimativeUnitVisitor {
+    functions: BTreeMap<DebugUnit, DebugUnit>,
+    last_function: Option<DebugUnit>,
+
+    contracts: BTreeMap<DebugUnit, DebugUnit>,
+    last_contract: Option<DebugUnit>,
+}
+
+impl DebugUnitVisitor {
     pub fn new() -> Self {
-        Self(BTreeMap::new(), BTreeMap::new())
+        Self::default()
     }
 
     pub fn register(&mut self, index: usize, code: Arc<String>) {
-        self.1.insert(index, code);
+        self.sources.insert(index, code);
     }
 }
 
-impl Deref for PrimativeUnitVisitor {
-    type Target = BTreeMap<usize, BTreeMap<usize, UnitLocation>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl Visitor for DebugUnitVisitor {
+    fn visit_contract_definition(&mut self, definition: &ContractDefinition) -> Result<()> {
+        self.update_contract(&definition.src)
     }
-}
 
-impl DerefMut for PrimativeUnitVisitor {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+    fn visit_function_definition(&mut self, definition: &FunctionDefinition) -> Result<()> {
+        self.update_function(&definition.src, false)
     }
-}
 
-impl Visitor for PrimativeUnitVisitor {
+    fn visit_modifier_definition(&mut self, definition: &ModifierDefinition) -> Result<()> {
+        self.update_function(&definition.src, true)
+    }
+
     fn visit_statement(&mut self, statement: &Statement) -> Result<()> {
         // node_group! {
         //     Statement;
@@ -128,43 +275,43 @@ impl Visitor for PrimativeUnitVisitor {
             // Note that other part, e.g., init, post, body, will be visited by the visitor
             // later.
             Statement::IfStatement(stmt) => {
-                self.update(get_source_location_for_expression(&stmt.condition))?
+                self.update_primitive(get_source_location_for_expression(&stmt.condition))?
             }
             // For do-whiles, the condition is a primative statement.
             Statement::DoWhileStatement(stmt) => {
-                self.update(get_source_location_for_expression(&stmt.condition))?
+                self.update_primitive(get_source_location_for_expression(&stmt.condition))?
             }
             // For while statements, the condition is also a primative statement.
             // Note that other part, e.g., body, will be visited by the visitor later.
             Statement::WhileStatement(stmt) => {
-                self.update(get_source_location_for_expression(&stmt.condition))?
+                self.update_primitive(get_source_location_for_expression(&stmt.condition))?
             }
             // For for statements, the condition, the initial expression, and the loop expression
             // are also primative statements. Note that other part, e.g., body, will be
             // visited by the visitor later.
             Statement::ForStatement(stmt) => {
                 if let Some(cond) = &stmt.condition {
-                    self.update(get_source_location_for_expression(cond))?;
+                    self.update_primitive(get_source_location_for_expression(cond))?;
                 }
                 if let Some(init) = &stmt.initialization_expression {
                     match init {
                         ExpressionOrVariableDeclarationStatement::ExpressionStatement(stmt) => {
-                            self.update(&stmt.src)?
+                            self.update_primitive(&stmt.src)?
                         }
                         ExpressionOrVariableDeclarationStatement::VariableDeclarationStatement(
                             stmt,
-                        ) => self.update(&stmt.src)?,
+                        ) => self.update_primitive(&stmt.src)?,
                     }
                 }
                 if let Some(loop_expr) = &stmt.loop_expression {
-                    self.update(&loop_expr.src)?;
+                    self.update_primitive(&loop_expr.src)?;
                 }
             }
             // For try statement, we wil handle the external function call as a primative statement.
             // The catch and finally block will be visited by the visitor later.
-            Statement::TryStatement(stmt) => {
-                self.update(get_source_location_for_expression(&stmt.external_call.expression))?
-            }
+            Statement::TryStatement(stmt) => self.update_primitive(
+                get_source_location_for_expression(&stmt.external_call.expression),
+            )?,
             // We will provide more fine-grained information for inline assembly if the Yul block is
             // presented.
             Statement::InlineAssembly(stmt) => {
@@ -180,36 +327,89 @@ impl Visitor for PrimativeUnitVisitor {
                     }
                 }
             }
-            Statement::VariableDeclarationStatement(stmt) => self.update(&stmt.src)?,
-            Statement::Break(stmt) => self.update(&stmt.src)?,
-            Statement::Continue(stmt) => self.update(&stmt.src)?,
-            Statement::EmitStatement(stmt) => self.update(&stmt.src)?,
-            Statement::ExpressionStatement(stmt) => self.update(&stmt.src)?,
-            Statement::PlaceholderStatement(stmt) => self.update(&stmt.src)?,
-            Statement::Return(stmt) => self.update(&stmt.src)?,
-            Statement::RevertStatement(stmt) => self.update(&stmt.src)?,
+            Statement::VariableDeclarationStatement(stmt) => self.update_primitive(&stmt.src)?,
+            Statement::Break(stmt) => self.update_primitive(&stmt.src)?,
+            Statement::Continue(stmt) => self.update_primitive(&stmt.src)?,
+            Statement::EmitStatement(stmt) => self.update_primitive(&stmt.src)?,
+            Statement::ExpressionStatement(stmt) => self.update_primitive(&stmt.src)?,
+            Statement::PlaceholderStatement(stmt) => self.update_primitive(&stmt.src)?,
+            Statement::Return(stmt) => self.update_primitive(&stmt.src)?,
+            Statement::RevertStatement(stmt) => self.update_primitive(&stmt.src)?,
         }
 
         Ok(())
     }
 }
 
-impl PrimativeUnitVisitor {
-    fn update(&mut self, src: &SourceLocation) -> Result<()> {
-        let src = UnitLocation::try_from(src)?;
-        self.0.entry(src.index).or_insert_with(BTreeMap::new).insert(src.start, src);
-        Ok(())
+impl DebugUnitVisitor {
+    fn update_primitive(&mut self, src: &SourceLocation) -> Result<()> {
+        let mut src = UnitLocation::try_from(src)?;
+        src.code = Arc::clone(self.sources.get(&src.index).ok_or_eyre("missing source")?);
+        trace!("find a primative debug unit: {}", src);
+
+        let function = self.last_function.as_ref().ok_or_eyre("statement outside of function")?;
+        self.functions.insert(DebugUnit::Primitive(src.clone()), function.clone());
+
+        let contract = self.last_contract.as_ref().ok_or_eyre("statement outside of contract")?;
+        self.contracts.insert(DebugUnit::Primitive(src.clone()), contract.clone());
+
+        self.units
+            .entry(src.index)
+            .or_insert_with(BTreeMap::new)
+            .insert(src.start, DebugUnit::Primitive(src))
+            .map_or(Ok(()), |_| Err(eyre!("overlapping contract units")))
+    }
+
+    fn update_function(&mut self, src: &SourceLocation, is_modifier: bool) -> Result<()> {
+        let mut src = UnitLocation::try_from(src)?;
+        src.code = Arc::clone(self.sources.get(&src.index).ok_or_eyre("missing source")?);
+        trace!("find a function unit: {}", src);
+
+        self.last_function = Some(DebugUnit::Function(src.clone(), is_modifier));
+
+        self.units
+            .entry(src.index)
+            .or_insert_with(BTreeMap::new)
+            .insert(src.start, DebugUnit::Function(src, is_modifier))
+            .map_or(Ok(()), |_| Err(eyre!("overlapping contract units")))
+    }
+
+    fn update_contract(&mut self, src: &SourceLocation) -> Result<()> {
+        let mut src = UnitLocation::try_from(src)?;
+        src.code = Arc::clone(self.sources.get(&src.index).ok_or_eyre("missing source")?);
+        trace!("find a contract unit: {}", src);
+
+        self.last_contract = Some(DebugUnit::Contract(src.clone()));
+
+        self.units
+            .entry(src.index)
+            .or_insert_with(BTreeMap::new)
+            .insert(src.start, DebugUnit::Contract(src))
+            .map_or(Ok(()), |_| Err(eyre!("overlapping contract units")))
     }
 
     /// Check whether there is any overlapping primitive debugging unit.
     pub fn check_integrity(&self) -> Result<()> {
-        for (_, stmts) in &self.0 {
+        self.do_integrity_checking(|u| matches!(u, DebugUnit::Primitive(_)))?;
+        self.do_integrity_checking(|u| matches!(u, DebugUnit::Function(_, _)))?;
+        self.do_integrity_checking(|u| matches!(u, DebugUnit::Contract(_)))?;
+
+        Ok(())
+    }
+
+    fn do_integrity_checking<F>(&self, f: F) -> Result<()>
+    where
+        F: Fn(&DebugUnit) -> bool,
+    {
+        for (_, stmts) in &self.units {
             let mut last_end = 0;
             for (start, src) in stmts {
-                if start < &last_end {
-                    return Err(eyre!(format!("overlapping primitive units at {:?}", src)));
+                if f(src) {
+                    if start < &last_end {
+                        return Err(eyre!(format!("overlapping primitive units at {:?}", src)));
+                    }
+                    last_end = start + src.length();
                 }
-                last_end = start + src.length;
             }
         }
 
@@ -217,15 +417,15 @@ impl PrimativeUnitVisitor {
     }
 
     /// Produce the PrimativeStmts.
-    pub fn produce(self) -> Result<PrimitiveUnits> {
+    pub fn produce(self) -> Result<DebugUnits> {
         self.check_integrity()?;
-        Ok(self.0)
+        Ok(DebugUnits { units: self.units, functions: self.functions, contracts: self.contracts })
     }
 
     /// Special handling for inline assembly for older versions of Solidity.
     fn visit_inline_assembly_old(&mut self, stmt: &InlineAssembly) -> Result<()> {
         let sloc: UnitLocation = (&stmt.src).try_into()?;
-        let source = self.1.get(&sloc.index).ok_or(eyre!("missing source"))?.as_str();
+        let source = self.sources.get(&sloc.index).ok_or_eyre("missing source")?.as_str();
         let mut asm_code = &source[sloc.start..sloc.start + sloc.length];
 
         // wrap the inline assembly code in a random function to parse it
@@ -242,7 +442,7 @@ impl PrimativeUnitVisitor {
                 let mut lexer_errors = Vec::new();
                 let lex = lexer::Lexer::new(asm_code, sloc.index, &mut comments, &mut lexer_errors);
 
-                let (last_start, _, _) = lex.last().ok_or(eyre!("no token in the inline asm"))?;
+                let (last_start, _, _) = lex.last().ok_or_eyre("no token in the inline asm")?;
                 asm_code = &asm_code[..last_start];
                 wrapped_func = format!("function _medga_edb_150502() {{ {} }}", asm_code);
                 solang_parser::parse(wrapped_func.as_str(), sloc.index)
@@ -259,7 +459,7 @@ impl PrimativeUnitVisitor {
             pt::SourceUnitPart::FunctionDefinition(func) => func,
             _ => return Err(eyre!("invalid inline assembly AST when parsing function")),
         };
-        let body = func.body.ok_or(eyre!("missing body"))?;
+        let body = func.body.ok_or_eyre("missing body")?;
         let stmts = match body {
             pt::Statement::Block { statements, .. } => statements,
             _ => return Err(eyre!("invalid inline assembly AST when parsing function body")),
@@ -280,7 +480,7 @@ impl PrimativeUnitVisitor {
 
         // parse each Yul statments
         let local_offset = wrapped_func.find(asm_code).expect("this should not happen");
-        let global_offset = stmt.src.start.ok_or(eyre!("invalid source location"))? as usize;
+        let global_offset = stmt.src.start.ok_or_eyre("invalid source location")? as usize;
         for yul_stmt in &yul_block.statements {
             self.visit_yul_statment_solang(yul_stmt, local_offset, global_offset)?;
         }
@@ -328,11 +528,11 @@ impl PrimativeUnitVisitor {
             pt::YulStatement::Break(loc) |
             pt::YulStatement::Continue(loc) => {
                 let loc = loc.as_source_location(l_off, g_off)?;
-                self.update(&loc)?;
+                self.update_primitive(&loc)?;
             }
             pt::YulStatement::FunctionCall(func) => {
                 let loc = func.loc.as_source_location(l_off, g_off)?;
-                self.update(&loc)?;
+                self.update_primitive(&loc)?;
             }
             pt::YulStatement::If(_, expr, block) => {
                 self.visit_yul_expression_solang(expr, l_off, g_off)?;
@@ -416,11 +616,11 @@ impl PrimativeUnitVisitor {
             pt::YulExpression::Variable(pt::Identifier { loc, .. }) |
             pt::YulExpression::SuffixAccess(loc, ..) => {
                 let loc = loc.as_source_location(l_off, g_off)?;
-                self.update(&loc)
+                self.update_primitive(&loc)
             }
             pt::YulExpression::FunctionCall(func) => {
                 let loc = func.loc.as_source_location(l_off, g_off)?;
-                self.update(&loc)
+                self.update_primitive(&loc)
             }
         }
     }
@@ -479,12 +679,12 @@ impl PrimativeUnitVisitor {
                     }
                 }
             }
-            YulStatement::YulVariableDeclaration(stmt) => self.update(&stmt.src)?,
-            YulStatement::YulAssignment(stmt) => self.update(&stmt.src)?,
-            YulStatement::YulBreak(stmt) => self.update(&stmt.src)?,
-            YulStatement::YulContinue(stmt) => self.update(&stmt.src)?,
-            YulStatement::YulExpressionStatement(stmt) => self.update(&stmt.src)?,
-            YulStatement::YulLeave(stmt) => self.update(&stmt.src)?,
+            YulStatement::YulVariableDeclaration(stmt) => self.update_primitive(&stmt.src)?,
+            YulStatement::YulAssignment(stmt) => self.update_primitive(&stmt.src)?,
+            YulStatement::YulBreak(stmt) => self.update_primitive(&stmt.src)?,
+            YulStatement::YulContinue(stmt) => self.update_primitive(&stmt.src)?,
+            YulStatement::YulExpressionStatement(stmt) => self.update_primitive(&stmt.src)?,
+            YulStatement::YulLeave(stmt) => self.update_primitive(&stmt.src)?,
         }
 
         Ok(())
@@ -499,51 +699,37 @@ impl PrimativeUnitVisitor {
         //     YulLiteral,
         // }
         match expr {
-            YulExpression::YulFunctionCall(expr) => self.update(&expr.src),
-            YulExpression::YulIdentifier(expr) => self.update(&expr.src),
-            YulExpression::YulLiteral(expr) => self.update(&expr.src),
+            YulExpression::YulFunctionCall(expr) => self.update_primitive(&expr.src),
+            YulExpression::YulIdentifier(expr) => self.update_primitive(&expr.src),
+            YulExpression::YulLiteral(expr) => self.update_primitive(&expr.src),
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::{path::PathBuf, str::FromStr};
+pub struct DebugUnitAnlaysis {}
 
-    use alloy_chains::Chain;
-    use alloy_primitives::Address;
-    use edb_utils::cache::Cache;
-    use serial_test::serial;
-
-    use crate::{analysis::ast_visitor::Walk, artifact::deploy::DeployArtifact};
-
-    use super::*;
-
-    fn run_test(chain: Chain, addr: Address) -> Result<PrimitiveUnits> {
-        // load cached artifacts
-        let cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../testdata/cache/backend")
-            .join(chain.to_string());
-        let cache = Cache::new(cache_root, None)?;
-        let artifact: DeployArtifact =
-            cache.load_cache(addr.to_string()).ok_or(eyre!("missing artifact"))?;
-
-        let mut visitor = PrimativeUnitVisitor::new();
+impl DebugUnitAnlaysis {
+    pub fn analyze(artifact: &DeployArtifact) -> Result<DebugUnits> {
+        let mut visitor = DebugUnitVisitor::new();
         for (id, source) in artifact.sources.iter() {
             visitor.register(*id as usize, Arc::clone(&source.code));
             source.ast.walk(&mut visitor)?;
         }
 
-        visitor.produce()
-    }
+        let units = visitor.produce()?;
 
-    #[tokio::test(flavor = "multi_thread")]
-    #[serial]
-    async fn test_usd() {
-        run_test(
-            Chain::mainnet(),
-            Address::from_str("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48").unwrap(),
-        )
-        .unwrap();
+        #[cfg(debug_assertions)]
+        for (index, stmts) in &units.units {
+            let source = artifact
+                .sources
+                .get(&(*index as u32))
+                .ok_or(eyre!("missing source"))?
+                .code
+                .as_str();
+
+            trace!("{}", crate::utils::ast::source_with_primative_statements(source, stmts));
+        }
+
+        Ok(units)
     }
 }

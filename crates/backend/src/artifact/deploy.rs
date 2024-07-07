@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 
 use alloy_json_abi::JsonAbi;
 use alloy_primitives::Bytes;
-use eyre::{eyre, Result};
+use eyre::{eyre, OptionExt, Result};
 use foundry_block_explorers::contract::Metadata;
 use foundry_compilers::artifacts::{CompilerOutput, DeployedBytecode, Evm, SourceUnit, Sources};
 use revm::primitives::Bytecode as RevmBytecode;
@@ -57,10 +57,22 @@ impl AsDeployArtifact for (String, Sources, CompilerOutput, Metadata, RevmByteco
         // let first link the contracts, to have a more accurate similarity check
         for (_, contracts) in output.contracts.iter_mut() {
             for (_, contract) in contracts.iter_mut() {
+                // link deployed bytecode
                 if let Some(Evm { deployed_bytecode: Some(ref mut deployed_bytecode), .. }) =
                     contract.evm
                 {
-                    link_contracts_fakely(deployed_bytecode, None)?;
+                    link_contracts_fakely(
+                        deployed_bytecode
+                            .bytecode
+                            .as_mut()
+                            .ok_or_eyre("no deployed bytecode found")?,
+                        None,
+                    )?;
+                }
+
+                // link constructor bytecode
+                if let Some(Evm { bytecode: Some(ref mut bytecode), .. }) = contract.evm {
+                    link_contracts_fakely(bytecode, None)?;
                 }
             }
         }
@@ -89,7 +101,7 @@ impl AsDeployArtifact for (String, Sources, CompilerOutput, Metadata, RevmByteco
                         .as_ref();
 
                     let similarity = bytecode_similarity(bytecode, bytecod_to_check);
-                    trace!("similarity of contracts with the same name: {}", similarity);
+                    debug!("similarity of contracts with the same name: {}", similarity);
 
                     if similarity > max_similarity {
                         max_similarity = similarity;

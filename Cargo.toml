@@ -154,6 +154,7 @@ serial_test = "3.0.0"
 strum = "0.26"
 toml = "0.8"
 ratatui = { version = "0.27", default-features = false, features = ["crossterm"] }
+tempfile = "3.10"
 tokio = "1"
 tracing = "0.1"
 tracing-error = "0.2"

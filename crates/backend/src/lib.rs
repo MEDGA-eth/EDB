@@ -5,7 +5,7 @@
 #[macro_use]
 extern crate tracing;
 
-mod analysis;
+pub mod analysis;
 pub mod artifact;
 mod core;
 mod handler;
