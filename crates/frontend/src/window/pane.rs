@@ -1,6 +1,6 @@
-use std::{borrow::Borrow, collections::BTreeMap};
+use std::collections::BTreeMap;
 
-use eyre::{ensure, eyre, Result};
+use eyre::{ensure, OptionExt, Result};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
 use crate::context::RecoverableError;
@@ -382,7 +382,7 @@ impl PaneManager {
         ensure!(view.is_valid(), "invalid view");
 
         // first check whether the view can be added
-        let pane = self.panes.get_mut(&target).ok_or(eyre::eyre!("pane not found (assign)"))?;
+        let pane = self.panes.get_mut(&target).ok_or_eyre("pane not found (assign)")?;
         pane.add_view(view)?;
 
         // update the view assignment
@@ -392,7 +392,7 @@ impl PaneManager {
             }
 
             let old_pane =
-                self.panes.get_mut(&old_pane_id).ok_or(eyre::eyre!("pane not found (assign)"))?;
+                self.panes.get_mut(&old_pane_id).ok_or_eyre("pane not found (assign)")?;
             old_pane.remove_view(view);
         }
 
@@ -400,13 +400,13 @@ impl PaneManager {
     }
 
     pub fn get_borders(&self, id: PaneId) -> Result<[Option<usize>; 4]> {
-        self.borders.get(&id).copied().ok_or(eyre::eyre!("pane not found (get_borders)"))
+        self.borders.get(&id).copied().ok_or_eyre("pane not found (get_borders)")
     }
 
     pub fn unassign(&mut self, view: PaneView) -> Result<()> {
         ensure!(view.is_valid(), "invalid view");
         if let Some(id) = self.view_assignment.remove(&view) {
-            let pane = self.panes.get_mut(&id).ok_or(eyre::eyre!("pane not found (unassign)"))?;
+            let pane = self.panes.get_mut(&id).ok_or_eyre("pane not found (unassign)")?;
             pane.remove_view(view);
         }
 
@@ -417,19 +417,19 @@ impl PaneManager {
         let (id1, id2) = if id1 < id2 { (id1, id2) } else { (id2, id1) };
 
         let layout = self.get_layout(VIRTUAL_RECT)?;
-        let rect1 = layout.0.get(&id1).ok_or(eyre::eyre!("pane not found (merge)"))?;
-        let rect2 = layout.0.get(&id2).ok_or(eyre::eyre!("pane not found (merge)"))?;
+        let rect1 = layout.0.get(&id1).ok_or_eyre("pane not found (merge)")?;
+        let rect2 = layout.0.get(&id2).ok_or_eyre("pane not found (merge)")?;
 
         // We should first check if the two panes are adjacent.
         // We will also check the rect1 is on which side of rect2
         let side = mergeable(rect1, rect2)?;
 
-        let target1 = self.panes.get(&id1).ok_or(eyre::eyre!("pane not found (merge)"))?;
-        let target2 = self.panes.get(&id2).ok_or(eyre::eyre!("pane not found (merge)"))?;
+        let target1 = self.panes.get(&id1).ok_or_eyre("pane not found (merge)")?;
+        let target2 = self.panes.get(&id2).ok_or_eyre("pane not found (merge)")?;
 
         // We also need to make sure the two panes are from the same parent pane
-        let borders1 = self.borders.get(&id1).ok_or(eyre::eyre!("pane not found (merge)"))?;
-        let borders2 = self.borders.get(&id2).ok_or(eyre::eyre!("pane not found (merge)"))?;
+        let borders1 = self.borders.get(&id1).ok_or_eyre("pane not found (merge)")?;
+        let borders2 = self.borders.get(&id2).ok_or_eyre("pane not found (merge)")?;
         let new_borders = match side {
             BorderSide::Left | BorderSide::Right => {
                 if borders1[usize::from(BorderSide::Top)] !=
@@ -514,9 +514,9 @@ impl PaneManager {
     }
 
     pub fn split(&mut self, id: PaneId, direction: Direction, ratio: [u32; 2]) -> Result<usize> {
-        let _ = self.panes.get(&id).ok_or(eyre::eyre!("pane not found (split)"))?;
+        let _ = self.panes.get(&id).ok_or_eyre("pane not found (split)")?;
         let layout = self.get_layout(VIRTUAL_RECT)?;
-        let rect = layout.0.get(&id).ok_or(eyre::eyre!("pane not found"))?;
+        let rect = layout.0.get(&id).ok_or_eyre("pane not found")?;
         let side_len = match direction {
             Direction::Horizontal => rect.width,
             Direction::Vertical => rect.height,
@@ -537,7 +537,7 @@ impl PaneManager {
         self.panes.insert(new_id, new_pane);
 
         // update the border info
-        let id1_borders = self.borders.get_mut(&id).ok_or(eyre::eyre!("pane not found (split)"))?;
+        let id1_borders = self.borders.get_mut(&id).ok_or_eyre("pane not found (split)")?;
         let mut id2_borders = id1_borders.clone();
 
         match direction {
@@ -559,14 +559,12 @@ impl PaneManager {
 
     // Switch the pane ids
     pub fn switch_id(&mut self, input1: PaneId, input2: PaneId) -> Result<()> {
-        let _ = self.panes.get(&input1).ok_or(eyre::eyre!("pane not found (switch_id)"))?;
-        let _ = self.panes.get(&input2).ok_or(eyre::eyre!("pane not found (switch_id)"))?;
+        let _ = self.panes.get(&input1).ok_or_eyre("pane not found (switch_id)")?;
+        let _ = self.panes.get(&input2).ok_or_eyre("pane not found (switch_id)")?;
 
         // remember to update borders
-        let id1_borders =
-            self.borders.remove(&input1).ok_or(eyre::eyre!("pane not found (switch_id)"))?;
-        let id2_borders =
-            self.borders.remove(&input2).ok_or(eyre::eyre!("pane not found (switch_id)"))?;
+        let id1_borders = self.borders.remove(&input1).ok_or_eyre("pane not found (switch_id)")?;
+        let id2_borders = self.borders.remove(&input2).ok_or_eyre("pane not found (switch_id)")?;
         self.borders.insert(input1, id2_borders);
         self.borders.insert(input2, id1_borders);
 
@@ -582,14 +580,13 @@ impl PaneManager {
     }
 
     pub fn force_goto_by_view(&mut self, view: PaneView) -> Result<()> {
-        let target_id = self.get_pane_id(view).ok_or(eyre::eyre!("pane not found (force_goto)"))?;
+        let target_id = self.get_pane_id(view).ok_or_eyre("pane not found (force_goto)")?;
         let layout = self.get_layout(VIRTUAL_RECT)?;
 
-        let rect = layout.0.get(&target_id).ok_or(eyre::eyre!("pane not found (force_goto)"))?;
+        let rect = layout.0.get(&target_id).ok_or_eyre("pane not found (force_goto)")?;
         self.focus = VirtCoord::new(rect.x, rect.y);
 
-        let pane =
-            self.panes.get_mut(&target_id).ok_or(eyre::eyre!("pane not found (force_goto)"))?;
+        let pane = self.panes.get_mut(&target_id).ok_or_eyre("pane not found (force_goto)")?;
         pane.select_view(view);
 
         Ok(())
@@ -638,11 +635,10 @@ impl PaneManager {
         amount: i32,
         screen: Rect,
     ) -> Result<()> {
-        let borders = self.borders.get(&id).ok_or(eyre::eyre!("pane not found (scale_pane)"))?;
+        let borders = self.borders.get(&id).ok_or_eyre("pane not found (scale_pane)")?;
 
-        let op_id =
-            borders[side as usize].ok_or(eyre::eyre!("cannot scale the pane to this side"))?;
-        let op = self.operations.get_mut(op_id).ok_or(eyre::eyre!("operation not found"))?;
+        let op_id = borders[side as usize].ok_or_eyre("cannot scale the pane to this side")?;
+        let op = self.operations.get_mut(op_id).ok_or_eyre("operation not found")?;
 
         if let PaneOperation::Split(split) = op {
             let (side_len, min_len) = match split.direction {
@@ -673,12 +669,12 @@ impl PaneManager {
 
     pub fn get_focused_pane_mut(&mut self) -> Result<&mut Pane> {
         let info = self.get_focused_info()?;
-        Ok(self.panes.get_mut(&info.pane_id).ok_or(eyre!("invalid pane id"))?)
+        Ok(self.panes.get_mut(&info.pane_id).ok_or_eyre("invalid pane id")?)
     }
 
     pub fn get_focused_pane(&self) -> Result<&Pane> {
         let info = self.get_focused_info()?;
-        Ok(self.panes.get(&info.pane_id).ok_or(eyre!("invalid pane id"))?)
+        Ok(self.panes.get(&info.pane_id).ok_or_eyre("invalid pane id")?)
     }
 
     pub fn get_focused_view(&self) -> Result<PaneView> {
@@ -732,9 +728,8 @@ impl PaneManager {
         for op in &self.operations {
             match op {
                 PaneOperation::Split(split) => {
-                    let input = layout
-                        .get(&split.input_id)
-                        .ok_or(eyre::eyre!("pane not found (get_layout)"))?;
+                    let input =
+                        layout.get(&split.input_id).ok_or_eyre("pane not found (get_layout)")?;
                     let t_r = split.ratio[0] + split.ratio[1];
                     let [output1, output2] = Layout::new(
                         split.direction,
@@ -752,12 +747,10 @@ impl PaneManager {
                     layout.insert(split.output_id[1], output2);
                 }
                 PaneOperation::Merge(merge) => {
-                    let input1 = layout
-                        .get(&merge.input_id[0])
-                        .ok_or(eyre::eyre!("pane not found (get_layout)"))?;
-                    let input2 = layout
-                        .get(&merge.input_id[1])
-                        .ok_or(eyre::eyre!("pane not found (get_layout)"))?;
+                    let input1 =
+                        layout.get(&merge.input_id[0]).ok_or_eyre("pane not found (get_layout)")?;
+                    let input2 =
+                        layout.get(&merge.input_id[1]).ok_or_eyre("pane not found (get_layout)")?;
                     let output = input1.union(*input2);
 
                     layout.remove(&merge.input_id[0]);
@@ -767,10 +760,10 @@ impl PaneManager {
                 PaneOperation::SwitchId(switch) => {
                     let input1 = *layout
                         .get(&switch.input_id[0])
-                        .ok_or(eyre::eyre!("pane not found (get_layout)"))?;
+                        .ok_or_eyre("pane not found (get_layout)")?;
                     let input2 = *layout
                         .get(&switch.input_id[1])
-                        .ok_or(eyre::eyre!("pane not found (get_layout)"))?;
+                        .ok_or_eyre("pane not found (get_layout)")?;
 
                     layout.insert(switch.input_id[0], input2);
                     layout.insert(switch.input_id[1], input1);

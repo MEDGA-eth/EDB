@@ -7,7 +7,7 @@ use alloy_provider::{network::AnyNetwork, Provider};
 use alloy_rpc_types::{BlockNumberOrTag, Transaction};
 use alloy_transport::{Transport, TransportError};
 use anvil::Hardfork;
-use eyre::{eyre, Result};
+use eyre::{eyre, OptionExt, Result};
 use foundry_common::constants::NON_ARCHIVE_NODE_WARNING;
 use foundry_evm::{
     fork::database::ForkedDatabase, utils::apply_chain_and_block_specific_env_changes,
@@ -198,7 +198,7 @@ pub fn fill_tx_env(env: &mut Env, tx: &Transaction) -> Result<()> {
             env.tx.access_list = tx
                 .access_list
                 .clone()
-                .ok_or(eyre::eyre!("missing access list"))?
+                .ok_or_eyre("missing access list")?
                 .iter()
                 .map(|l| {
                     (l.address, l.storage_keys.iter().map(|k| U256::from_be_bytes(k.0)).collect())
@@ -211,7 +211,7 @@ pub fn fill_tx_env(env: &mut Env, tx: &Transaction) -> Result<()> {
             env.tx.gas_limit = tx.gas as u64;
             env.tx.gas_price = U256::from(tx.gas_price.unwrap_or_default());
             env.tx.gas_priority_fee = Some(U256::from(
-                tx.max_priority_fee_per_gas.ok_or(eyre::eyre!("missing max priority fee"))?,
+                tx.max_priority_fee_per_gas.ok_or_eyre("missing max priority fee")?,
             ));
             env.tx.transact_to = tx.to.map(TxKind::Call).unwrap_or(TxKind::Create);
             env.tx.value = tx.value;
@@ -221,7 +221,7 @@ pub fn fill_tx_env(env: &mut Env, tx: &Transaction) -> Result<()> {
             env.tx.access_list = tx
                 .access_list
                 .clone()
-                .ok_or(eyre::eyre!("missing access list"))?
+                .ok_or_eyre("missing access list")?
                 .iter()
                 .map(|l| {
                     (l.address, l.storage_keys.iter().map(|k| U256::from_be_bytes(k.0)).collect())
@@ -234,21 +234,21 @@ pub fn fill_tx_env(env: &mut Env, tx: &Transaction) -> Result<()> {
             env.tx.gas_limit = tx.gas as u64;
             env.tx.gas_price = U256::from(tx.gas_price.unwrap_or_default());
             env.tx.gas_priority_fee = Some(U256::from(
-                tx.max_priority_fee_per_gas.ok_or(eyre::eyre!("missing max priority fee"))?,
+                tx.max_priority_fee_per_gas.ok_or_eyre("missing max priority fee")?,
             ));
-            env.tx.transact_to = TxKind::Call(tx.to.ok_or(eyre::eyre!("missing to in eip4844"))?);
+            env.tx.transact_to = TxKind::Call(tx.to.ok_or_eyre("missing to in eip4844")?);
             env.tx.value = tx.value;
             env.tx.data = tx.input.clone();
             env.tx.chain_id = tx.chain_id;
             env.tx.nonce = Some(tx.nonce);
-            env.tx.blob_hashes.clone_from(
-                &(tx.blob_versioned_hashes.clone().ok_or(eyre::eyre!("missing blob hashes"))?),
-            );
+            env.tx
+                .blob_hashes
+                .clone_from(&(tx.blob_versioned_hashes.clone().ok_or_eyre("missing blob hashes")?));
             env.tx.max_fee_per_blob_gas = tx.max_fee_per_blob_gas.map(U256::from);
             env.tx.access_list = tx
                 .access_list
                 .clone()
-                .ok_or(eyre::eyre!("missing access list"))?
+                .ok_or_eyre("missing access list")?
                 .iter()
                 .map(|l| {
                     (l.address, l.storage_keys.iter().map(|k| U256::from_be_bytes(k.0)).collect())

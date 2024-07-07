@@ -1,5 +1,5 @@
 use alloy_primitives::Address;
-use eyre::{eyre, Result};
+use eyre::{OptionExt, Result};
 use foundry_compilers::artifacts::Bytecode;
 
 #[inline]
@@ -18,7 +18,7 @@ pub fn link_contracts_fakely(bytecode: &mut Bytecode, addr: Option<Address>) -> 
         bytecode.link(&file, &library, addr);
     }
 
-    bytecode.object.resolve().ok_or(eyre!("object linking failed"))?;
+    bytecode.object.resolve().ok_or_eyre("object linking failed")?;
 
     Ok(())
 }

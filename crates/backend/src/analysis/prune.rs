@@ -1,6 +1,6 @@
 use std::{fs::File, io::Write};
 
-use eyre::{eyre, Result};
+use eyre::{OptionExt, Result};
 use foundry_compilers::artifacts::{Ast, Node, NodeType, SourceUnit};
 
 /// We prune the AST to remove or refine nodes that are not strongly related to analysis.
@@ -110,7 +110,7 @@ impl ASTPruner {
                         if !obj.contains_key("AST") {
                             let ast = serde_json::json!({
                                 "nodeType": "YulBlock",
-                                "src": obj.get("src").ok_or(eyre!("missing src"))?.clone(),
+                                "src": obj.get("src").ok_or_eyre("missing src")?.clone(),
                                 "statements": [],
                             });
                             obj.insert("AST".to_string(), ast);
@@ -181,9 +181,9 @@ mod tests {
         let compiler = OnchainCompiler::new(compiler_cache_root)?;
 
         let (_, _, mut output) =
-            compiler.compile(&client, addr).await?.ok_or(eyre!("missing compiler output"))?;
+            compiler.compile(&client, addr).await?.ok_or_eyre("missing compiler output")?;
         for (_, contract) in output.sources.iter_mut() {
-            ASTPruner::convert(contract.ast.as_mut().ok_or(eyre!("AST does not exist"))?)?;
+            ASTPruner::convert(contract.ast.as_mut().ok_or_eyre("AST does not exist")?)?;
         }
 
         Ok(())

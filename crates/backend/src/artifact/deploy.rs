@@ -97,7 +97,7 @@ impl AsDeployArtifact for (String, Sources, CompilerOutput, Metadata, RevmByteco
                     let bytecod_to_check = bytecode_to_check
                         .object
                         .as_bytes()
-                        .ok_or(eyre!("missing bytecode object"))?
+                        .ok_or_eyre("missing bytecode object")?
                         .as_ref();
 
                     let similarity = bytecode_similarity(bytecode, bytecod_to_check);
@@ -118,21 +118,20 @@ impl AsDeployArtifact for (String, Sources, CompilerOutput, Metadata, RevmByteco
             )));
         }
 
-        let (compilation_ref, path_ref) =
-            selected.ok_or(eyre!("no compilation reference found"))?;
+        let (compilation_ref, path_ref) = selected.ok_or_eyre("no compilation reference found")?;
 
         // get file id
         let file_id = output
             .sources
             .iter()
             .find_map(|(path, source)| if path == path_ref { Some(source.id) } else { None })
-            .ok_or(eyre!("no file id found"))?;
+            .ok_or_eyre("no file id found")?;
 
         // collect all repated source
         let mut sources = BTreeMap::new();
         for (path, source) in output.sources.iter_mut() {
-            let ast = ASTPruner::convert(source.ast.as_mut().ok_or(eyre!("AST does not exist"))?)?;
-            let source_code = &input_sources.get(path).ok_or(eyre!("missing source code"))?.content;
+            let ast = ASTPruner::convert(source.ast.as_mut().ok_or_eyre("AST does not exist")?)?;
+            let source_code = &input_sources.get(path).ok_or_eyre("missing source code")?.content;
             sources.insert(
                 source.id,
                 SourceFile { path: path.clone(), code: Arc::clone(&source_code), ast: ast.clone() },
@@ -142,8 +141,8 @@ impl AsDeployArtifact for (String, Sources, CompilerOutput, Metadata, RevmByteco
         Ok(DeployArtifact {
             contract_name: contract_name.to_string(),
             file_id,
-            abi: compilation_ref.abi.as_ref().ok_or(eyre!("missing abi"))?.clone(),
-            evm: compilation_ref.evm.as_ref().ok_or(eyre!("missing evm"))?.clone(),
+            abi: compilation_ref.abi.as_ref().ok_or_eyre("missing abi")?.clone(),
+            evm: compilation_ref.evm.as_ref().ok_or_eyre("missing evm")?.clone(),
             constructor_arguments: meta.constructor_arguments,
             sources,
         })

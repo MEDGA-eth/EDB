@@ -13,7 +13,7 @@ use edb_utils::{
     onchain_compiler::OnchainCompiler,
     update_progress,
 };
-use eyre::{eyre, Result};
+use eyre::{eyre, OptionExt, Result};
 use foundry_block_explorers::Client;
 use foundry_compilers::artifacts::Severity;
 use revm::{
@@ -135,7 +135,7 @@ impl DebugBackendBuilder {
         let compiler_cache_root = self
             .compiler_cache_root
             .or(CachePath::edb_compiler_chain_cache_dir(chain_id))
-            .ok_or(eyre::eyre!("missing cache_root"))?;
+            .ok_or_eyre("missing cache_root")?;
 
         let deploy_artifacts = self.deploy_artifacts.unwrap_or_default();
         let compiler = OnchainCompiler::new(&compiler_cache_root)?;
@@ -143,7 +143,7 @@ impl DebugBackendBuilder {
         let cache_root = self
             .cache_root
             .or(CachePath::edb_backend_chain_cache_dir(chain_id))
-            .ok_or(eyre::eyre!("missing cache_root"))?;
+            .ok_or_eyre("missing cache_root")?;
         // We do not set the cache TTL for the backend cache.
         let cache = Cache::new(cache_root, None)?;
 

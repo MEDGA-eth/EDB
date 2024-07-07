@@ -1,5 +1,5 @@
 use alloy_primitives::Address;
-use eyre::{eyre, Result};
+use eyre::{eyre, OptionExt, Result};
 use revm::{primitives::Bytecode, Database};
 
 pub fn get_code<T>(db: &mut T, addr: Address) -> Result<Bytecode>
@@ -11,7 +11,7 @@ where
     let info = db
         .basic(addr)
         .map_err(|e| eyre!(format!("the account ({}) does not exist: {}", addr, e.to_string())))?
-        .ok_or(eyre!("the account does not exist"))?;
+        .ok_or_eyre("the account does not exist")?;
 
     if let Some(ref bytecode) = info.code {
         Ok(bytecode.clone())

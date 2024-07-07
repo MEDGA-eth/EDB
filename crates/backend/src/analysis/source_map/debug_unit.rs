@@ -724,12 +724,8 @@ impl DebugUnitAnlaysis {
 
         #[cfg(debug_assertions)]
         for (index, stmts) in &units.units {
-            let source = artifact
-                .sources
-                .get(&(*index as u32))
-                .ok_or(eyre!("missing source"))?
-                .code
-                .as_str();
+            let source =
+                artifact.sources.get(&(*index as u32)).ok_or_eyre("missing source")?.code.as_str();
 
             trace!("{}", crate::utils::ast::source_with_primative_statements(source, stmts));
         }

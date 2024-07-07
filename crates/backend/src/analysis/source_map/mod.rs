@@ -1,4 +1,5 @@
 pub mod debug_unit;
+pub mod naive_alignment;
 pub mod source_label;
 
 use crate::artifact::deploy::DeployArtifact;

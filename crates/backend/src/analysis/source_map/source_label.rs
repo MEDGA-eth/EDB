@@ -1,14 +1,14 @@
 use std::fmt::Debug;
 
-use crate::{
-    analysis::source_map::debug_unit::DebugUnit, artifact::deploy::DeployArtifact,
-    utils::opcode::IcPcMap,
-};
-use eyre::{eyre, OptionExt, Result};
+use eyre::{OptionExt, Result};
 use foundry_compilers::artifacts::{sourcemap::Jump, Bytecode};
 use revm::interpreter::OpCode;
 
 use super::debug_unit::DebugUnits;
+use crate::{
+    analysis::source_map::debug_unit::DebugUnit, artifact::deploy::DeployArtifact,
+    utils::opcode::IcPcMap,
+};
 
 #[derive(Debug, Clone)]
 pub enum SourceLabel {
@@ -78,12 +78,12 @@ impl SourceLabelAnalysis {
     }
 
     fn analyze_bytecode(bytecode: &Bytecode, units: &DebugUnits) -> Result<Vec<SourceLabel>> {
-        let source_map = bytecode.source_map().ok_or(eyre!("no source map found"))??;
+        let source_map = bytecode.source_map().ok_or_eyre("no source map found")??;
         trace!("the number of the original source map entries is {}", source_map.len());
 
         let mut source_labels = Vec::with_capacity(source_map.len());
 
-        let code = bytecode.bytes().ok_or(eyre!("no code found"))?.as_ref();
+        let code = bytecode.bytes().ok_or_eyre("no code found")?.as_ref();
         let ic_pc_map = IcPcMap::new(code);
         trace!("the number of instructions is {}", ic_pc_map.len());
 

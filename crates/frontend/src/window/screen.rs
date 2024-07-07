@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 
-use eyre::{ensure, Result};
+use eyre::{ensure, OptionExt, Result};
 use ratatui::layout::{Direction, Rect};
 
 use crate::{
     context::RecoverableError,
-    window::pane::{self, Pane, PaneFlattened, PaneManager, PaneView},
+    window::pane::{Pane, PaneFlattened, PaneManager, PaneView},
 };
 
 use super::pane::{BorderSide, PaneId};
@@ -67,11 +67,11 @@ impl ScreenManager {
     }
 
     pub fn get_pane_manager(&self) -> Result<&PaneManager> {
-        self.panes.get(&self.current_pane).ok_or(eyre::eyre!("No current pane"))
+        self.panes.get(&self.current_pane).ok_or_eyre("No current pane")
     }
 
     pub fn get_pane_manager_mut(&mut self) -> Result<&mut PaneManager> {
-        self.panes.get_mut(&self.current_pane).ok_or(eyre::eyre!("No current pane"))
+        self.panes.get_mut(&self.current_pane).ok_or_eyre("No current pane")
     }
 
     pub fn enter_terminal(&mut self) -> Result<()> {

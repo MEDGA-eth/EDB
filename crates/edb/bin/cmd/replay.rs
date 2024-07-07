@@ -7,7 +7,7 @@ use clap::Parser;
 use edb_backend::DebugBackend;
 use edb_frontend::DebugFrontend;
 use edb_utils::{init_progress, update_progress};
-use eyre::{ensure, eyre, Result};
+use eyre::{ensure, OptionExt, Result};
 use foundry_common::{is_known_system_sender, SYSTEM_TRANSACTION_TYPE};
 use foundry_evm::{fork::database::ForkedDatabase, utils::new_evm_with_inspector};
 use revm::{inspectors::NoOpInspector, primitives::EnvWithHandlerCfg};
@@ -115,13 +115,13 @@ impl ReplayArgs {
         let tx = provider
             .get_transaction_by_hash(*tx_hash)
             .await?
-            .ok_or(eyre!("transaction not found"))?;
+            .ok_or_eyre("transaction not found")?;
         let tx_block_number: u64 =
-            tx.block_number.ok_or(eyre!("transaction may still be pending"))?;
+            tx.block_number.ok_or_eyre("transaction may still be pending")?;
         let block = provider
             .get_block(tx_block_number.into(), BlockTransactionsKind::Full)
             .await?
-            .ok_or(eyre!("block not found"))?;
+            .ok_or_eyre("block not found")?;
         let BlockTransactions::Full(txs_in_block) = block.transactions else {
             return Err(eyre::eyre!("block transactions not found"));
         };
@@ -178,7 +178,7 @@ impl ReplayArgs {
             let tx_receipt = provider
                 .get_transaction_receipt(tx.hash)
                 .await?
-                .ok_or(eyre!("transaction receipt not found"))?;
+                .ok_or_eyre("transaction receipt not found")?;
 
             cumulative_gas_used += result.gas_used() as u128;
             ensure!(
