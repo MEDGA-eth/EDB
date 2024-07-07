@@ -7,7 +7,7 @@ use eyre::Result;
 use serde::{Deserialize, Serialize};
 
 use crate::artifact::deploy::DeployArtifact;
-use naive_alignment::AlignmentAnalysis as NaiveAlignmentAnalysis;
+use naive_alignment::AlignmentAnalysis as NAA;
 use source_label::SourceLabelAnalysis;
 
 /// The alignment algorithm of the source map.
@@ -22,17 +22,20 @@ pub struct SourceMapAnalysis {}
 
 impl SourceMapAnalysis {
     /// Analyze the source map of a compilation artifact.
-    pub fn analyze(artifact: &DeployArtifact, align: SourceMapAlignment) -> Result<DebugUnits> {
+    pub fn analyze(
+        artifact: &DeployArtifact,
+        align_algo: SourceMapAlignment,
+    ) -> Result<DebugUnits> {
         // Step 1. collect primitive debugging units.
         let units = DebugUnitAnlaysis::analyze(artifact)?;
 
         // Step 2. analyze the source labels.
         let labels = SourceLabelAnalysis::analyze(artifact, &units)?;
 
-        /// Step 3. align the source map.
-        match align {
+        // Step 3. align the source map.
+        match align_algo {
             SourceMapAlignment::Naive => {
-                NaiveAlignmentAnalysis::analyze(artifact, &units, &labels)?;
+                NAA::analyze(artifact, &units, &labels)?;
             }
         }
 

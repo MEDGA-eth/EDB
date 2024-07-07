@@ -1,13 +1,9 @@
-use std::{
-    fs::{self, File},
-    io::Write,
-    path::PathBuf,
-};
+use std::path::PathBuf;
 
 use alloy_primitives::Address;
 use eyre::Result;
 use foundry_block_explorers::{
-    contract::{Metadata, SourceCodeMetadata},
+    contract::Metadata,
     errors::EtherscanError,
     Client,
 };

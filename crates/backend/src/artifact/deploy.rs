@@ -101,7 +101,7 @@ impl AsDeployArtifact for (String, Sources, CompilerOutput, Metadata, RevmByteco
                         .as_ref();
 
                     let similarity = bytecode_similarity(bytecode, bytecod_to_check);
-                    debug!("similarity of contracts with the same name: {}", similarity);
+                    trace!("similarity of contracts with the same name: {}", similarity);
 
                     if similarity > max_similarity {
                         max_similarity = similarity;

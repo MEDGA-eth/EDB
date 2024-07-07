@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use eyre::{OptionExt, Result};
+use eyre::{ensure, OptionExt, Result};
 use foundry_compilers::artifacts::{sourcemap::Jump, Bytecode};
 use revm::interpreter::OpCode;
 
@@ -13,7 +13,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum SourceLabel {
     InterproceduralJmp,
-    IntermessageAct,
+    IntermessageAct(OpCode),
     SourceStatment(DebugUnit, DebugUnit, DebugUnit),
     Others(Option<DebugUnit>),
 }
@@ -34,7 +34,7 @@ impl SourceLabel {
     }
 
     pub fn is_intermessage_action(&self) -> bool {
-        matches!(self, SourceLabel::IntermessageAct)
+        matches!(self, SourceLabel::IntermessageAct(_))
     }
 
     pub fn is_others(&self) -> Option<&DebugUnit> {
@@ -50,20 +50,24 @@ pub struct SourceLabelAnalysis {}
 
 impl SourceLabelAnalysis {
     pub fn analyze(artifact: &DeployArtifact, units: &DebugUnits) -> Result<SourceLabels> {
-        debug!(
+        trace!(
             "analyzing source labels, with available file indice: {:?}",
             artifact.sources.keys()
         );
+        ensure!(
+            !units.iter().any(|unit| matches!(unit, DebugUnit::Hyper(_))),
+            "there should not have any hyper unit in the debug units at this stage"
+        );
 
         // Analyze the construction bytecode.
-        debug!("analyzing construction bytecode");
+        trace!("analyzing construction bytecode");
         let construction = Self::analyze_bytecode(
             artifact.evm.bytecode.as_ref().ok_or_eyre("no construction bytecode found")?,
             units,
         )?;
 
         // Analyze the deployed bytecode.
-        debug!("analyzing deployed bytecode");
+        trace!("analyzing deployed bytecode");
         let deployed = Self::analyze_bytecode(
             artifact
                 .evm
@@ -120,7 +124,7 @@ impl SourceLabelAnalysis {
                 OpCode::INVALID |
                 OpCode::RETURN => {
                     *source_labels.last_mut().expect("this cannot happen") =
-                        SourceLabel::IntermessageAct;
+                        SourceLabel::IntermessageAct(opcode);
                     continue;
                 }
                 _ => {}
@@ -135,41 +139,21 @@ impl SourceLabelAnalysis {
             }
 
             // Check the source statement
-            if unit.matches(src.offset() as usize, src.length() as usize) {
-                match unit {
-                    DebugUnit::Primitive(_) => {
-                        let function = units.function(&unit).ok_or_eyre("no function found")?;
-                        let contract = units.contract(&unit).ok_or_eyre("no contract found")?;
-                        *source_labels.last_mut().expect("this cannot happen") =
-                            SourceLabel::SourceStatment(
-                                unit.clone(),
-                                function.clone(),
-                                contract.clone(),
-                            );
-                    }
-                    DebugUnit::Contract(_) | DebugUnit::Function(_, _) => {
-                        *source_labels.last_mut().expect("this cannot happen") =
-                            SourceLabel::Others(Some(unit.clone()))
-                    }
-                    _ => {}
-                }
+            if unit.matches(src.offset() as usize, src.length() as usize) &&
+                !unit.is_execution_unit()
+            {
+                *source_labels.last_mut().expect("this cannot happen") =
+                    SourceLabel::Others(Some(unit.clone()));
                 continue
             }
 
-            if unit.contains(src.offset() as usize, src.length() as usize) {
-                match unit {
-                    DebugUnit::Primitive(_) => {
-                        let function = units.function(&unit).ok_or_eyre("no function found")?;
-                        let contract = units.contract(&unit).ok_or_eyre("no contract found")?;
-                        *source_labels.last_mut().expect("this cannot happen") =
-                            SourceLabel::SourceStatment(
-                                unit.clone(),
-                                function.clone(),
-                                contract.clone(),
-                            );
-                    }
-                    _ => {}
-                }
+            if unit.contains(src.offset() as usize, src.length() as usize) &&
+                matches!(unit, DebugUnit::Primitive(_))
+            {
+                let function = units.function(&unit).ok_or_eyre("no function found")?;
+                let contract = units.contract(&unit).ok_or_eyre("no contract found")?;
+                *source_labels.last_mut().expect("this cannot happen") =
+                    SourceLabel::SourceStatment(unit.clone(), function.clone(), contract.clone());
             }
         }
 

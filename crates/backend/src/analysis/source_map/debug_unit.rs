@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt::{self, Debug},
+    ops::{Deref, DerefMut},
     sync::Arc,
 };
 
@@ -19,7 +20,7 @@ use crate::{
     utils::ast::get_source_location_for_expression,
 };
 
-/// A source location.
+/// A more easy-to-use unit location, which includes the corresponding source code.
 #[derive(Clone, Debug)]
 pub struct UnitLocation {
     pub start: usize,
@@ -118,6 +119,9 @@ impl Ord for HyperUnit {
 }
 
 /// Different kind of debugging units.
+/// A debugging unit can be either an execution unit (primitive or hyper) or a non-execution unit
+/// (function or contract). The execution units are the basic stepping blocks for debugging.
+/// The non-execution units are tags for function and contract definitions.
 #[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd)]
 pub enum DebugUnit {
     /// A primitive unit is a single statement or expression (execution unit)
@@ -258,6 +262,52 @@ impl DebugUnits {
     pub fn contract(&self, unit: &DebugUnit) -> Option<&DebugUnit> {
         self.contracts.get(unit)
     }
+
+    pub fn iter(&self) -> DebugUnitsIterator<'_> {
+        DebugUnitsIterator::new(self)
+    }
+}
+
+impl Deref for DebugUnits {
+    type Target = BTreeMap<usize, BTreeMap<usize, DebugUnit>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.units
+    }
+}
+
+impl DerefMut for DebugUnits {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.units
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct DebugUnitsIterator<'a> {
+    units: Vec<&'a DebugUnit>,
+    index: usize,
+}
+
+impl<'a> DebugUnitsIterator<'a> {
+    pub fn new(units: &'a DebugUnits) -> Self {
+        let mut units: Vec<_> = units.units.values().flat_map(|m| m.values()).collect();
+        units.sort();
+        Self { units, index: 0 }
+    }
+}
+
+impl<'a> Iterator for DebugUnitsIterator<'a> {
+    type Item = &'a DebugUnit;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.units.len() {
+            let result = self.units[self.index];
+            self.index += 1;
+            Some(result)
+        } else {
+            None
+        }
+    }
 }
 
 /// Visitor to collect all primative "statements", i.e., debugging unit.
@@ -265,7 +315,10 @@ impl DebugUnits {
 /// A primative debugging unit is a statement that does not contain any other statements (e.g. a
 /// block statement). A primative unit can also be the condition of a loop or if statement.
 /// Primative debugging units are the basic stepping blocks for debugging.
-/// This visitor will collect all primative statements and their locations.
+/// This visitor will collect all primative statements and their locations, as well as other
+/// non-execution units (e.g., function and contract definitions).
+///
+/// Note that, at this stage, no hyper units are collected.
 #[derive(Clone, Debug, Default)]
 pub struct DebugUnitVisitor {
     units: BTreeMap<usize, BTreeMap<usize, DebugUnit>>,

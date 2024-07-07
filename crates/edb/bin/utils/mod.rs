@@ -61,7 +61,7 @@ pub fn install_error_handler() {
     let debug_enabled = std::env::var("MEDGA_DEBUG").is_ok();
     if debug_enabled {
         if let Err(e) = color_eyre::install() {
-            debug!("failed to install color eyre error hook: {e}");
+            warn!("failed to install color eyre error hook: {e}");
         }
     } else {
         let (panic_hook, _) = color_eyre::config::HookBuilder::default()
@@ -71,7 +71,7 @@ pub fn install_error_handler() {
             .into_hooks();
         panic_hook.install();
         if let Err(e) = eyre::set_hook(Box::new(move |_| Box::new(Handler))) {
-            debug!("failed to install eyre error hook: {e}");
+            warn!("failed to install eyre error hook: {e}");
         }
     }
 }
