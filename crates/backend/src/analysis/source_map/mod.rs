@@ -2,22 +2,39 @@ pub mod debug_unit;
 pub mod naive_alignment;
 pub mod source_label;
 
-use crate::artifact::deploy::DeployArtifact;
 use debug_unit::{DebugUnitAnlaysis, DebugUnits};
 use eyre::Result;
+use serde::{Deserialize, Serialize};
+
+use crate::artifact::deploy::DeployArtifact;
+use naive_alignment::AlignmentAnalysis as NaiveAlignmentAnalysis;
 use source_label::SourceLabelAnalysis;
+
+/// The alignment algorithm of the source map.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum SourceMapAlignment {
+    /// Naive alignment.
+    Naive,
+}
 
 /// A more reliable source map analysis.
 pub struct SourceMapAnalysis {}
 
 impl SourceMapAnalysis {
     /// Analyze the source map of a compilation artifact.
-    pub fn analyze(artifact: &DeployArtifact) -> Result<DebugUnits> {
+    pub fn analyze(artifact: &DeployArtifact, align: SourceMapAlignment) -> Result<DebugUnits> {
         // Step 1. collect primitive debugging units.
         let units = DebugUnitAnlaysis::analyze(artifact)?;
 
         // Step 2. analyze the source labels.
-        SourceLabelAnalysis::analyze(artifact, &units)?;
+        let labels = SourceLabelAnalysis::analyze(artifact, &units)?;
+
+        /// Step 3. align the source map.
+        match align {
+            SourceMapAlignment::Naive => {
+                NaiveAlignmentAnalysis::analyze(artifact, &units, &labels)?;
+            }
+        }
 
         Ok(units)
     }
@@ -46,7 +63,7 @@ mod tests {
         let artifact: DeployArtifact =
             cache.load_cache(addr.to_string()).ok_or_eyre("missing cached artifact")?;
 
-        SourceMapAnalysis::analyze(&artifact)
+        SourceMapAnalysis::analyze(&artifact, SourceMapAlignment::Naive)
     }
 
     #[tokio::test(flavor = "multi_thread")]

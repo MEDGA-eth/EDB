@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::{self, Debug},
     sync::Arc,
 };
@@ -94,13 +94,12 @@ impl AsSourceLocation for pt::Loc {
 #[derive(Clone, Debug)]
 pub struct HyperUnit {
     pub id: u32,
-    pub location: UnitLocation,
-    pub children: Vec<UnitLocation>,
+    pub children: BTreeSet<UnitLocation>,
 }
 
 impl PartialEq for HyperUnit {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id && self.location == other.location
+        self.id == other.id
     }
 }
 
@@ -114,66 +113,122 @@ impl PartialOrd for HyperUnit {
 
 impl Ord for HyperUnit {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        if self.id == other.id {
-            self.location.cmp(&other.location)
-        } else {
-            self.id.cmp(&other.id)
-        }
+        self.id.cmp(&other.id)
     }
 }
 
 /// Different kind of debugging units.
 #[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd)]
 pub enum DebugUnit {
+    /// A primitive unit is a single statement or expression (execution unit)
     Primitive(UnitLocation),
+
+    /// A function unit is a tag for a function definition (non-execution unit).
     Function(UnitLocation, bool),
+
+    /// A contract unit is a tag for a contract definition (non-execution unit).
     Contract(UnitLocation),
 
-    // A hyper unit is a collection of primitive units whose compiled opcodes are fused together.
+    /// A hyper unit is a collection of primitive units whose compiled opcodes are fused together
+    /// (execution unit).
     Hyper(HyperUnit),
 }
 
 impl DebugUnit {
-    pub fn location(&self) -> &UnitLocation {
+    pub fn location(&self) -> Option<&UnitLocation> {
         match self {
-            DebugUnit::Primitive(loc) => loc,
-            DebugUnit::Function(loc, _) => loc,
-            DebugUnit::Contract(loc) => loc,
-            DebugUnit::Hyper(hyper) => &hyper.location,
+            DebugUnit::Primitive(loc) | DebugUnit::Function(loc, _) | DebugUnit::Contract(loc) => {
+                Some(loc)
+            }
+            DebugUnit::Hyper(_) => None,
         }
     }
 
-    pub fn start(&self) -> usize {
-        self.location().start
+    pub fn start(&self) -> Option<usize> {
+        self.location().map(|l| l.start)
     }
 
-    pub fn length(&self) -> usize {
-        self.location().length
+    pub fn length(&self) -> Option<usize> {
+        self.location().map(|l| l.length)
     }
 
-    pub fn index(&self) -> usize {
-        self.location().index
+    pub fn index(&self) -> Option<usize> {
+        self.location().map(|l| l.index)
+    }
+
+    pub fn is_execution_unit(&self) -> bool {
+        match self {
+            DebugUnit::Primitive(_) | DebugUnit::Hyper(_) => true,
+            DebugUnit::Function(_, _) | DebugUnit::Contract(_) => false,
+        }
     }
 
     pub fn contains(&self, start: usize, length: usize) -> bool {
-        let loc = self.location();
-        start >= loc.start && start + length <= loc.start + loc.length
+        match self {
+            DebugUnit::Primitive(loc) | DebugUnit::Function(loc, _) | DebugUnit::Contract(loc) => {
+                loc.start <= start && loc.start + loc.length >= start + length
+            }
+            DebugUnit::Hyper(HyperUnit { children, .. }) => {
+                children.iter().any(|c| c.start <= start && c.start + c.length >= start + length)
+            }
+        }
     }
 
     pub fn matches(&self, start: usize, length: usize) -> bool {
-        let loc = self.location();
-        start == loc.start && length == loc.length
+        match self {
+            DebugUnit::Primitive(loc) | DebugUnit::Function(loc, _) | DebugUnit::Contract(loc) => {
+                loc.start == start && loc.length == length
+            }
+            DebugUnit::Hyper(HyperUnit { children, .. }) => {
+                children.len() == 1 &&
+                    children.iter().any(|c| c.start == start && c.length == length)
+            }
+        }
+    }
+
+    pub fn iter(&self) -> DebugUnitIterator<'_> {
+        match self {
+            DebugUnit::Primitive(loc) | DebugUnit::Function(loc, _) | DebugUnit::Contract(loc) => {
+                DebugUnitIterator { unit: vec![loc], index: 0 }
+            }
+            DebugUnit::Hyper(HyperUnit { children, .. }) => {
+                DebugUnitIterator { unit: children.iter().collect(), index: 0 }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct DebugUnitIterator<'a> {
+    unit: Vec<&'a UnitLocation>,
+    index: usize,
+}
+
+impl<'a> Iterator for DebugUnitIterator<'a> {
+    type Item = &'a UnitLocation;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.unit.len() {
+            let result = self.unit[self.index];
+            self.index += 1;
+            Some(result)
+        } else {
+            None
+        }
     }
 }
 
 impl fmt::Display for DebugUnit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DebugUnit::Primitive(loc) |
-            DebugUnit::Function(loc, _) |
-            DebugUnit::Contract(loc) |
-            DebugUnit::Hyper(HyperUnit { location: loc, .. }) => {
+            DebugUnit::Primitive(loc) | DebugUnit::Function(loc, _) | DebugUnit::Contract(loc) => {
                 write!(f, "{}", loc)
+            }
+            DebugUnit::Hyper(HyperUnit { children, .. }) => {
+                for (i, loc) in children.iter().enumerate() {
+                    write!(f, "component {}:\n{}", i, loc)?;
+                }
+                Ok(())
             }
         }
     }
@@ -412,7 +467,7 @@ impl DebugUnitVisitor {
                     if start < &last_end {
                         return Err(eyre!(format!("overlapping primitive units at {:?}", src)));
                     }
-                    last_end = start + src.length();
+                    last_end = start + src.length().ok_or_eyre("hyper units are not allowed")?;
                 }
             }
         }
@@ -727,7 +782,7 @@ impl DebugUnitAnlaysis {
             let source =
                 artifact.sources.get(&(*index as u32)).ok_or_eyre("missing source")?.code.as_str();
 
-            trace!("{}", crate::utils::ast::source_with_primative_statements(source, stmts));
+            trace!("{}", crate::utils::ast::source_with_debug_units(source, stmts));
         }
 
         Ok(units)

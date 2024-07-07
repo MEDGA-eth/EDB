@@ -27,7 +27,7 @@ use revm::{
 const DEFAULT_CACHE_TTL: u64 = 86400;
 
 use crate::{
-    analysis::source_map::SourceMapAnalysis,
+    analysis::source_map::{SourceMapAlignment, SourceMapAnalysis},
     artifact::{
         debug::{DebugArtifact, DebugNodeFlat},
         deploy::{AsDeployArtifact, DeployArtifact},
@@ -210,7 +210,7 @@ where
     fn analyze_source_map(&mut self) -> Result<()> {
         for (addr, artifact) in &self.deploy_artifacts {
             println!("analyzing source map for {:#?}", addr);
-            SourceMapAnalysis::analyze(artifact)?;
+            SourceMapAnalysis::analyze(artifact, SourceMapAlignment::Naive)?;
         }
 
         Ok(())
