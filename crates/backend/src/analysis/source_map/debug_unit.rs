@@ -20,7 +20,7 @@ use crate::{
 };
 
 /// A source location.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct UnitLocation {
     pub start: usize,
     pub length: usize,
@@ -91,7 +91,7 @@ impl AsSourceLocation for pt::Loc {
 }
 
 /// A hyper unit is a collection of primitive units whose compiled opcodes are fused together.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug)]
 pub struct HyperUnit {
     pub id: u32,
     pub location: UnitLocation,
@@ -100,7 +100,7 @@ pub struct HyperUnit {
 
 impl PartialEq for HyperUnit {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        self.id == other.id && self.location == other.location
     }
 }
 
@@ -114,12 +114,16 @@ impl PartialOrd for HyperUnit {
 
 impl Ord for HyperUnit {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.id.cmp(&other.id)
+        if self.id == other.id {
+            self.location.cmp(&other.location)
+        } else {
+            self.id.cmp(&other.id)
+        }
     }
 }
 
 /// Different kind of debugging units.
-#[derive(Clone, Debug, Hash, PartialEq, Ord, Eq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd)]
 pub enum DebugUnit {
     Primitive(UnitLocation),
     Function(UnitLocation, bool),

@@ -139,7 +139,7 @@ impl SourceLabelAnalysis {
                 match unit {
                     DebugUnit::Primitive(_) => {
                         let function = units.function(&unit).ok_or_eyre("no function found")?;
-                        let contract = units.contract(&function).ok_or_eyre("no contract found")?;
+                        let contract = units.contract(&unit).ok_or_eyre("no contract found")?;
                         *source_labels.last_mut().expect("this cannot happen") =
                             SourceLabel::SourceStatment(
                                 unit.clone(),
@@ -160,7 +160,7 @@ impl SourceLabelAnalysis {
                 match unit {
                     DebugUnit::Primitive(_) => {
                         let function = units.function(&unit).ok_or_eyre("no function found")?;
-                        let contract = units.contract(&function).ok_or_eyre("no contract found")?;
+                        let contract = units.contract(&unit).ok_or_eyre("no contract found")?;
                         *source_labels.last_mut().expect("this cannot happen") =
                             SourceLabel::SourceStatment(
                                 unit.clone(),
