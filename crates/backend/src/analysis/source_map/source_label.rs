@@ -1,70 +1,80 @@
-use std::fmt::{self, Debug};
+use std::{
+    fmt::{self, Debug},
+    sync::Arc,
+};
 
 use eyre::{OptionExt, Result};
-use foundry_compilers::artifacts::sourcemap::Jump;
-use revm::interpreter::OpCode;
 
-use super::AnalysisStore;
+use super::{debug_unit::UnitLocation, AnalysisStore};
 use crate::{
     analysis::source_map::{debug_unit::DebugUnit, CONSTRUCTOR_IDX, DEPLOYED_IDX},
     artifact::deploy::DeployArtifact,
-    utils::opcode::get_push_value,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Source Label are the information we extracted from the inaccurate source map.
+/// It provides a more reliable way to associate the source code with the bytecode.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SourceLabel {
-    FunctionCall,
-    FunctionReturn,
-    UnconditionalJump,
-    ConditionalJump,
-    SourceStatment(DebugUnit, DebugUnit, DebugUnit),
-    Tag(DebugUnit),
-    Others(Option<DebugUnit>),
+    PrimitiveStmt {
+        stmt: DebugUnit,
+        func: DebugUnit,
+        cntr: DebugUnit,
+    },
+    InlineAssembly {
+        stmt: Option<UnitLocation>,
+        block: DebugUnit,
+        func: DebugUnit,
+        cntr: DebugUnit,
+    },
+    Tag {
+        tag: DebugUnit,
+    },
+    Others {
+        scope: Option<DebugUnit>,
+        loc: Option<UnitLocation>,
+    },
+}
+
+impl Default for SourceLabel {
+    fn default() -> Self {
+        SourceLabel::Others { scope: None, loc: None }
+    }
 }
 
 impl fmt::Display for SourceLabel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SourceLabel::FunctionCall => write!(f, "Interprocedural Call"),
-            SourceLabel::FunctionReturn => write!(f, "Interprocedural Return"),
-            SourceLabel::SourceStatment(unit, _, _) => {
-                write!(f, "SourceStatment({})", unit.loc())
+            SourceLabel::PrimitiveStmt { stmt, .. } => {
+                write!(f, "SourceStatment({})", stmt.loc())
             }
-            SourceLabel::UnconditionalJump => write!(f, "Unconditional Jump"),
-            SourceLabel::ConditionalJump => write!(f, "Conditional Jump"),
-            SourceLabel::Tag(unit) => {
-                write!(f, "Tag({})", unit.loc())
+            SourceLabel::InlineAssembly { stmt, block, .. } => {
+                if let Some(stmt) = stmt {
+                    write!(f, "InlineAssemblyStmt({})", stmt)
+                } else {
+                    write!(f, "InlineAssemblyBlock({})", block.loc())
+                }
             }
-            SourceLabel::Others(Some(unit)) => {
-                write!(f, "Others({})", unit.loc())
+            SourceLabel::Tag { tag } => {
+                write!(f, "Tag({})", tag.loc())
             }
-            SourceLabel::Others(_) => write!(f, "Others"),
+            SourceLabel::Others { scope, loc } => match (scope, loc) {
+                (Some(scope), Some(loc)) => write!(f, "Located({}, {})", loc, scope.loc()),
+                (Some(_), None) => write!(f, "Invalid"),
+                (None, Some(loc)) => write!(f, "Unlocated({})", loc),
+                (None, None) => write!(f, "Others"),
+            },
         }
     }
 }
 
 impl SourceLabel {
-    pub fn is_source_statement(&self) -> bool {
-        matches!(self, SourceLabel::SourceStatment(_, _, _))
+    pub fn is_source(&self) -> bool {
+        matches!(self, SourceLabel::PrimitiveStmt { .. }) ||
+            matches!(self, SourceLabel::InlineAssembly { .. })
     }
 
-    pub fn is_interprocedural_action(&self) -> bool {
-        self.is_interprocedural_call() || self.is_interprocedural_return()
-    }
-
-    pub fn is_interprocedural_call(&self) -> bool {
-        matches!(self, SourceLabel::FunctionCall)
-    }
-
-    pub fn is_interprocedural_return(&self) -> bool {
-        matches!(self, SourceLabel::FunctionReturn)
-    }
-
-    pub fn is_others(&self) -> Option<&DebugUnit> {
-        match self {
-            SourceLabel::Others(Some(unit)) => Some(unit),
-            _ => None,
-        }
+    pub fn is_tag(&self) -> bool {
+        matches!(self, SourceLabel::Tag { .. })
     }
 }
 
@@ -98,23 +108,18 @@ impl SourceLabelAnalysis {
     }
 
     fn analyze_bytecode<const IDX: usize>(store: &AnalysisStore<'_>) -> Result<Vec<SourceLabel>> {
-        let bytecode = store.bytecode()?.get(IDX).ok_or_eyre("no bytecode found")?;
-        let ic_pc_map = store.ic_pc_map()?.get(IDX).ok_or_eyre("no ic_pc_map found")?;
         let units = store.debug_units()?;
 
-        let source_map = bytecode.source_map().ok_or_eyre("no source map found")??;
+        let source_map = store.source_map()?.get(IDX).ok_or_eyre("no source map found")?;
         trace!("the number of the original source map entries is {}", source_map.len());
 
         let mut source_labels = Vec::with_capacity(source_map.len());
 
-        let code = bytecode.bytes().ok_or_eyre("no code found")?.as_ref();
-        trace!("the number of instructions is {}", ic_pc_map.len());
-
         for (ic, src) in source_map.iter().enumerate() {
             trace!("ic: {}, source element: {:?}", ic, src);
 
-            // By default, we will assume the opcode is generated from the compiler
-            source_labels.push(SourceLabel::Others(None));
+            // By default, we will assume this is a meaningless source label.
+            source_labels.push(SourceLabel::default());
 
             // Get file index
             let Some(index) = src.index() else { continue };
@@ -126,43 +131,12 @@ impl SourceLabelAnalysis {
                 continue;
             };
 
-            // Get the program counter
-            let pc = ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {}", ic))?;
-            let opcode =
-                OpCode::new(code[pc]).ok_or_eyre(format!("invalid opcode: {}", code[pc]))?;
-            trace!("pc: {}, opcode: {}", pc, opcode);
-
-            // Check whether it is an interprocedural call or return
-            if opcode == OpCode::JUMP {
-                match src.jump() {
-                    Jump::In => {
-                        *source_labels.last_mut().expect("this cannot happen") =
-                            SourceLabel::FunctionCall;
-                    }
-                    Jump::Out => {
-                        *source_labels.last_mut().expect("this cannot happen") =
-                            SourceLabel::FunctionReturn;
-                    }
-                    Jump::Regular => {
-                        *source_labels.last_mut().expect("this cannot happen") =
-                            SourceLabel::UnconditionalJump;
-                    }
-                }
-
-                continue;
-            } else if opcode == OpCode::JUMPI {
-                *source_labels.last_mut().expect("this cannot happen") =
-                    SourceLabel::ConditionalJump;
-
-                continue;
-            }
-
-            // Check the source statement
+            // Check the potential tags
             if unit.matches(src.offset() as usize, src.length() as usize) &&
                 !unit.is_execution_unit()
             {
                 *source_labels.last_mut().expect("this cannot happen") =
-                    SourceLabel::Tag(unit.clone());
+                    SourceLabel::Tag { tag: unit.clone() };
                 continue
             }
 
@@ -172,44 +146,91 @@ impl SourceLabelAnalysis {
                         let function = units.function(&unit).ok_or_eyre("no function found")?;
                         let contract = units.contract(&unit).ok_or_eyre("no contract found")?;
                         *source_labels.last_mut().expect("this cannot happen") =
-                            SourceLabel::SourceStatment(
-                                unit.clone(),
-                                function.clone(),
-                                contract.clone(),
-                            );
+                            SourceLabel::PrimitiveStmt {
+                                stmt: unit.clone(),
+                                func: function.clone(),
+                                cntr: contract.clone(),
+                            };
                     }
                     DebugUnit::Function(_, _) | DebugUnit::Contract(_) => {
                         *source_labels.last_mut().expect("this cannot happen") =
-                            SourceLabel::Others(Some(unit.clone()));
+                            SourceLabel::Others {
+                                scope: Some(unit.clone()),
+                                loc: Some(UnitLocation {
+                                    start: src.offset() as usize,
+                                    length: src.length() as usize,
+                                    index,
+                                    code: Arc::clone(&unit.code),
+                                }),
+                            };
                     }
-                    _ => {}
+                    DebugUnit::InlineAssembly(_, asm_stmts) => {
+                        let stmt = asm_stmts
+                            .iter()
+                            .find(|stmt| {
+                                stmt.contains(src.offset() as usize, src.length() as usize)
+                            })
+                            .cloned();
+                        let function = units.function(&unit).ok_or_eyre("no function found")?;
+                        let contract = units.contract(&unit).ok_or_eyre("no contract found")?;
+                        *source_labels.last_mut().expect("this cannot happen") =
+                            SourceLabel::InlineAssembly {
+                                stmt,
+                                block: unit.clone(),
+                                func: function.clone(),
+                                cntr: contract.clone(),
+                            };
+                    }
                 }
             }
         }
 
         #[cfg(debug_assertions)]
-        for (ic, (src, label)) in source_map.iter().zip(source_labels.iter()).enumerate() {
-            let pc = ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {}", ic))?;
-            let opcode =
-                OpCode::new(code[pc]).ok_or_eyre(format!("invalid opcode: {}", code[pc]))?;
-            let opcode_str = if opcode.is_push() {
-                format!(
-                    "PUSH{} {}",
-                    code[pc] - revm::interpreter::opcode::PUSH0,
-                    get_push_value(code, pc)?
-                )
-            } else {
-                format!("{}", opcode)
-            };
+        {
+            let bytecode = store.bytecode()?.get(IDX).ok_or_eyre("no bytecode found")?;
+            let code = bytecode.bytes().ok_or_eyre("no code found")?.as_ref();
+            let ic_pc_map = crate::utils::opcode::IcPcMap::new(code);
+            for (ic, (src, label)) in source_map.iter().zip(source_labels.iter()).enumerate() {
+                let pc = ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {}", ic))?;
+                let opcode = revm::interpreter::OpCode::new(code[pc])
+                    .ok_or_eyre(format!("invalid opcode: {}", code[pc]))?;
 
-            trace!(
-                "ic: {:05} | pc: {:05} | opcode: {:<30} | source element: {:<20} | label: {}",
-                ic,
-                pc,
-                opcode_str,
-                src.to_string(),
-                label
-            );
+                let mut opcode_str = if opcode.is_push() {
+                    format!(
+                        "PUSH{} {}",
+                        code[pc] - revm::interpreter::opcode::PUSH0,
+                        crate::utils::opcode::get_push_value(code, pc)?
+                    )
+                } else {
+                    format!("{}", opcode)
+                };
+                if opcode_str.len() > 30 {
+                    opcode_str = format!("{}...", &opcode_str[..27]);
+                }
+
+                trace!(
+                    "ic: {:05} | pc: {:05} | opcode: {:<30} | source element: {:<20} | label: {}",
+                    ic,
+                    pc,
+                    opcode_str,
+                    src.to_string(),
+                    label
+                );
+            }
+
+            // XXX (ZZ): a quick check
+            let mut reverse_map = std::collections::HashMap::new();
+            for (ic, label) in source_labels.iter().filter(|l| l.is_source()).enumerate() {
+                let pc = ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {}", ic))?;
+                let opcode = revm::interpreter::OpCode::new(code[pc])
+                    .ok_or_eyre(format!("invalid opcode: {}", code[pc]))?;
+                reverse_map.entry(label.clone()).or_insert_with(Vec::new).push(opcode);
+            }
+            for (label, opcodes) in reverse_map {
+                if opcodes.iter().all(|opcode| opcode.is_push()) {
+                    warn!("find a label with only push opcodes: {} ({:?})", label, opcodes);
+                }
+            }
         }
 
         Ok(source_labels)

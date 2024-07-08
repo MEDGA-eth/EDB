@@ -3,12 +3,9 @@ pub mod source_label;
 
 use debug_unit::{DebugUnitAnlaysis, DebugUnits};
 use eyre::{OptionExt, Result};
-use foundry_compilers::artifacts::Bytecode;
+use foundry_compilers::artifacts::{sourcemap::SourceElement, Bytecode};
 
-use crate::{
-    artifact::deploy::DeployArtifact,
-    utils::opcode::{IcPcMap, PcIcMap},
-};
+use crate::artifact::deploy::DeployArtifact;
 use source_label::{SourceLabelAnalysis, SourceLabels};
 
 const CONSTRUCTOR_IDX: usize = 0;
@@ -23,11 +20,8 @@ pub struct AnalysisStore<'a> {
     /// Constructor/Deployed Bytecode.
     bytecode: Option<[&'a Bytecode; 2]>,
 
-    /// Constructor/Deployed ic_pc_map.
-    ic_pc_map: Option<[IcPcMap; 2]>,
-
-    /// Constructor/Deployed pc_ic_map.
-    pc_ic_map: Option<[PcIcMap; 2]>,
+    /// Constructor/Deployed source map.
+    source_map: Option<[Vec<SourceElement>; 2]>,
 
     /// Constructor/Deployed source labels.
     source_labels: Option<[SourceLabels; 2]>,
@@ -45,8 +39,7 @@ impl<'a> AnalysisStore<'a> {
     store_getter!(debug_units, DebugUnits);
     store_getter!(source_labels, [SourceLabels; 2]);
     store_getter!(bytecode, [&Bytecode; 2]);
-    store_getter!(ic_pc_map, [IcPcMap; 2]);
-    store_getter!(pc_ic_map, [PcIcMap; 2]);
+    store_getter!(source_map, [Vec<SourceElement>; 2]);
 
     pub fn init(artifact: &'a DeployArtifact) -> Result<Self> {
         let deployed_bytecode = artifact
@@ -58,20 +51,14 @@ impl<'a> AnalysisStore<'a> {
         let construction_bytecode =
             artifact.evm.bytecode.as_ref().ok_or_eyre("no construction bytecode found")?;
 
-        let deployed_ic_pc_map =
-            IcPcMap::new(deployed_bytecode.bytes().ok_or_eyre("no code found")?.as_ref());
-        let construction_ic_pc_map =
-            IcPcMap::new(construction_bytecode.bytes().ok_or_eyre("no code found")?.as_ref());
-
-        let deployed_pc_ic_map =
-            PcIcMap::new(deployed_bytecode.bytes().ok_or_eyre("no code found")?.as_ref());
-        let construction_pc_ic_map =
-            PcIcMap::new(construction_bytecode.bytes().ok_or_eyre("no code found")?.as_ref());
+        let source_map = [
+            construction_bytecode.source_map().ok_or_eyre("no source map found")??,
+            deployed_bytecode.source_map().ok_or_eyre("no source map found")??,
+        ];
 
         Ok(Self {
             bytecode: Some([construction_bytecode, deployed_bytecode]),
-            ic_pc_map: Some([construction_ic_pc_map, deployed_ic_pc_map]),
-            pc_ic_map: Some([construction_pc_ic_map, deployed_pc_ic_map]),
+            source_map: Some(source_map),
             ..Default::default()
         })
     }
@@ -147,6 +134,16 @@ mod tests {
         run_test(
             Chain::mainnet(),
             Address::from_str("0x6cc61ff5b01dc1904f280a11c8f5cd3c0a72dbb6").unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial]
+    async fn test_no_via_ir_0_8_x() {
+        run_test(
+            Chain::mainnet(),
+            Address::from_str("0x9aBB27581c2E46A114F8C367355851e0580e9703").unwrap(),
         )
         .unwrap();
     }

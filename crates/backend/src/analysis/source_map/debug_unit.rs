@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     fmt::{self, Debug},
+    hash::{Hash, Hasher},
     ops::{Deref, DerefMut},
     sync::Arc,
 };
@@ -55,6 +56,14 @@ impl UnitLocation {
 
     pub fn matches(&self, start: usize, length: usize) -> bool {
         self.start == start && self.length == length
+    }
+}
+
+impl Hash for UnitLocation {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.start.hash(state);
+        self.length.hash(state);
+        self.index.hash(state);
     }
 }
 
@@ -113,7 +122,7 @@ impl TryFrom<&SourceLocation> for UnitLocation {
 /// assembly) or a non-execution unit (function or contract). The execution units are the basic
 /// stepping blocks for debugging. The non-execution units are tags for function and contract
 /// definitions.
-#[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd, Hash)]
 pub enum DebugUnit {
     /// A primitive unit is a single statement or expression (execution unit)
     Primitive(UnitLocation),

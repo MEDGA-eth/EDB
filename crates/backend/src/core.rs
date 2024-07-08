@@ -209,7 +209,7 @@ where
 
     fn analyze_source_map(&mut self) -> Result<()> {
         for (addr, artifact) in &self.deploy_artifacts {
-            debug!("analyzing source map for {:#?}", addr);
+            println!("analyzing source map for {:#?}", addr);
             SourceMapAnalysis::analyze(artifact)?;
         }
 
