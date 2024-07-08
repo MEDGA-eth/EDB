@@ -1,5 +1,6 @@
 use eyre::Result;
 use foundry_compilers::artifacts::*;
+use paste::paste;
 
 pub trait Visitor {
     fn visit_source_unit(&mut self, _source_unit: &SourceUnit) -> Result<()> {
@@ -164,6 +165,190 @@ pub trait Visitor {
     ) -> Result<()> {
         Ok(())
     }
+
+    fn post_visit_source_unit(&mut self, _source_unit: &SourceUnit) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_import_directive(&mut self, _directive: &ImportDirective) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_pragma_directive(&mut self, _directive: &PragmaDirective) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_block(&mut self, _block: &Block) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_statement(&mut self, _statement: &Statement) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_expression(&mut self, _expression: &Expression) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_function_call(&mut self, _function_call: &FunctionCall) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_user_defined_type_name(
+        &mut self,
+        _type_name: &UserDefinedTypeName,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_identifier_path(&mut self, _identifier_path: &IdentifierPath) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_type_name(&mut self, _type_name: &TypeName) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_parameter_list(&mut self, _parameter_list: &ParameterList) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_function_definition(&mut self, _definition: &FunctionDefinition) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_enum_definition(&mut self, _definition: &EnumDefinition) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_error_definition(&mut self, _definition: &ErrorDefinition) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_event_definition(&mut self, _definition: &EventDefinition) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_struct_definition(&mut self, _definition: &StructDefinition) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_modifier_definition(&mut self, _definition: &ModifierDefinition) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_variable_declaration(
+        &mut self,
+        _declaration: &VariableDeclaration,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_overrides(&mut self, _specifier: &OverrideSpecifier) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_user_defined_value_type(
+        &mut self,
+        _value_type: &UserDefinedValueTypeDefinition,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_contract_definition(&mut self, _definition: &ContractDefinition) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_using_for(&mut self, _directive: &UsingForDirective) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_unary_operation(&mut self, _unary_op: &UnaryOperation) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_binary_operation(&mut self, _binary_op: &BinaryOperation) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_conditional(&mut self, _conditional: &Conditional) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_tuple_expression(&mut self, _tuple_expression: &TupleExpression) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_new_expression(&mut self, _new_expression: &NewExpression) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_assignment(&mut self, _assignment: &Assignment) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_identifier(&mut self, _identifier: &Identifier) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_index_access(&mut self, _index_access: &IndexAccess) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_index_range_access(
+        &mut self,
+        _index_range_access: &IndexRangeAccess,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_while_statement(&mut self, _while_statement: &WhileStatement) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_for_statement(&mut self, _for_statement: &ForStatement) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_if_statement(&mut self, _if_statement: &IfStatement) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_do_while_statement(
+        &mut self,
+        _do_while_statement: &DoWhileStatement,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_emit_statement(&mut self, _emit_statement: &EmitStatement) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_unchecked_block(&mut self, _unchecked_block: &UncheckedBlock) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_try_statement(&mut self, _try_statement: &TryStatement) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_revert_statement(&mut self, _revert_statement: &RevertStatement) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_member_access(&mut self, _member_access: &MemberAccess) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_mapping(&mut self, _mapping: &Mapping) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_elementary_type_name(
+        &mut self,
+        _elementary_type_name: &ElementaryTypeName,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_literal(&mut self, _literal: &Literal) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_function_type_name(
+        &mut self,
+        _function_type_name: &FunctionTypeName,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_array_type_name(&mut self, _array_type_name: &ArrayTypeName) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_function_call_options(
+        &mut self,
+        _function_call: &FunctionCallOptions,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_return(&mut self, _return: &Return) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_inheritance_specifier(
+        &mut self,
+        _specifier: &InheritanceSpecifier,
+    ) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_modifier_invocation(&mut self, _invocation: &ModifierInvocation) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_inline_assembly(&mut self, _assembly: &InlineAssembly) -> Result<()> {
+        Ok(())
+    }
+    fn post_visit_external_assembly_reference(
+        &mut self,
+        _ref: &ExternalInlineAssemblyReference,
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
 pub trait Walk {
@@ -182,12 +367,21 @@ macro_rules! impl_walk {
         }
     };
     ($ty:ty, $func:ident) => {
-        impl_walk!($ty, |obj, visitor| { visitor.$func(obj) });
+        impl_walk!($ty, |obj, visitor| {
+            visitor.$func(obj)?;
+            paste! { visitor.[<post_ $func>](obj)?; }
+            Ok(())
+        });
     };
     ($ty:ty, $func:ident, | $val:ident, $visitor:ident | $e:expr) => {
         impl_walk!($ty, |$val, $visitor| {
             $visitor.$func($val)?;
-            $e
+            let r = $e;
+            if r.is_err() {
+                return r;
+            }
+            paste! { $visitor.[<post_ $func>]($val)?; }
+            Ok(())
         });
     };
 }

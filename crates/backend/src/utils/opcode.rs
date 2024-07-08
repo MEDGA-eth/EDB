@@ -1,3 +1,5 @@
+use alloy_primitives::U256;
+use eyre::{bail, OptionExt, Result};
 use revm::interpreter::{
     opcode::{PUSH0, PUSH1, PUSH32},
     OpCode,
@@ -24,6 +26,20 @@ pub const fn is_memory_modifying_opcode(opcode: OpCode) -> bool {
             OpCode::DELEGATECALL |
             OpCode::STATICCALL
     )
+}
+
+#[inline]
+pub fn get_push_value(code: &[u8], pc: usize) -> Result<U256> {
+    let push_size = (code[pc] - PUSH0) as usize;
+
+    let push_start = pc + 1;
+    let push_end = push_start + push_size;
+    if push_end > code.len() {
+        bail!("push out of bounds")
+    } else {
+        U256::try_from_be_slice(&code[push_start..push_end])
+            .ok_or_eyre(format!("invalid bytes: {:?}", &code[push_start..push_end]))
+    }
 }
 
 /// Maps from program counter to instruction counter.

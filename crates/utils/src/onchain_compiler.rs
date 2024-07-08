@@ -2,11 +2,7 @@ use std::path::PathBuf;
 
 use alloy_primitives::Address;
 use eyre::Result;
-use foundry_block_explorers::{
-    contract::Metadata,
-    errors::EtherscanError,
-    Client,
-};
+use foundry_block_explorers::{contract::Metadata, errors::EtherscanError, Client};
 use foundry_compilers::{
     artifacts::{output_selection::OutputSelection, CompilerOutput, SolcInput, Source, Sources},
     solc::{Solc, SolcLanguage},

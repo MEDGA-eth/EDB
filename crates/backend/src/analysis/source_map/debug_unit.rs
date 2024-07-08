@@ -1,24 +1,43 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fmt::{self, Debug},
     ops::{Deref, DerefMut},
     sync::Arc,
 };
 
-use eyre::{eyre, OptionExt, Result};
+use eyre::{bail, ensure, eyre, OptionExt, Result};
 use foundry_compilers::artifacts::{
     ast::SourceLocation,
     yul::{YulExpression, YulStatement},
     ContractDefinition, ExpressionOrVariableDeclarationStatement, FunctionDefinition,
     InlineAssembly, ModifierDefinition, Statement,
 };
-use solang_parser::{lexer, pt};
+use solang_parser::{helpers::CodeLocation, lexer, pt};
 
 use crate::{
     analysis::ast_visitor::{Visitor, Walk},
     artifact::deploy::DeployArtifact,
     utils::ast::get_source_location_for_expression,
 };
+
+use super::AnalysisStore;
+
+trait AsSourceLocation {
+    fn as_source_location(&self, l_off: usize, g_off: usize) -> Result<SourceLocation>;
+}
+
+impl AsSourceLocation for pt::Loc {
+    fn as_source_location(&self, l_off: usize, g_off: usize) -> Result<SourceLocation> {
+        match self {
+            pt::Loc::File(file_index, start, end) => Ok(SourceLocation {
+                index: Some(*file_index),
+                start: Some(*start - l_off + g_off), // we need to adjust the offset
+                length: Some(*end - *start),
+            }),
+            _ => Err(eyre!("invalid source location")),
+        }
+    }
+}
 
 /// A more easy-to-use unit location, which includes the corresponding source code.
 #[derive(Clone, Debug)]
@@ -27,6 +46,16 @@ pub struct UnitLocation {
     pub length: usize,
     pub index: usize,
     pub code: Arc<String>,
+}
+
+impl UnitLocation {
+    pub fn contains(&self, start: usize, length: usize) -> bool {
+        self.start <= start && self.start + self.length >= start + length
+    }
+
+    pub fn matches(&self, start: usize, length: usize) -> bool {
+        self.start == start && self.length == length
+    }
 }
 
 impl PartialEq for UnitLocation {
@@ -57,8 +86,13 @@ impl Ord for UnitLocation {
 
 impl fmt::Display for UnitLocation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let source = &self.code.as_str()[self.start..self.start + self.length];
-        write!(f, "{}", source)
+        if self.length < 50 {
+            let source = &self.code.as_str()[self.start..self.start + self.length];
+            write!(f, "{}", source.escape_debug())
+        } else {
+            let source = &self.code.as_str()[self.start..self.start + 50];
+            write!(f, "{}...", source.escape_debug())
+        }
     }
 }
 
@@ -74,119 +108,80 @@ impl TryFrom<&SourceLocation> for UnitLocation {
     }
 }
 
-trait AsSourceLocation {
-    fn as_source_location(&self, l_off: usize, g_off: usize) -> Result<SourceLocation>;
-}
-
-impl AsSourceLocation for pt::Loc {
-    fn as_source_location(&self, l_off: usize, g_off: usize) -> Result<SourceLocation> {
-        match self {
-            pt::Loc::File(file_index, start, end) => Ok(SourceLocation {
-                index: Some(*file_index),
-                start: Some(*start - l_off + g_off), // we need to adjust the offset
-                length: Some(*end - *start),
-            }),
-            _ => Err(eyre!("invalid source location")),
-        }
-    }
-}
-
-/// A hyper unit is a collection of primitive units whose compiled opcodes are fused together.
-#[derive(Clone, Debug)]
-pub struct HyperUnit {
-    pub id: u32,
-    pub children: BTreeSet<UnitLocation>,
-}
-
-impl PartialEq for HyperUnit {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-
-impl Eq for HyperUnit {}
-
-impl PartialOrd for HyperUnit {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for HyperUnit {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.id.cmp(&other.id)
-    }
-}
-
 /// Different kind of debugging units.
-/// A debugging unit can be either an execution unit (primitive or hyper) or a non-execution unit
-/// (function or contract). The execution units are the basic stepping blocks for debugging.
-/// The non-execution units are tags for function and contract definitions.
+/// A debugging unit can be either an execution unit (singleton primitive or block-level inline
+/// assembly) or a non-execution unit (function or contract). The execution units are the basic
+/// stepping blocks for debugging. The non-execution units are tags for function and contract
+/// definitions.
 #[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd)]
 pub enum DebugUnit {
     /// A primitive unit is a single statement or expression (execution unit)
     Primitive(UnitLocation),
+
+    /// Inline assembly block
+    InlineAssembly(UnitLocation, Vec<UnitLocation>),
 
     /// A function unit is a tag for a function definition (non-execution unit).
     Function(UnitLocation, bool),
 
     /// A contract unit is a tag for a contract definition (non-execution unit).
     Contract(UnitLocation),
+}
 
-    /// A hyper unit is a collection of primitive units whose compiled opcodes are fused together
-    /// (execution unit).
-    Hyper(HyperUnit),
+impl Deref for DebugUnit {
+    type Target = UnitLocation;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            DebugUnit::Primitive(loc) |
+            DebugUnit::InlineAssembly(loc, _) |
+            DebugUnit::Function(loc, _) |
+            DebugUnit::Contract(loc) => loc,
+        }
+    }
+}
+
+impl DerefMut for DebugUnit {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            DebugUnit::Primitive(loc) |
+            DebugUnit::InlineAssembly(loc, _) |
+            DebugUnit::Function(loc, _) |
+            DebugUnit::Contract(loc) => loc,
+        }
+    }
 }
 
 impl DebugUnit {
-    pub fn location(&self) -> Option<&UnitLocation> {
+    pub fn loc(&self) -> &UnitLocation {
         match self {
-            DebugUnit::Primitive(loc) | DebugUnit::Function(loc, _) | DebugUnit::Contract(loc) => {
-                Some(loc)
-            }
-            DebugUnit::Hyper(_) => None,
+            DebugUnit::Primitive(loc) |
+            DebugUnit::InlineAssembly(loc, _) |
+            DebugUnit::Function(loc, _) |
+            DebugUnit::Contract(loc) => loc,
         }
     }
 
-    pub fn start(&self) -> Option<usize> {
-        self.location().map(|l| l.start)
+    pub fn loc_mut(&mut self) -> &mut UnitLocation {
+        match self {
+            DebugUnit::Primitive(loc) |
+            DebugUnit::InlineAssembly(loc, _) |
+            DebugUnit::Function(loc, _) |
+            DebugUnit::Contract(loc) => loc,
+        }
     }
 
-    pub fn length(&self) -> Option<usize> {
-        self.location().map(|l| l.length)
-    }
-
-    pub fn index(&self) -> Option<usize> {
-        self.location().map(|l| l.index)
+    pub fn get_asm_stmts(&self) -> Option<&Vec<UnitLocation>> {
+        match self {
+            DebugUnit::InlineAssembly(_, stmts) => Some(stmts),
+            _ => None,
+        }
     }
 
     pub fn is_execution_unit(&self) -> bool {
         match self {
-            DebugUnit::Primitive(_) | DebugUnit::Hyper(_) => true,
+            DebugUnit::Primitive(_) | DebugUnit::InlineAssembly(_, _) => true,
             DebugUnit::Function(_, _) | DebugUnit::Contract(_) => false,
-        }
-    }
-
-    pub fn contains(&self, start: usize, length: usize) -> bool {
-        match self {
-            DebugUnit::Primitive(loc) | DebugUnit::Function(loc, _) | DebugUnit::Contract(loc) => {
-                loc.start <= start && loc.start + loc.length >= start + length
-            }
-            DebugUnit::Hyper(HyperUnit { children, .. }) => {
-                children.iter().any(|c| c.start <= start && c.start + c.length >= start + length)
-            }
-        }
-    }
-
-    pub fn matches(&self, start: usize, length: usize) -> bool {
-        match self {
-            DebugUnit::Primitive(loc) | DebugUnit::Function(loc, _) | DebugUnit::Contract(loc) => {
-                loc.start == start && loc.length == length
-            }
-            DebugUnit::Hyper(HyperUnit { children, .. }) => {
-                children.len() == 1 &&
-                    children.iter().any(|c| c.start == start && c.length == length)
-            }
         }
     }
 
@@ -195,8 +190,8 @@ impl DebugUnit {
             DebugUnit::Primitive(loc) | DebugUnit::Function(loc, _) | DebugUnit::Contract(loc) => {
                 DebugUnitIterator { unit: vec![loc], index: 0 }
             }
-            DebugUnit::Hyper(HyperUnit { children, .. }) => {
-                DebugUnitIterator { unit: children.iter().collect(), index: 0 }
+            DebugUnit::InlineAssembly(_, stmts) => {
+                DebugUnitIterator { unit: stmts.iter().collect(), index: 0 }
             }
         }
     }
@@ -224,17 +219,7 @@ impl<'a> Iterator for DebugUnitIterator<'a> {
 
 impl fmt::Display for DebugUnit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            DebugUnit::Primitive(loc) | DebugUnit::Function(loc, _) | DebugUnit::Contract(loc) => {
-                write!(f, "{}", loc)
-            }
-            DebugUnit::Hyper(HyperUnit { children, .. }) => {
-                for (i, loc) in children.iter().enumerate() {
-                    write!(f, "component {}:\n{}", i, loc)?;
-                }
-                Ok(())
-            }
-        }
+        write!(f, "{}", self.loc())
     }
 }
 
@@ -324,6 +309,8 @@ pub struct DebugUnitVisitor {
     units: BTreeMap<usize, BTreeMap<usize, DebugUnit>>,
     sources: BTreeMap<usize, Arc<String>>,
 
+    last_inline_assembly: Option<DebugUnit>,
+
     functions: BTreeMap<DebugUnit, DebugUnit>,
     last_function: Option<DebugUnit>,
 
@@ -352,6 +339,14 @@ impl Visitor for DebugUnitVisitor {
 
     fn visit_modifier_definition(&mut self, definition: &ModifierDefinition) -> Result<()> {
         self.update_function(&definition.src, true)
+    }
+
+    fn post_visit_statement(&mut self, statement: &Statement) -> Result<()> {
+        if matches!(statement, Statement::InlineAssembly(_)) {
+            self.update_inline_assembly()
+        } else {
+            Ok(())
+        }
     }
 
     fn visit_statement(&mut self, statement: &Statement) -> Result<()> {
@@ -434,6 +429,11 @@ impl Visitor for DebugUnitVisitor {
                     // whole inline assembly block.
                     self.visit_inline_assembly_old(stmt)?;
                 } else {
+                    ensure!(self.last_inline_assembly.is_none(), "nested inline assembly block");
+                    self.last_inline_assembly = Some(DebugUnit::InlineAssembly(
+                        self.get_unit_location(&stmt.src)?,
+                        Vec::new(),
+                    ));
                     for yul_stmt in &stmt.ast.statements {
                         self.visit_yul_statment(yul_stmt)?;
                     }
@@ -454,74 +454,109 @@ impl Visitor for DebugUnitVisitor {
 }
 
 impl DebugUnitVisitor {
-    fn update_primitive(&mut self, src: &SourceLocation) -> Result<()> {
+    #[inline]
+    fn get_unit_location(&self, src: &SourceLocation) -> Result<UnitLocation> {
         let mut src = UnitLocation::try_from(src)?;
         src.code = Arc::clone(self.sources.get(&src.index).ok_or_eyre("missing source")?);
-        trace!("find a primative debug unit: {}", src);
+        Ok(src)
+    }
 
+    #[inline]
+    fn insert_debug_unit(&mut self, unit: DebugUnit) -> Result<()> {
+        self.units
+            .entry(unit.index)
+            .or_insert_with(BTreeMap::new)
+            .insert(unit.start, unit)
+            .map_or(Ok(()), |_| Err(eyre!("overlapping contract units")))
+    }
+
+    #[inline]
+    fn insert_execution_unit(&mut self, unit: DebugUnit) -> Result<()> {
         let function = self.last_function.as_ref().ok_or_eyre("statement outside of function")?;
-        self.functions.insert(DebugUnit::Primitive(src.clone()), function.clone());
+        self.functions.insert(unit.clone(), function.clone());
 
         let contract = self.last_contract.as_ref().ok_or_eyre("statement outside of contract")?;
-        self.contracts.insert(DebugUnit::Primitive(src.clone()), contract.clone());
+        self.contracts.insert(unit.clone(), contract.clone());
 
-        self.units
-            .entry(src.index)
-            .or_insert_with(BTreeMap::new)
-            .insert(src.start, DebugUnit::Primitive(src))
-            .map_or(Ok(()), |_| Err(eyre!("overlapping contract units")))
+        self.insert_debug_unit(unit)
     }
 
-    fn update_function(&mut self, src: &SourceLocation, is_modifier: bool) -> Result<()> {
+    fn update_inline_assembly(&mut self) -> Result<()> {
+        ensure!(self.last_inline_assembly.is_some(), "we are not in inline assembly block");
+        let mut asm_unit =
+            self.last_inline_assembly.take().ok_or_eyre("no inline assembly found")?;
+
+        // Sort the Yul statements by their start position.
+        let DebugUnit::InlineAssembly(_, stmt) = &mut asm_unit else {
+            bail!("invalid inline assembly unit");
+        };
+        stmt.sort();
+
+        trace!("wrap up an inline assembly block: {}", asm_unit.loc());
+        self.insert_execution_unit(asm_unit)
+    }
+
+    fn update_primitive(&mut self, src: &SourceLocation) -> Result<()> {
+        ensure!(self.last_inline_assembly.is_none(), "we are in inline assembly block");
+
+        let src = self.get_unit_location(src)?;
+        trace!("find a primative debug unit: {}", src);
+        self.insert_execution_unit(DebugUnit::Primitive(src))
+    }
+
+    fn update_yul_primitive(&mut self, src: &SourceLocation) -> Result<()> {
+        let Some(DebugUnit::InlineAssembly(loc, stmt)) = self.last_inline_assembly.as_mut() else {
+            bail!("no inline assembly found")
+        };
+
         let mut src = UnitLocation::try_from(src)?;
         src.code = Arc::clone(self.sources.get(&src.index).ok_or_eyre("missing source")?);
-        trace!("find a function unit: {}", src);
+        ensure!(loc.contains(src.start, src.length), "invalid Yul source location");
 
-        self.last_function = Some(DebugUnit::Function(src.clone(), is_modifier));
-
-        self.units
-            .entry(src.index)
-            .or_insert_with(BTreeMap::new)
-            .insert(src.start, DebugUnit::Function(src, is_modifier))
-            .map_or(Ok(()), |_| Err(eyre!("overlapping contract units")))
-    }
-
-    fn update_contract(&mut self, src: &SourceLocation) -> Result<()> {
-        let mut src = UnitLocation::try_from(src)?;
-        src.code = Arc::clone(self.sources.get(&src.index).ok_or_eyre("missing source")?);
-        trace!("find a contract unit: {}", src);
-
-        self.last_contract = Some(DebugUnit::Contract(src.clone()));
-
-        self.units
-            .entry(src.index)
-            .or_insert_with(BTreeMap::new)
-            .insert(src.start, DebugUnit::Contract(src))
-            .map_or(Ok(()), |_| Err(eyre!("overlapping contract units")))
-    }
-
-    /// Check whether there is any overlapping primitive debugging unit.
-    pub fn check_integrity(&self) -> Result<()> {
-        self.do_integrity_checking(|u| matches!(u, DebugUnit::Primitive(_)))?;
-        self.do_integrity_checking(|u| matches!(u, DebugUnit::Function(_, _)))?;
-        self.do_integrity_checking(|u| matches!(u, DebugUnit::Contract(_)))?;
+        stmt.push(src);
 
         Ok(())
     }
 
-    fn do_integrity_checking<F>(&self, f: F) -> Result<()>
-    where
-        F: Fn(&DebugUnit) -> bool,
-    {
+    fn update_function(&mut self, src: &SourceLocation, is_modifier: bool) -> Result<()> {
+        let src = self.get_unit_location(src)?;
+        trace!("find a function unit: {}", src);
+
+        self.last_function = Some(DebugUnit::Function(src.clone(), is_modifier));
+
+        self.insert_debug_unit(DebugUnit::Function(src, is_modifier))
+    }
+
+    fn update_contract(&mut self, src: &SourceLocation) -> Result<()> {
+        let src = self.get_unit_location(src)?;
+        trace!("find a contract unit: {}", src);
+
+        self.last_contract = Some(DebugUnit::Contract(src.clone()));
+
+        self.insert_debug_unit(DebugUnit::Contract(src))
+    }
+
+    /// Check whether there is any overlapping primitive debugging unit.
+    pub fn check_integrity(&self) -> Result<()> {
         for (_, stmts) in &self.units {
-            let mut last_end = 0;
-            for (start, src) in stmts {
-                if f(src) {
-                    if start < &last_end {
-                        return Err(eyre!(format!("overlapping primitive units at {:?}", src)));
-                    }
-                    last_end = start + src.length().ok_or_eyre("hyper units are not allowed")?;
-                }
+            let stmts = stmts.values();
+
+            // Check whether there is any overlapping execution debugging unit.
+            do_integrity_checking(
+                stmts.clone().filter(|u| u.is_execution_unit()).map(|u| u.loc()),
+            )?;
+
+            // Check whether there is any overlapping non-execution debugging unit.
+            do_integrity_checking(
+                stmts.clone().filter(|u| matches!(u, DebugUnit::Function(..))).map(|u| u.loc()),
+            )?;
+            do_integrity_checking(
+                stmts.clone().filter(|u| matches!(u, DebugUnit::Contract(..))).map(|u| u.loc()),
+            )?;
+
+            // Check inline-assembly block.
+            for asm_stmts in stmts.filter_map(|u| u.get_asm_stmts()) {
+                do_integrity_checking(asm_stmts.iter())?;
             }
         }
 
@@ -565,32 +600,29 @@ impl DebugUnitVisitor {
 
         // start to parse the AST
         if asm_ast.0.len() != 1 {
-            return Err(eyre!(format!("invalid inline assembly AST: {}", asm_ast)));
+            bail!(format!("invalid inline assembly AST: {}", asm_ast));
         }
-        let func = match asm_ast.0.remove(0) {
-            pt::SourceUnitPart::FunctionDefinition(func) => func,
-            _ => return Err(eyre!("invalid inline assembly AST when parsing function")),
+        let pt::SourceUnitPart::FunctionDefinition(func) = asm_ast.0.remove(0) else {
+            bail!("invalid inline assembly AST when parsing function");
         };
         let body = func.body.ok_or_eyre("missing body")?;
-        let stmts = match body {
-            pt::Statement::Block { statements, .. } => statements,
-            _ => return Err(eyre!("invalid inline assembly AST when parsing function body")),
+        let pt::Statement::Block { statements: stmts, .. } = body else {
+            bail!("invalid inline assembly AST when parsing function body");
         };
         if stmts.len() != 1 {
-            return Err(eyre!(
-                "invalid inline assembly AST when parsing statments in function body"
-            ));
+            bail!("invalid inline assembly AST when parsing statments in function body");
         }
-        let yul_block = match stmts[0] {
-            pt::Statement::Assembly { block: ref yul_block, .. } => yul_block,
-            _ => {
-                return Err(eyre!(
-                    "invalid inline assembly AST when parsing the first statment in the function"
-                ))
-            }
+        let pt::Statement::Assembly { block: ref yul_block, .. } = stmts[0] else {
+            bail!("invalid inline assembly AST when parsing the first statment in the function");
         };
 
-        // parse each Yul statments
+        // Prepare the InlineAssembly unit. Note that we need to adjust the length.
+        let mut asm_loc = self.get_unit_location(&stmt.src)?;
+        asm_loc.length = stmts[0].loc().range().len();
+        ensure!(self.last_inline_assembly.is_none(), "nested inline assembly block");
+        self.last_inline_assembly = Some(DebugUnit::InlineAssembly(asm_loc, Vec::new()));
+
+        // Parse each Yul statments.
         let local_offset = wrapped_func.find(asm_code).expect("this should not happen");
         let global_offset = stmt.src.start.ok_or_eyre("invalid source location")? as usize;
         for yul_stmt in &yul_block.statements {
@@ -640,11 +672,11 @@ impl DebugUnitVisitor {
             pt::YulStatement::Break(loc) |
             pt::YulStatement::Continue(loc) => {
                 let loc = loc.as_source_location(l_off, g_off)?;
-                self.update_primitive(&loc)?;
+                self.update_yul_primitive(&loc)?;
             }
             pt::YulStatement::FunctionCall(func) => {
                 let loc = func.loc.as_source_location(l_off, g_off)?;
-                self.update_primitive(&loc)?;
+                self.update_yul_primitive(&loc)?;
             }
             pt::YulStatement::If(_, expr, block) => {
                 self.visit_yul_expression_solang(expr, l_off, g_off)?;
@@ -688,7 +720,7 @@ impl DebugUnitVisitor {
                 }
             }
             pt::YulStatement::Error(_) => {
-                return Err(eyre!("error in Yul statement"));
+                bail!("error in Yul statement");
             }
         }
         Ok(())
@@ -728,11 +760,11 @@ impl DebugUnitVisitor {
             pt::YulExpression::Variable(pt::Identifier { loc, .. }) |
             pt::YulExpression::SuffixAccess(loc, ..) => {
                 let loc = loc.as_source_location(l_off, g_off)?;
-                self.update_primitive(&loc)
+                self.update_yul_primitive(&loc)
             }
             pt::YulExpression::FunctionCall(func) => {
                 let loc = func.loc.as_source_location(l_off, g_off)?;
-                self.update_primitive(&loc)
+                self.update_yul_primitive(&loc)
             }
         }
     }
@@ -791,12 +823,12 @@ impl DebugUnitVisitor {
                     }
                 }
             }
-            YulStatement::YulVariableDeclaration(stmt) => self.update_primitive(&stmt.src)?,
-            YulStatement::YulAssignment(stmt) => self.update_primitive(&stmt.src)?,
-            YulStatement::YulBreak(stmt) => self.update_primitive(&stmt.src)?,
-            YulStatement::YulContinue(stmt) => self.update_primitive(&stmt.src)?,
-            YulStatement::YulExpressionStatement(stmt) => self.update_primitive(&stmt.src)?,
-            YulStatement::YulLeave(stmt) => self.update_primitive(&stmt.src)?,
+            YulStatement::YulVariableDeclaration(stmt) => self.update_yul_primitive(&stmt.src)?,
+            YulStatement::YulAssignment(stmt) => self.update_yul_primitive(&stmt.src)?,
+            YulStatement::YulBreak(stmt) => self.update_yul_primitive(&stmt.src)?,
+            YulStatement::YulContinue(stmt) => self.update_yul_primitive(&stmt.src)?,
+            YulStatement::YulExpressionStatement(stmt) => self.update_yul_primitive(&stmt.src)?,
+            YulStatement::YulLeave(stmt) => self.update_yul_primitive(&stmt.src)?,
         }
 
         Ok(())
@@ -811,9 +843,9 @@ impl DebugUnitVisitor {
         //     YulLiteral,
         // }
         match expr {
-            YulExpression::YulFunctionCall(expr) => self.update_primitive(&expr.src),
-            YulExpression::YulIdentifier(expr) => self.update_primitive(&expr.src),
-            YulExpression::YulLiteral(expr) => self.update_primitive(&expr.src),
+            YulExpression::YulFunctionCall(expr) => self.update_yul_primitive(&expr.src),
+            YulExpression::YulIdentifier(expr) => self.update_yul_primitive(&expr.src),
+            YulExpression::YulLiteral(expr) => self.update_yul_primitive(&expr.src),
         }
     }
 }
@@ -821,7 +853,7 @@ impl DebugUnitVisitor {
 pub struct DebugUnitAnlaysis {}
 
 impl DebugUnitAnlaysis {
-    pub fn analyze(artifact: &DeployArtifact) -> Result<DebugUnits> {
+    pub fn analyze(artifact: &DeployArtifact, store: &mut AnalysisStore<'_>) -> Result<()> {
         let mut visitor = DebugUnitVisitor::new();
         for (id, source) in artifact.sources.iter() {
             visitor.register(*id as usize, Arc::clone(&source.code));
@@ -838,6 +870,23 @@ impl DebugUnitAnlaysis {
             trace!("{}", crate::utils::ast::source_with_debug_units(source, stmts));
         }
 
-        Ok(units)
+        store.debug_units = Some(units);
+        Ok(())
     }
+}
+
+#[inline]
+fn do_integrity_checking<'a, T>(units: T) -> Result<()>
+where
+    T: Iterator<Item = &'a UnitLocation>,
+{
+    let mut last_end = 0;
+    for unit in units {
+        if unit.start < last_end {
+            bail!(format!("overlapping primitive units at {:?}", unit));
+        }
+        last_end = unit.start + unit.length;
+    }
+
+    Ok(())
 }
