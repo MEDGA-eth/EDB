@@ -1,5 +1,5 @@
-mod collect;
 mod debug;
+mod visited_address;
 
-pub use collect::CollectInspector;
 pub use debug::DebugInspector;
+pub use visited_address::VisitedAddressInspector;

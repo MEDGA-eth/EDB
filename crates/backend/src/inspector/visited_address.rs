@@ -12,12 +12,12 @@ use revm::{
 };
 
 #[derive(Debug)]
-pub struct CollectInspector<'a> {
+pub struct VisitedAddressInspector<'a> {
     pub addresses: &'a mut HashSet<Address>,
     pub creation_codes: &'a mut HashMap<Address, (Bytes, CreateScheme)>,
 }
 
-impl<'a> CollectInspector<'a> {
+impl<'a> VisitedAddressInspector<'a> {
     pub fn new(
         addresses: &'a mut HashSet<Address>,
         creation_codes: &'a mut HashMap<Address, (Bytes, CreateScheme)>,
@@ -26,7 +26,7 @@ impl<'a> CollectInspector<'a> {
     }
 }
 
-impl<'a, DB> Inspector<DB> for CollectInspector<'a>
+impl<'a, DB> Inspector<DB> for VisitedAddressInspector<'a>
 where
     DB: Database,
     DB::Error: std::error::Error,

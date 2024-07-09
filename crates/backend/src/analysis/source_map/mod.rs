@@ -11,8 +11,21 @@ use source_label::{SourceLabelAnalysis, SourceLabels};
 const CONSTRUCTOR_IDX: usize = 0;
 const DEPLOYED_IDX: usize = 1;
 
+/// The refined source map analysis result.
+#[derive(Debug, Clone)]
+pub struct RefinedSourceMap {
+    /// Debugging units.
+    pub debug_units: DebugUnits,
+
+    /// Constructor/Deployed source labels.
+    pub labels: [SourceLabels; 2],
+
+    /// Constructor/Deployed source map.
+    pub source_map: [Vec<SourceElement>; 2],
+}
+
 /// The analysis result store.
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct AnalysisStore<'a> {
     /// The debugging units.
     debug_units: Option<DebugUnits>,
@@ -62,6 +75,14 @@ impl<'a> AnalysisStore<'a> {
             ..Default::default()
         })
     }
+
+    pub fn produce(self) -> Result<RefinedSourceMap> {
+        Ok(RefinedSourceMap {
+            debug_units: self.debug_units.ok_or_eyre("no debug units found")?,
+            labels: self.source_labels.ok_or_eyre("no source labels found")?,
+            source_map: self.source_map.ok_or_eyre("no source map found")?,
+        })
+    }
 }
 
 /// A delicate analysis of the source map of a deployment artifact.
@@ -69,7 +90,7 @@ pub struct SourceMapAnalysis {}
 
 impl SourceMapAnalysis {
     /// Analyze the source map of a compilation artifact.
-    pub fn analyze(artifact: &DeployArtifact) -> Result<()> {
+    pub fn analyze(artifact: &DeployArtifact) -> Result<RefinedSourceMap> {
         let mut store = AnalysisStore::init(artifact)?;
 
         // Step 1. collect primitive debugging units.
@@ -78,7 +99,7 @@ impl SourceMapAnalysis {
         // Step 2. analyze the source labels.
         SourceLabelAnalysis::analyze(artifact, &mut store)?;
 
-        Ok(())
+        store.produce()
     }
 }
 
@@ -96,7 +117,7 @@ mod tests {
 
     use super::*;
 
-    fn run_test(chain: Chain, addr: Address) -> Result<()> {
+    fn run_test(chain: Chain, addr: Address) -> Result<RefinedSourceMap> {
         // load cached artifacts
         let cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../testdata/cache/backend")

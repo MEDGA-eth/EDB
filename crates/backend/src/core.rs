@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fmt::Debug,
     path::PathBuf,
     time::Duration,
@@ -27,12 +27,12 @@ use revm::{
 const DEFAULT_CACHE_TTL: u64 = 86400;
 
 use crate::{
-    analysis::source_map::SourceMapAnalysis,
+    analysis::source_map::{RefinedSourceMap, SourceMapAnalysis},
     artifact::{
         debug::{DebugArtifact, DebugNodeFlat},
         deploy::{AsDeployArtifact, DeployArtifact},
     },
-    inspector::{CollectInspector, DebugInspector},
+    inspector::{DebugInspector, VisitedAddressInspector},
     utils::{db, evm::new_evm_with_inspector},
 };
 
@@ -200,20 +200,21 @@ where
     /// Analyze the transaction and return the debug artifact.
     pub async fn analyze(mut self) -> Result<DebugArtifact> {
         self.collect_deploy_artifacts().await?;
-        self.analyze_source_map()?;
+        let source_maps = self.analyze_source_map()?;
 
         let debug_arena = self.collect_debug_trace()?;
 
         Ok(DebugArtifact { debug_arena, deploy_artifacts: self.deploy_artifacts })
     }
 
-    fn analyze_source_map(&mut self) -> Result<()> {
+    fn analyze_source_map(&mut self) -> Result<BTreeMap<Address, RefinedSourceMap>> {
+        let mut source_maps = BTreeMap::new();
         for (addr, artifact) in &self.deploy_artifacts {
             println!("analyzing source map for {:#?}", addr);
-            SourceMapAnalysis::analyze(artifact)?;
+            source_maps.insert(*addr, SourceMapAnalysis::analyze(artifact)?);
         }
 
-        Ok(())
+        Ok(source_maps)
     }
 
     async fn collect_deploy_artifacts(&mut self) -> Result<()> {
@@ -227,7 +228,8 @@ where
 
         // Step 1. collect addresses of contracts that are visited during the transaction,
         // as well as the creation codes of contracts that are deployed during the transaction
-        let mut inspect = CollectInspector::new(&mut self.addresses, &mut self.creation_codes);
+        let mut inspect =
+            VisitedAddressInspector::new(&mut self.addresses, &mut self.creation_codes);
         let mut evm = new_evm_with_inspector(&mut db, self.env.clone(), &mut inspect);
         evm.transact_commit().map_err(|err| eyre!("failed to transact: {}", err))?;
         drop(evm);

@@ -3,7 +3,7 @@ use std::{
     sync::Arc,
 };
 
-use eyre::{OptionExt, Result};
+use eyre::{ensure, OptionExt, Result};
 
 use super::{debug_unit::UnitLocation, AnalysisStore};
 use crate::{
@@ -184,6 +184,10 @@ impl SourceLabelAnalysis {
                 }
             }
         }
+        ensure!(
+            source_map.len() == source_labels.len(),
+            "source map and source labels have different lengths"
+        );
 
         #[cfg(debug_assertions)]
         {
@@ -208,7 +212,7 @@ impl SourceLabelAnalysis {
                     opcode_str = format!("{}...", &opcode_str[..27]);
                 }
 
-                trace!(
+                println!(
                     "ic: {:05} | pc: {:05} | opcode: {:<30} | source element: {:<20} | label: {}",
                     ic,
                     pc,
@@ -218,17 +222,17 @@ impl SourceLabelAnalysis {
                 );
             }
 
-            // XXX (ZZ): a quick check
+            // A debugging check to see if there are any labels that only have push opcodes.
             let mut reverse_map = std::collections::HashMap::new();
-            for (ic, label) in source_labels.iter().filter(|l| l.is_source()).enumerate() {
+            for (ic, label) in source_labels.iter().enumerate().filter(|(.., l)| l.is_source()) {
                 let pc = ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {}", ic))?;
                 let opcode = revm::interpreter::OpCode::new(code[pc])
                     .ok_or_eyre(format!("invalid opcode: {}", code[pc]))?;
-                reverse_map.entry(label.clone()).or_insert_with(Vec::new).push(opcode);
+                reverse_map.entry(label.clone()).or_insert_with(Vec::new).push((opcode, pc, ic));
             }
             for (label, opcodes) in reverse_map {
-                if opcodes.iter().all(|opcode| opcode.is_push()) {
-                    warn!("find a label with only push opcodes: {} ({:?})", label, opcodes);
+                if opcodes.iter().all(|(opcode, ..)| opcode.is_push()) {
+                    trace!("find a label with only push opcodes: {} ({:?})", label, opcodes);
                 }
             }
         }
