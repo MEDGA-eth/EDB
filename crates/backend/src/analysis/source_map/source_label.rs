@@ -212,7 +212,7 @@ impl SourceLabelAnalysis {
                     opcode_str = format!("{}...", &opcode_str[..27]);
                 }
 
-                println!(
+                trace!(
                     "ic: {:05} | pc: {:05} | opcode: {:<30} | source element: {:<20} | label: {}",
                     ic,
                     pc,

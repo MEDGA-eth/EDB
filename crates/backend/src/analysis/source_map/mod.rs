@@ -1,6 +1,8 @@
 pub mod debug_unit;
 pub mod source_label;
 
+use std::rc::Rc;
+
 use debug_unit::{DebugUnitAnlaysis, DebugUnits};
 use eyre::{OptionExt, Result};
 use foundry_compilers::artifacts::{sourcemap::SourceElement, Bytecode};
@@ -15,13 +17,13 @@ const DEPLOYED_IDX: usize = 1;
 #[derive(Debug, Clone)]
 pub struct RefinedSourceMap {
     /// Debugging units.
-    pub debug_units: DebugUnits,
+    pub debug_units: Rc<DebugUnits>,
 
     /// Constructor/Deployed source labels.
-    pub labels: [SourceLabels; 2],
+    pub labels: SourceLabels,
 
     /// Constructor/Deployed source map.
-    pub source_map: [Vec<SourceElement>; 2],
+    pub source_map: Vec<SourceElement>,
 }
 
 /// The analysis result store.
@@ -76,12 +78,16 @@ impl<'a> AnalysisStore<'a> {
         })
     }
 
-    pub fn produce(self) -> Result<RefinedSourceMap> {
-        Ok(RefinedSourceMap {
-            debug_units: self.debug_units.ok_or_eyre("no debug units found")?,
-            labels: self.source_labels.ok_or_eyre("no source labels found")?,
-            source_map: self.source_map.ok_or_eyre("no source map found")?,
-        })
+    pub fn produce(self) -> Result<[RefinedSourceMap; 2]> {
+        let units = Rc::new(self.debug_units.ok_or_eyre("no debug units found")?);
+
+        let [c_labels, d_labels] = self.source_labels.ok_or_eyre("no source labels found")?;
+        let [c_map, d_map] = self.source_map.ok_or_eyre("no source map found")?;
+
+        Ok([
+            RefinedSourceMap { debug_units: units.clone(), labels: c_labels, source_map: c_map },
+            RefinedSourceMap { debug_units: units, labels: d_labels, source_map: d_map },
+        ])
     }
 }
 
@@ -90,7 +96,7 @@ pub struct SourceMapAnalysis {}
 
 impl SourceMapAnalysis {
     /// Analyze the source map of a compilation artifact.
-    pub fn analyze(artifact: &DeployArtifact) -> Result<RefinedSourceMap> {
+    pub fn analyze(artifact: &DeployArtifact) -> Result<[RefinedSourceMap; 2]> {
         let mut store = AnalysisStore::init(artifact)?;
 
         // Step 1. collect primitive debugging units.
@@ -117,7 +123,7 @@ mod tests {
 
     use super::*;
 
-    fn run_test(chain: Chain, addr: Address) -> Result<RefinedSourceMap> {
+    fn run_test(chain: Chain, addr: Address) -> Result<[RefinedSourceMap; 2]> {
         // load cached artifacts
         let cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../testdata/cache/backend")

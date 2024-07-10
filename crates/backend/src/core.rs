@@ -15,7 +15,7 @@ use edb_utils::{
 };
 use eyre::{eyre, OptionExt, Result};
 use foundry_block_explorers::Client;
-use foundry_compilers::artifacts::Severity;
+use foundry_compilers::artifacts::{sourcemap::Jump, Severity};
 use revm::{
     db::CacheDB,
     primitives::{CreateScheme, EnvWithHandlerCfg},
@@ -32,8 +32,9 @@ use crate::{
         debug::{DebugArtifact, DebugNodeFlat},
         deploy::{AsDeployArtifact, DeployArtifact},
     },
-    inspector::{DebugInspector, VisitedAddressInspector},
+    inspector::{DebugInspector, JumpLabel, PushJmpLabelInspector, VisitedAddrInspector},
     utils::{db, evm::new_evm_with_inspector},
+    RuntimeAddress,
 };
 
 #[derive(Debug, Default)]
@@ -200,18 +201,41 @@ where
     /// Analyze the transaction and return the debug artifact.
     pub async fn analyze(mut self) -> Result<DebugArtifact> {
         self.collect_deploy_artifacts().await?;
+
         let source_maps = self.analyze_source_map()?;
+        self.analyze_call_graph()?;
 
         let debug_arena = self.collect_debug_trace()?;
 
         Ok(DebugArtifact { debug_arena, deploy_artifacts: self.deploy_artifacts })
     }
 
-    fn analyze_source_map(&mut self) -> Result<BTreeMap<Address, RefinedSourceMap>> {
+    fn analyze_call_graph(&mut self) -> Result<()> {
+        // we first need to analyze the labels for both push and jump instructions
+        let mut inspector = PushJmpLabelInspector::default();
+        let mut evm = new_evm_with_inspector(&mut self.base_db, self.env.clone(), &mut inspector);
+        evm.transact().map_err(|err| eyre!("failed to transact: {}", err))?;
+        drop(evm);
+
+        for (r_addr, labels) in &inspector.jump_labels {
+            for (pc, label) in labels {
+                if *label == JumpLabel::Unknown {
+                    debug!(addr=?r_addr, pc=pc, "unknown jump label");
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn analyze_source_map(&mut self) -> Result<BTreeMap<RuntimeAddress, RefinedSourceMap>> {
         let mut source_maps = BTreeMap::new();
         for (addr, artifact) in &self.deploy_artifacts {
-            println!("analyzing source map for {:#?}", addr);
-            source_maps.insert(*addr, SourceMapAnalysis::analyze(artifact)?);
+            trace!("analyzing source map for {:#?}", addr);
+            let [constructor, deployed] = SourceMapAnalysis::analyze(artifact)?;
+
+            source_maps.insert(RuntimeAddress::constructor(*addr), constructor);
+            source_maps.insert(RuntimeAddress::deployed(*addr), deployed);
         }
 
         Ok(source_maps)
@@ -228,9 +252,9 @@ where
 
         // Step 1. collect addresses of contracts that are visited during the transaction,
         // as well as the creation codes of contracts that are deployed during the transaction
-        let mut inspect =
-            VisitedAddressInspector::new(&mut self.addresses, &mut self.creation_codes);
-        let mut evm = new_evm_with_inspector(&mut db, self.env.clone(), &mut inspect);
+        let mut inspector =
+            VisitedAddrInspector::new(&mut self.addresses, &mut self.creation_codes);
+        let mut evm = new_evm_with_inspector(&mut db, self.env.clone(), &mut inspector);
         evm.transact_commit().map_err(|err| eyre!("failed to transact: {}", err))?;
         drop(evm);
 
