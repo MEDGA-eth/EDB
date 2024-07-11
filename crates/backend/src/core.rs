@@ -15,7 +15,7 @@ use edb_utils::{
 };
 use eyre::{eyre, OptionExt, Result};
 use foundry_block_explorers::Client;
-use foundry_compilers::artifacts::{sourcemap::Jump, Severity};
+use foundry_compilers::artifacts::Severity;
 use revm::{
     db::CacheDB,
     primitives::{CreateScheme, EnvWithHandlerCfg},
@@ -32,7 +32,9 @@ use crate::{
         debug::{DebugArtifact, DebugNodeFlat},
         deploy::{AsDeployArtifact, DeployArtifact},
     },
-    inspector::{DebugInspector, JumpLabel, PushJmpLabelInspector, VisitedAddrInspector},
+    inspector::{
+        DebugInspector, JumpLabel, PushJmpLabelInspector, PushLabel, VisitedAddrInspector,
+    },
     utils::{db, evm::new_evm_with_inspector},
     RuntimeAddress,
 };
@@ -218,9 +220,14 @@ where
         drop(evm);
 
         for (r_addr, labels) in &inspector.jump_labels {
+            let push_labels = &inspector.push_labels[r_addr];
+            for (pc, label) in push_labels {
+                trace!(addr=?r_addr, pc=pc, target=?inspector.pushed_values[r_addr][pc], label=?label, "pushed address");
+            }
+
             for (pc, label) in labels {
                 if *label == JumpLabel::Unknown {
-                    debug!(addr=?r_addr, pc=pc, "unknown jump label");
+                    trace!(addr=?r_addr, pc=pc, targets=?inspector.jump_targets[r_addr][pc], tag_n=?inspector.jump_tags[r_addr][pc].len(), "unknown jump label");
                 }
             }
         }

@@ -118,6 +118,8 @@ struct PushedItem {
     push_pc: usize,
 
     // The first jump instruction since this item is pushed. JUMPI is not included.
+    // Being `tagged` in this context means that the jump instruction is the first jump
+    // instruction since this item is pushed.
     // To make it path sensitive, we need to consider (pc, step) pair.
     next_jump: Option<(usize, usize)>,
 }
@@ -183,21 +185,38 @@ pub struct PushJmpLabelInspector {
     stack: Vec<CallFrame>,
 
     /// The pushed values
-    pushed_values: BTreeMap<RuntimeAddress, BTreeMap<usize, U256>>,
+    pub pushed_values: BTreeMap<RuntimeAddress, BTreeMap<usize, U256>>,
+
+    /// The jumpped targets: runtime_addr -> jump_pc -> [pc, ...]
+    pub jump_targets: BTreeMap<RuntimeAddress, BTreeMap<usize, BTreeSet<U256>>>,
 
     /// The jump-tagged mapping: runtime_addr -> jump_pc -> [push_pc, ...].
-    jump_tags: BTreeMap<RuntimeAddress, BTreeMap<usize, BTreeSet<usize>>>,
+    /// This mapping is the jump instruction and those push instructions that are tagged with this
+    /// jump.
+    pub jump_tags: BTreeMap<RuntimeAddress, BTreeMap<usize, BTreeSet<usize>>>,
 
     /// The jump-push mapping: runtime_addr -> jump_pc -> [push_pc, ...].
     /// This mapping is the jump instruction and those push instructions that are used by this
     /// jump.
-    jump_pushes: BTreeMap<RuntimeAddress, BTreeMap<usize, BTreeSet<usize>>>,
+    pub jump_pushes: BTreeMap<RuntimeAddress, BTreeMap<usize, BTreeSet<usize>>>,
 
     /// The push labels: runtime_addr -> push_pc -> label
     pub push_labels: BTreeMap<RuntimeAddress, BTreeMap<usize, PushLabel>>,
 
     /// The jump labels: runtime_addr -> jmp_pc -> label
     pub jump_labels: BTreeMap<RuntimeAddress, BTreeMap<usize, JumpLabel>>,
+}
+
+impl PushJmpLabelInspector {
+    pub fn posterior_analysis(&mut self) {
+        // Rule 1.a: jump to callee address is a call jump.
+        // Rule 1.b: pushed values used by a call jump are all callee addresses.
+        // Rule 1.c: push instructions used by a call jump are all callee addresses.
+
+        // Rule 2.a: jump to an address next to a call jump is a return jump.
+        // Rule 2.b: pushed values used by a return jump are all return addresses.
+        // Rule 2.c: push instructions used by a return jump are all return addresses.
+    }
 }
 
 impl<'a, DB> Inspector<DB> for PushJmpLabelInspector
@@ -287,19 +306,28 @@ where
                 if let Some(pt) = frame.pop() {
                     // Consistency check.
                     stack_top_check(interp, pt.value);
-                    self.push_labels.ordered_insert(r_addr, pt.push_pc, PushLabel::Unknown);
+                    self.push_labels.or_insert(r_addr, pt.push_pc, PushLabel::Unknown);
                 }
             }
             JUMP..=JUMP => {
+                let jump_target =
+                    interp.stack().data().last().cloned().assert_unwrap("empty evm stack");
+                self.jump_targets
+                    .entry(r_addr)
+                    .or_default()
+                    .entry(pc)
+                    .or_default()
+                    .insert(jump_target);
+
                 // The collection of all push instructions that are going to be tagged with
                 // this jump instruction.
-                let push_items = self.jump_tags.entry(r_addr).or_default().entry(pc).or_default();
+                let jump_tags = self.jump_tags.entry(r_addr).or_default().entry(pc).or_default();
 
                 // Update `next_jump` for all untagged push items.
                 let untagged_n = frame.untagged_pushes.len();
                 while let Some(idx) = frame.untagged_pushes.pop_last() {
                     if let Some(Some(pt)) = frame.stack.get_mut(idx) {
-                        push_items.insert(pt.push_pc);
+                        jump_tags.insert(pt.push_pc);
                         pt.next_jump = Some((pc, frame.step));
                     } else {
                         debug_assert!(false, "invalid index");
@@ -363,7 +391,7 @@ where
                     // will treat it as a call jump.
                     // FIXME (ZZ): fix it later
                     trace!(addr=?r_addr, pc=pc, "we cannot determine the jump target value");
-                    self.jump_labels.ordered_insert(r_addr, pc, JumpLabel::Unknown);
+                    self.jump_labels.or_insert(r_addr, pc, JumpLabel::Unknown);
                 }
             }
             JUMPI..=JUMPI => {
