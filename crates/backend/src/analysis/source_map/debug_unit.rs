@@ -433,8 +433,9 @@ impl Visitor for DebugUnitVisitor {
             Statement::InlineAssembly(stmt) => {
                 if let Some(yul_block) = stmt.ast.as_ref() {
                     if yul_block.statements.is_empty() {
-                        // If the Yul block is empty, it means the AST is from an older version of
-                        // Solidity. In that case, the source location of the inline assembly block
+                        // If the Yul block is empty, it is possible that the AST is from an older
+                        // version of Solidity. In that case, the source
+                        // location of the inline assembly block
                         // is quite inaccurate. We will need to adjust the source location to the
                         // whole inline assembly block.
                         self.visit_inline_assembly_old(stmt)?;
@@ -451,6 +452,12 @@ impl Visitor for DebugUnitVisitor {
                             self.visit_yul_statment(yul_stmt)?;
                         }
                     }
+                } else {
+                    // If the Yul block is not presented, it is also possible that the AST is from
+                    // an older version of Solidity. In that case, we also need
+                    // to adjust the source location to the whole inline
+                    // assembly block.
+                    self.visit_inline_assembly_old(stmt)?;
                 }
             }
             Statement::VariableDeclarationStatement(stmt) => self.update_primitive(&stmt.src)?,

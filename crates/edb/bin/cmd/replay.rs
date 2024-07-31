@@ -14,7 +14,10 @@ use revm::{inspectors::NoOpInspector, primitives::EnvWithHandlerCfg};
 
 use crate::{
     opts::{EtherscanOpts, RpcOpts},
-    utils::evm::{fill_tx_env, setup_block_env, setup_fork_db},
+    utils::{
+        api_keys::next_etherscan_api_key,
+        evm::{fill_tx_env, setup_block_env, setup_fork_db},
+    },
 };
 
 /// CLI arguments for `edb replay`.
@@ -50,6 +53,13 @@ impl ReplayArgs {
         if self.quick {
             // enforce no validation when quick is enabled
             self.no_validation = true;
+        }
+
+        if self.etherscan.key().is_none() {
+            // set the etherscan key if not provided
+            let next_key = next_etherscan_api_key();
+            trace!(next_key = next_key, "using pre-defined etherscan key since not provided");
+            self.etherscan.key = Some(next_key);
         }
 
         let (db, env) = self.prepare(None).await?;
@@ -210,7 +220,7 @@ mod tests {
             quick: false,
             no_validation: false,
             no_cache: false,
-            etherscan: EtherscanOpts::default(),
+            etherscan: EtherscanOpts { key: Some(next_etherscan_api_key()), ..Default::default() },
             rpc: RpcOpts {
                 url: Some("https://rpc.mevblocker.io".to_string()),
                 jwt_secret: None,

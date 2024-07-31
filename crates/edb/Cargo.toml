@@ -49,6 +49,8 @@ foundry-common.workspace = true
 foundry-evm.workspace = true
 foundry-fork-db.workspace = true
 indicatif.workspace = true
+once_cell.workspace = true
+rand.workspace = true
 revm.workspace = true
 serde.workspace = true
 strum = { workspace = true, features = ["derive"] }
