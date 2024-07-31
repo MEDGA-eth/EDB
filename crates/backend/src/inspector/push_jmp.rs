@@ -180,7 +180,7 @@ impl CallFrame {
 }
 
 #[derive(Debug, Default)]
-pub struct PushJmpLabelInspector {
+pub struct PushJumpInspector {
     /// The message call stack:
     stack: Vec<CallFrame>,
 
@@ -207,8 +207,12 @@ pub struct PushJmpLabelInspector {
     pub jump_labels: BTreeMap<RuntimeAddress, BTreeMap<usize, JumpLabel>>,
 }
 
-impl PushJmpLabelInspector {
+impl PushJumpInspector {
     pub fn posterior_analysis(&mut self) {
+        // Rule 0.a: a jump instruction labelled as call will always jump to a callee address.
+        // Rule 0.b: any push instruction used by a call jump is a callee-related push, whose values
+        //           are callee addresses.
+
         // Rule 1.a: jump to callee address is a call jump.
         // Rule 1.b: pushed values used by a call jump are all callee addresses.
         // Rule 1.c: push instructions used by a call jump are all callee addresses.
@@ -219,7 +223,7 @@ impl PushJmpLabelInspector {
     }
 }
 
-impl<'a, DB> Inspector<DB> for PushJmpLabelInspector
+impl<'a, DB> Inspector<DB> for PushJumpInspector
 where
     DB: Database,
     DB::Error: std::error::Error,

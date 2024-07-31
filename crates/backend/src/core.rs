@@ -33,7 +33,7 @@ use crate::{
         deploy::{AsDeployArtifact, DeployArtifact},
     },
     inspector::{
-        DebugInspector, JumpLabel, PushJmpLabelInspector, PushLabel, VisitedAddrInspector,
+        DebugInspector, JumpLabel, PushJumpInspector, PushLabel, VisitedAddrInspector,
     },
     utils::{db, evm::new_evm_with_inspector},
     RuntimeAddress,
@@ -214,7 +214,7 @@ where
 
     fn analyze_call_graph(&mut self) -> Result<()> {
         // we first need to analyze the labels for both push and jump instructions
-        let mut inspector = PushJmpLabelInspector::default();
+        let mut inspector = PushJumpInspector::default();
         let mut evm = new_evm_with_inspector(&mut self.base_db, self.env.clone(), &mut inspector);
         evm.transact().map_err(|err| eyre!("failed to transact: {}", err))?;
         drop(evm);

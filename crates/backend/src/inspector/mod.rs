@@ -3,7 +3,7 @@ mod push_jmp;
 mod visited_address;
 
 pub use debug::DebugInspector;
-pub use push_jmp::{JumpLabel, PushJmpLabelInspector, PushLabel};
+pub use push_jmp::{JumpLabel, PushJumpInspector, PushLabel};
 pub use visited_address::VisitedAddrInspector;
 
 use eyre::Result;
