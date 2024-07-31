@@ -4,7 +4,7 @@ use alloy_chains::NamedChain;
 use alloy_consensus::TxType;
 use alloy_primitives::{TxKind, U256};
 use alloy_provider::{network::AnyNetwork, Provider};
-use alloy_rpc_types::{BlockNumberOrTag, Transaction};
+use alloy_rpc_types::{AccessListItem, BlockNumberOrTag, Transaction};
 use alloy_transport::{Transport, TransportError};
 use anvil::Hardfork;
 use eyre::{eyre, OptionExt, Result};
@@ -195,15 +195,7 @@ pub fn fill_tx_env(env: &mut Env, tx: &Transaction) -> Result<()> {
             env.tx.data = tx.input.clone();
             env.tx.chain_id = tx.chain_id;
             env.tx.nonce = Some(tx.nonce);
-            env.tx.access_list = tx
-                .access_list
-                .clone()
-                .ok_or_eyre("missing access list")?
-                .iter()
-                .map(|l| {
-                    (l.address, l.storage_keys.iter().map(|k| U256::from_be_bytes(k.0)).collect())
-                })
-                .collect();
+            env.tx.access_list = tx.access_list.clone().ok_or_eyre("missing access list")?.to_vec();
             env.tx.blob_hashes.clear();
             env.tx.max_fee_per_blob_gas.take();
         }
@@ -218,15 +210,7 @@ pub fn fill_tx_env(env: &mut Env, tx: &Transaction) -> Result<()> {
             env.tx.data = tx.input.clone();
             env.tx.chain_id = tx.chain_id;
             env.tx.nonce = Some(tx.nonce);
-            env.tx.access_list = tx
-                .access_list
-                .clone()
-                .ok_or_eyre("missing access list")?
-                .iter()
-                .map(|l| {
-                    (l.address, l.storage_keys.iter().map(|k| U256::from_be_bytes(k.0)).collect())
-                })
-                .collect();
+            env.tx.access_list = tx.access_list.clone().ok_or_eyre("missing access list")?.to_vec();
             env.tx.blob_hashes.clear();
             env.tx.max_fee_per_blob_gas.take();
         }
@@ -245,15 +229,7 @@ pub fn fill_tx_env(env: &mut Env, tx: &Transaction) -> Result<()> {
                 .blob_hashes
                 .clone_from(&(tx.blob_versioned_hashes.clone().ok_or_eyre("missing blob hashes")?));
             env.tx.max_fee_per_blob_gas = tx.max_fee_per_blob_gas.map(U256::from);
-            env.tx.access_list = tx
-                .access_list
-                .clone()
-                .ok_or_eyre("missing access list")?
-                .iter()
-                .map(|l| {
-                    (l.address, l.storage_keys.iter().map(|k| U256::from_be_bytes(k.0)).collect())
-                })
-                .collect();
+            env.tx.access_list = tx.access_list.clone().ok_or_eyre("missing access list")?.to_vec();
         }
         #[cfg(feature = "optimism")]
         Transaction::Deposit(tx) => {

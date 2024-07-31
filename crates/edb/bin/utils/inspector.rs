@@ -92,8 +92,8 @@ impl<DB: Database, I: Inspector<DB>> Inspector<DB> for InspectorWrapper<I> {
     }
 
     #[inline]
-    fn log(&mut self, context: &mut EvmContext<DB>, log: &Log) {
-        self.0.log(context, log)
+    fn log(&mut self, interpreter: &mut Interpreter, context: &mut EvmContext<DB>, log: &Log) {
+        self.0.log(interpreter, context, log)
     }
 
     #[inline]

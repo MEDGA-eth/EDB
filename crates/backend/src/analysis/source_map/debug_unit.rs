@@ -431,20 +431,25 @@ impl Visitor for DebugUnitVisitor {
             // We will provide more fine-grained information for inline assembly if the Yul block is
             // presented.
             Statement::InlineAssembly(stmt) => {
-                if stmt.ast.statements.is_empty() {
-                    // If the Yul block is empty, it means the AST is from an older version of
-                    // Solidity. In that case, the source location of the inline assembly block
-                    // is quite inaccurate. We will need to adjust the source location to the
-                    // whole inline assembly block.
-                    self.visit_inline_assembly_old(stmt)?;
-                } else {
-                    ensure!(self.last_inline_assembly.is_none(), "nested inline assembly block");
-                    self.last_inline_assembly = Some(DebugUnit::InlineAssembly(
-                        self.get_unit_location(&stmt.src)?,
-                        Vec::new(),
-                    ));
-                    for yul_stmt in &stmt.ast.statements {
-                        self.visit_yul_statment(yul_stmt)?;
+                if let Some(yul_block) = stmt.ast.as_ref() {
+                    if yul_block.statements.is_empty() {
+                        // If the Yul block is empty, it means the AST is from an older version of
+                        // Solidity. In that case, the source location of the inline assembly block
+                        // is quite inaccurate. We will need to adjust the source location to the
+                        // whole inline assembly block.
+                        self.visit_inline_assembly_old(stmt)?;
+                    } else {
+                        ensure!(
+                            self.last_inline_assembly.is_none(),
+                            "nested inline assembly block"
+                        );
+                        self.last_inline_assembly = Some(DebugUnit::InlineAssembly(
+                            self.get_unit_location(&stmt.src)?,
+                            Vec::new(),
+                        ));
+                        for yul_stmt in &yul_block.statements {
+                            self.visit_yul_statment(yul_stmt)?;
+                        }
                     }
                 }
             }

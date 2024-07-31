@@ -32,9 +32,7 @@ use crate::{
         debug::{DebugArtifact, DebugNodeFlat},
         deploy::{AsDeployArtifact, DeployArtifact},
     },
-    inspector::{
-        DebugInspector, JumpLabel, PushJumpInspector, PushLabel, VisitedAddrInspector,
-    },
+    inspector::{DebugInspector, JumpLabel, PushJumpInspector, PushLabel, VisitedAddrInspector},
     utils::{db, evm::new_evm_with_inspector},
     RuntimeAddress,
 };

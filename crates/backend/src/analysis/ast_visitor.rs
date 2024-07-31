@@ -503,7 +503,9 @@ impl_walk!(StructDefinition, visit_struct_definition, |struct_, visitor| {
 });
 
 impl_walk!(ModifierDefinition, visit_modifier_definition, |modifier, visitor| {
-    modifier.body.walk(visitor)?;
+    if let Some(body) = modifier.body.as_ref() {
+        body.walk(visitor)?;
+    }
     if let Some(override_) = &modifier.overrides {
         override_.walk(visitor)?;
     }
