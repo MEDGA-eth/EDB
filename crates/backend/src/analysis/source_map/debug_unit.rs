@@ -719,14 +719,25 @@ impl DebugUnitVisitor {
             }
             pt::YulStatement::Switch(switch_block) => {
                 self.visit_yul_expression_solang(&switch_block.condition, l_off, g_off)?;
+                trace!(switch_block=?switch_block, "switch block in pt-yul");
                 for case in &switch_block.cases {
                     match case {
-                        pt::YulSwitchOptions::Default(_, block) |
                         pt::YulSwitchOptions::Case(.., block) => {
                             for yul_stmt in &block.statements {
                                 self.visit_yul_statment_solang(yul_stmt, l_off, g_off)?;
                             }
                         }
+                        _ => bail!("invalid case in Yul switch"),
+                    }
+                }
+                if let Some(default_case) = &switch_block.default {
+                    match default_case {
+                        pt::YulSwitchOptions::Default(_, block) => {
+                            for yul_stmt in &block.statements {
+                                self.visit_yul_statment_solang(yul_stmt, l_off, g_off)?;
+                            }
+                        }
+                        _ => bail!("invalid default case in Yul switch"),
                     }
                 }
             }
@@ -888,7 +899,7 @@ impl DebugUnitAnlaysis {
             let source =
                 artifact.sources.get(&(*index as u32)).ok_or_eyre("missing source")?.code.as_str();
 
-            trace!("{}", crate::utils::ast::source_with_debug_units(source, stmts));
+            println!("{}", crate::utils::ast::source_with_debug_units(source, stmts));
         }
 
         store.debug_units = Some(units);
