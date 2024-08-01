@@ -391,9 +391,10 @@ where
                         self.jump_labels.or_insert(r_addr, pc, JumpLabel::Unknown);
                     }
                 } else {
-                    // Heuristic: if the jump instruction is not used by any push instruction, we
-                    // will treat it as a call jump.
-                    // FIXME (ZZ): fix it later
+                    // Heuristic: if the jump instruction does not use any recorded stack-pushed
+                    // values, i.e., the target address is not directly pushed onto stack but
+                    // calculated from other operations, we will treat it as a
+                    // call jump. FIXME (ZZ): fix it later
                     trace!(addr=?r_addr, pc=pc, "we cannot determine the jump target value");
                     self.jump_labels.or_insert(r_addr, pc, JumpLabel::Unknown);
                 }

@@ -261,7 +261,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "this test is used to dump mock data from Etherscan"]
     async fn test_dump_cache() {
-        run_e2e_test("0x4dcac542d48648279c05ec45e542ca1a5cf919d48920571cb05c78391436b215")
+        run_e2e_test("0x6fbeed67e902cfe2934c4eda8e5d4a756c8b1a4a2a64d6b52309f32567e958c0")
             .await
             .unwrap();
     }
