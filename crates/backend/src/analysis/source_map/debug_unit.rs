@@ -899,7 +899,7 @@ impl DebugUnitAnlaysis {
             let source =
                 artifact.sources.get(&(*index as u32)).ok_or_eyre("missing source")?.code.as_str();
 
-            println!("{}", crate::utils::ast::source_with_debug_units(source, stmts));
+            trace!("{}", crate::utils::ast::source_with_debug_units(source, stmts));
         }
 
         store.debug_units = Some(units);

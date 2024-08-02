@@ -216,19 +216,10 @@ where
         let mut evm = new_evm_with_inspector(&mut self.base_db, self.env.clone(), &mut inspector);
         evm.transact().map_err(|err| eyre!("failed to transact: {}", err))?;
         drop(evm);
+        inspector.posterior_analysis()?;
 
-        for (r_addr, labels) in &inspector.jump_labels {
-            let push_labels = &inspector.push_labels[r_addr];
-            for (pc, label) in push_labels {
-                trace!(addr=?r_addr, pc=pc, target=?inspector.pushed_values[r_addr][pc], label=?label, "pushed address");
-            }
-
-            for (pc, label) in labels {
-                if *label == JumpLabel::Unknown {
-                    trace!(addr=?r_addr, pc=pc, targets=?inspector.jump_targets[r_addr][pc], tag_n=?inspector.jump_tags[r_addr][pc].len(), "unknown jump label");
-                }
-            }
-        }
+        #[cfg(debug_assertions)]
+        inspector.log_unknown_labels();
 
         Ok(())
     }
@@ -236,7 +227,7 @@ where
     fn analyze_source_map(&mut self) -> Result<BTreeMap<RuntimeAddress, RefinedSourceMap>> {
         let mut source_maps = BTreeMap::new();
         for (addr, artifact) in &self.deploy_artifacts {
-            trace!("analyzing source map for {:#?}", addr);
+            println!("\nanalyzing source map for {:#?}", addr);
             let [constructor, deployed] = SourceMapAnalysis::analyze(artifact)?;
 
             source_maps.insert(RuntimeAddress::constructor(*addr), constructor);
