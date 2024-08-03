@@ -45,6 +45,7 @@ pub fn get_push_value(code: &[u8], pc: usize) -> Result<U256> {
 /// Maps from program counter to instruction counter.
 ///
 /// Inverse of [`IcPcMap`].
+#[derive(Debug, Clone)]
 pub struct PcIcMap {
     pub inner: FxHashMap<usize, usize>,
 }
@@ -74,6 +75,7 @@ impl PcIcMap {
 /// Map from instruction counter to program counter.
 ///
 /// Inverse of [`PcIcMap`].
+#[derive(Debug, Clone)]
 pub struct IcPcMap {
     pub inner: FxHashMap<usize, usize>,
 }

@@ -3,7 +3,7 @@ use arrayvec::ArrayVec;
 use revm::interpreter::OpCode;
 use revm_inspectors::tracing::types::CallKind;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::utils::opcode;
 
@@ -250,5 +250,5 @@ pub struct DebugArtifact {
     /// Debug traces returned from the EVM execution.
     pub debug_arena: Vec<DebugNodeFlat>,
     /// Map of source files. Note that each address will have a compilation artifact.
-    pub deploy_artifacts: HashMap<Address, DeployArtifact>,
+    pub deploy_artifacts: BTreeMap<Address, DeployArtifact>,
 }

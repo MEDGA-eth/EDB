@@ -15,7 +15,9 @@ use revm::{
     Database, EvmContext, Inspector,
 };
 
-use crate::{utils::opcode::get_push_value, RuntimeAddress};
+use crate::{
+    analysis::source_map::RefinedSourceMap, utils::opcode::get_push_value, RuntimeAddress,
+};
 
 use super::{debug, AssertionUnwrap};
 
@@ -180,6 +182,12 @@ impl CallFrame {
     }
 }
 
+/// The inspector that performs the push-jump analysis.
+/// The push-jump analysis is a dynmaic analysis that aims to determine the label of each push
+/// instruction and jump instruction.
+///
+/// Note that, while the analysis is not 100% accurate, we shall try to make the label of call as
+/// accurate as possible.
 #[derive(Debug, Default)]
 pub struct PushJumpInspector {
     /// The message call stack:
@@ -212,6 +220,54 @@ pub struct PushJumpInspector {
 }
 
 impl PushJumpInspector {
+    /// Refine the analysis result using the source map. In this function, we mainly focus on
+    /// inferring more call jumps.
+    pub fn refine_analysis_by_source_map(
+        &mut self,
+        source_map: &BTreeMap<RuntimeAddress, RefinedSourceMap>,
+    ) -> Result<()> {
+        unimplemented!("refine_analysis_by_source_map");
+
+        let r_addrs = self
+            .jump_labels
+            .keys()
+            .filter(|r| source_map.contains_key(r))
+            .cloned()
+            .collect::<Vec<_>>();
+        for r_addr in r_addrs {
+            let source_map = source_map.get(&r_addr).expect("source map not found");
+            let jump_labels = self.jump_labels.get_mut(&r_addr).expect("jump labels not found");
+
+            for (pc, label) in jump_labels.iter_mut() {
+                trace!(r_addr=?r_addr, pc=pc, label=?label, "try to refine jump label");
+                let pre_label = source_map.labels.get(*pc - 1); // previous pc may not exist
+                let cur_label = source_map
+                    .labels
+                    .get(*pc)
+                    .ok_or_eyre(format!("invalid pc: {}@{}", pc, r_addr))?;
+                let next_label = source_map.labels.get(*pc + 1); // next pc may not exist
+                trace!(r_addr=?r_addr, pc=pc, cur_label=format!("{}", cur_label), "source map labels");
+
+                if cur_label.is_source() &&
+                    pre_label == Some(cur_label) &&
+                    Some(cur_label) == next_label
+                {
+                    // This is a call jump.
+                    if JumpLabel::Call > *label {
+                        debug!(r_addr=?r_addr, pc=pc, label=?label, "refine call jump");
+                        *label = JumpLabel::Call;
+                    } else {
+                        debug!(r_addr=?r_addr, pc=pc, label=?label, "refine call jump (no change)");
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// perform the post-analysis after the execution.
+    /// We mainly leverage heuristics to determine the label of each push and jump instruction.
     pub fn posterior_analysis(&mut self) -> Result<()> {
         let r_addrs = self.jump_labels.keys().cloned().collect::<Vec<_>>();
         for r_addr in r_addrs {
@@ -320,8 +376,6 @@ impl PushJumpInspector {
                 _ => {}
             }
         }
-
-        trace!(r_addr=?r_addr, min_callee_addrs=?callee_addrs.first(), "the min callee address");
 
         Ok(())
     }
@@ -454,7 +508,7 @@ impl PushJumpInspector {
         for (addr, labels) in &self.jump_labels {
             for (pc, label) in labels {
                 if *label == JumpLabel::Unknown {
-                    trace!(addr=?addr, pc=pc, label=?label, targets=?self.jump_targets[addr][pc], "unknown jump label");
+                    debug!(addr=?addr, pc=pc, label=?label, targets=?self.jump_targets[addr][pc], "unknown jump label");
                 }
             }
         }

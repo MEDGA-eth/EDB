@@ -7,14 +7,16 @@ use debug_unit::{DebugUnitAnlaysis, DebugUnits};
 use eyre::{OptionExt, Result};
 use foundry_compilers::artifacts::{sourcemap::SourceElement, Bytecode};
 
-use crate::artifact::deploy::DeployArtifact;
+use crate::{
+    artifact::deploy::DeployArtifact,
+    utils::opcode::{IcPcMap, PcIcMap},
+};
 use source_label::{SourceLabelAnalysis, SourceLabels};
 
 const CONSTRUCTOR_IDX: usize = 0;
 const DEPLOYED_IDX: usize = 1;
 
 /// The refined source map analysis result.
-#[derive(Debug, Clone)]
 pub struct RefinedSourceMap {
     /// Debugging units.
     pub debug_units: Rc<DebugUnits>,

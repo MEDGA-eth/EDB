@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::Debug,
     path::PathBuf,
     time::Duration,
@@ -34,7 +34,7 @@ use crate::{
     },
     inspector::{DebugInspector, JumpLabel, PushJumpInspector, PushLabel, VisitedAddrInspector},
     utils::{db, evm::new_evm_with_inspector},
-    RuntimeAddress,
+    AnalyzedBytecode, RuntimeAddress,
 };
 
 #[derive(Debug, Default)]
@@ -48,7 +48,7 @@ pub struct DebugBackendBuilder {
 
     // Deployment artifact from local file system
     // XXX (ZZ): let's support them later
-    deploy_artifacts: Option<HashMap<Address, DeployArtifact>>,
+    deploy_artifacts: Option<BTreeMap<Address, DeployArtifact>>,
 }
 
 impl DebugBackendBuilder {
@@ -99,9 +99,9 @@ impl DebugBackendBuilder {
     /// If not set, the deployment artifacts will not be used.
     pub fn deploy_artifacts(
         mut self,
-        deploy_artifacts: HashMap<Address, impl AsDeployArtifact>,
+        deploy_artifacts: BTreeMap<Address, impl AsDeployArtifact>,
     ) -> Result<Self> {
-        let result: Result<HashMap<Address, DeployArtifact>, _> = deploy_artifacts
+        let result: Result<BTreeMap<Address, DeployArtifact>, _> = deploy_artifacts
             .into_iter()
             .map(|(k, v)| {
                 let artifact = v.as_artifact()?;
@@ -151,8 +151,8 @@ impl DebugBackendBuilder {
         Ok(DebugBackend {
             deploy_artifacts,
             compiler,
-            addresses: HashSet::new(),
-            creation_codes: HashMap::new(),
+            addresses: BTreeMap::new(),
+            creation_scheme: BTreeMap::new(),
             etherscan: client,
             base_db: CacheDB::new(db),
             cache,
@@ -163,14 +163,14 @@ impl DebugBackendBuilder {
 
 #[derive(Debug)]
 pub struct DebugBackend<DBRef> {
-    // Addresses of contracts that have been visited during the transaction
-    pub addresses: HashSet<Address>,
+    /// Visited addresses during the transaction, along with its corresponding bytecode.
+    pub addresses: BTreeMap<RuntimeAddress, AnalyzedBytecode>,
 
     // Creation code of contracts that are deployed during the transaction
-    pub creation_codes: HashMap<Address, (Bytes, CreateScheme)>,
+    pub creation_scheme: BTreeMap<Address, CreateScheme>,
 
     /// Map of source files. Note that each address will have a deployment artifact.
-    pub deploy_artifacts: HashMap<Address, DeployArtifact>,
+    pub deploy_artifacts: BTreeMap<Address, DeployArtifact>,
 
     /// Cache for backend
     pub cache: Cache<DeployArtifact>,
@@ -203,20 +203,24 @@ where
         self.collect_deploy_artifacts().await?;
 
         let source_maps = self.analyze_source_map()?;
-        self.analyze_call_graph()?;
+        self.analyze_call_graph(&source_maps)?;
 
         let debug_arena = self.collect_debug_trace()?;
 
         Ok(DebugArtifact { debug_arena, deploy_artifacts: self.deploy_artifacts })
     }
 
-    fn analyze_call_graph(&mut self) -> Result<()> {
+    fn analyze_call_graph(
+        &mut self,
+        source_maps: &BTreeMap<RuntimeAddress, RefinedSourceMap>,
+    ) -> Result<()> {
         // we first need to analyze the labels for both push and jump instructions
         let mut inspector = PushJumpInspector::default();
         let mut evm = new_evm_with_inspector(&mut self.base_db, self.env.clone(), &mut inspector);
         evm.transact().map_err(|err| eyre!("failed to transact: {}", err))?;
         drop(evm);
         inspector.posterior_analysis()?;
+        // inspector.refine_analysis_by_source_map(source_maps)?;
 
         #[cfg(debug_assertions)]
         inspector.log_unknown_labels();
@@ -249,29 +253,29 @@ where
         // Step 1. collect addresses of contracts that are visited during the transaction,
         // as well as the creation codes of contracts that are deployed during the transaction
         let mut inspector =
-            VisitedAddrInspector::new(&mut self.addresses, &mut self.creation_codes);
+            VisitedAddrInspector::new(&mut self.addresses, &mut self.creation_scheme);
         let mut evm = new_evm_with_inspector(&mut db, self.env.clone(), &mut inspector);
         evm.transact_commit().map_err(|err| eyre!("failed to transact: {}", err))?;
         drop(evm);
 
         // Step 2. collect source code from etherscan
         let pb = init_progress!(self.addresses, "Compiling source code from etherscan");
-        for (index, addr) in self.addresses.iter().enumerate() {
+        for (index, addr) in self.addresses.keys().enumerate() {
             trace!(
-                "collect deployment artifact for {:#?} (created in this tx: {})",
+                "collect deployment artifact for {} (creation scheme: {:?})",
                 addr,
-                self.creation_codes.contains_key(addr)
+                self.creation_scheme.get(&addr.address)
             );
 
-            let artifact = match self.cache.load_cache(addr.to_string()) {
+            let artifact = match self.cache.load_cache(addr.address.to_string()) {
                 Some(output) => output,
                 None => {
                     // get the deployed bytecode
-                    let deployed_bytecode = db::get_code(&mut db, *addr)?;
+                    let deployed_bytecode = db::get_code(&mut db, addr.address)?;
 
                     // compile the source code
                     if let Some((meta, sources, output)) =
-                        self.compiler.compile(&mut self.etherscan, *addr).await?
+                        self.compiler.compile(&mut self.etherscan, addr.address).await?
                     {
                         if output.errors.iter().any(|err| err.severity == Severity::Error) {
                             return Err(eyre!(format!(
@@ -297,7 +301,7 @@ where
                         let artifact = (contract_name, sources, output, meta, deployed_bytecode)
                             .as_artifact()?;
 
-                        self.cache.save_cache(addr.to_string(), &artifact)?;
+                        self.cache.save_cache(addr.address.to_string(), &artifact)?;
 
                         artifact
                     } else {
@@ -307,7 +311,7 @@ where
                 }
             };
 
-            self.deploy_artifacts.insert(*addr, artifact);
+            self.deploy_artifacts.insert(addr.address, artifact);
 
             update_progress!(pb, index);
         }

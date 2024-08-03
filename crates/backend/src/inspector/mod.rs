@@ -2,11 +2,11 @@ mod debug;
 mod push_jmp;
 mod visited_address;
 
+use std::fmt::Display;
+
 pub use debug::DebugInspector;
 pub use push_jmp::{JumpLabel, PushJumpInspector, PushLabel};
 pub use visited_address::VisitedAddrInspector;
-
-use eyre::Result;
 
 trait AssertionUnwrap<T> {
     fn assert_unwrap(self, msg: &str) -> T;
@@ -27,9 +27,10 @@ where
     }
 }
 
-impl<T> AssertionUnwrap<T> for Result<T>
+impl<T, E> AssertionUnwrap<T> for Result<T, E>
 where
     T: Default,
+    E: Display,
 {
     fn assert_unwrap(self, msg: &str) -> T {
         match self {

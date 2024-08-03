@@ -135,6 +135,7 @@ impl ReplayArgs {
         let BlockTransactions::Full(txs_in_block) = block.transactions else {
             return Err(eyre::eyre!("block transactions not found"));
         };
+        trace!(tx_block_number=?tx_block_number, "transaction block number");
 
         // step 2. set enviroment and database
         // note that database should be set to tx_block_number - 1
@@ -182,7 +183,7 @@ impl ReplayArgs {
             } else {
                 evm.transact_commit()?
             };
-            trace!("reply result: {:?}", result);
+            trace!("repaly result: {:?}", result);
             drop(evm);
 
             let tx_receipt = provider
