@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt::Display};
 
 use eyre::{ensure, OptionExt, Result};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -30,20 +30,20 @@ pub enum PaneView {
     Null,
 }
 
-impl ToString for PaneView {
-    fn to_string(&self) -> String {
+impl Display for PaneView {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PaneView::Terminal => "Terminal".to_string(),
-            PaneView::Trace => "Call Trace".to_string(),
-            PaneView::Source => "Source Code".to_string(),
-            PaneView::Opcode => "Opcode".to_string(),
-            PaneView::Variable => "Variables".to_string(),
-            PaneView::Expression => "Watchers".to_string(),
-            PaneView::Memory => "Memory".to_string(),
-            PaneView::Calldata => "Calldata".to_string(),
-            PaneView::Returndata => "Returndata".to_string(),
-            PaneView::Stack => "Stack".to_string(),
-            PaneView::Null => "Null".to_string(),
+            Self::Terminal => write!(f, "Terminal"),
+            Self::Trace => write!(f, "Call Trace"),
+            Self::Source => write!(f, "Source Code"),
+            Self::Opcode => write!(f, "Opcode"),
+            Self::Variable => write!(f, "Variables"),
+            Self::Expression => write!(f, "Watchers"),
+            Self::Memory => write!(f, "Memory"),
+            Self::Calldata => write!(f, "Calldata"),
+            Self::Returndata => write!(f, "Returndata"),
+            Self::Stack => write!(f, "Stack"),
+            Self::Null => write!(f, "Null"),
         }
     }
 }
@@ -51,24 +51,24 @@ impl ToString for PaneView {
 impl From<u8> for PaneView {
     fn from(value: u8) -> Self {
         match value {
-            0 => PaneView::Terminal,
-            1 => PaneView::Trace,
-            2 => PaneView::Source,
-            3 => PaneView::Opcode,
-            4 => PaneView::Variable,
-            5 => PaneView::Expression,
-            6 => PaneView::Memory,
-            7 => PaneView::Calldata,
-            8 => PaneView::Returndata,
-            9 => PaneView::Stack,
-            _ => PaneView::Null,
+            0 => Self::Terminal,
+            1 => Self::Trace,
+            2 => Self::Source,
+            3 => Self::Opcode,
+            4 => Self::Variable,
+            5 => Self::Expression,
+            6 => Self::Memory,
+            7 => Self::Calldata,
+            8 => Self::Returndata,
+            9 => Self::Stack,
+            _ => Self::Null,
         }
     }
 }
 
 impl PaneView {
     pub fn is_valid(&self) -> bool {
-        !matches!(self, PaneView::Null)
+        !matches!(self, Self::Null)
     }
 
     pub fn num_of_valid_views() -> u8 {
@@ -107,7 +107,7 @@ pub struct PaneFlattened<'a> {
 
 impl Pane {
     pub fn new(id: PaneId) -> Self {
-        Pane { id, views: vec![], current_view: 0 }
+        Self { id, views: vec![], current_view: 0 }
     }
 
     pub fn add_view(&mut self, view: PaneView) -> Result<()> {
@@ -224,19 +224,19 @@ pub enum BorderSide {
 impl TryFrom<usize> for BorderSide {
     type Error = eyre::Error;
 
-    fn try_from(value: usize) -> Result<BorderSide> {
+    fn try_from(value: usize) -> Result<Self> {
         match value {
-            0 => Ok(BorderSide::Top),
-            1 => Ok(BorderSide::Bottom),
-            2 => Ok(BorderSide::Left),
-            3 => Ok(BorderSide::Right),
+            0 => Ok(Self::Top),
+            1 => Ok(Self::Bottom),
+            2 => Ok(Self::Left),
+            3 => Ok(Self::Right),
             _ => Err(eyre::eyre!("invalid border side")),
         }
     }
 }
 
 impl From<BorderSide> for usize {
-    fn from(value: BorderSide) -> usize {
+    fn from(value: BorderSide) -> Self {
         match value {
             BorderSide::Top => 0,
             BorderSide::Bottom => 1,
@@ -264,7 +264,7 @@ pub struct PaneManager {
 
 impl Default for PaneManager {
     fn default() -> Self {
-        PaneManager::new()
+        Self::new()
     }
 }
 
@@ -278,7 +278,7 @@ impl PaneManager {
         let mut borders = BTreeMap::new();
         borders.insert(1, [None; 4]);
 
-        PaneManager {
+        Self {
             next_id: 2,
             panes,
             operations: Vec::new(),
@@ -297,7 +297,7 @@ impl PaneManager {
     /// +------------------+---------------+
     /// ```
     pub fn default_large_screen() -> Result<Self> {
-        let mut manager = PaneManager::new();
+        let mut manager = Self::new();
 
         manager.split(1, Direction::Vertical, [3, 2])?;
         manager.split(1, Direction::Horizontal, [2, 3])?;
@@ -342,7 +342,7 @@ impl PaneManager {
     /// +-----------------+-------+
     /// ```
     pub fn default_small_screen() -> Result<Self> {
-        let mut manager = PaneManager::new();
+        let mut manager = Self::new();
 
         manager.split(1, Direction::Horizontal, [3, 1])?;
         manager.split(1, Direction::Vertical, [3, 4])?;
@@ -432,24 +432,23 @@ impl PaneManager {
         let borders2 = self.borders.get(&id2).ok_or_eyre("pane not found (merge)")?;
         let new_borders = match side {
             BorderSide::Left | BorderSide::Right => {
-                if borders1[usize::from(BorderSide::Top)] !=
-                    borders2[usize::from(usize::from(BorderSide::Top))]
+                if borders1[usize::from(BorderSide::Top)] != borders2[usize::from(BorderSide::Top)]
                 {
-                    return Err(RecoverableError::new(format!(
-                        "the two panes are not from the same parent pane"
-                    ))
+                    return Err(RecoverableError::new(
+                        "the two panes are not from the same parent pane".to_string(),
+                    )
                     .into());
                 }
                 if borders1[usize::from(BorderSide::Bottom)] !=
-                    borders2[usize::from(usize::from(BorderSide::Bottom))]
+                    borders2[usize::from(BorderSide::Bottom)]
                 {
-                    return Err(RecoverableError::new(format!(
-                        "the two panes are not from the same parent pane"
-                    ))
+                    return Err(RecoverableError::new(
+                        "the two panes are not from the same parent pane".to_string(),
+                    )
                     .into());
                 }
 
-                let mut new_borders = borders1.clone();
+                let mut new_borders = *borders1;
                 if side == BorderSide::Left {
                     new_borders[usize::from(BorderSide::Right)] =
                         borders2[usize::from(BorderSide::Right)];
@@ -461,23 +460,23 @@ impl PaneManager {
             }
             BorderSide::Top | BorderSide::Bottom => {
                 if borders1[usize::from(BorderSide::Left)] !=
-                    borders2[usize::from(usize::from(BorderSide::Left))]
+                    borders2[usize::from(BorderSide::Left)]
                 {
-                    return Err(RecoverableError::new(format!(
-                        "the two panes are not from the same parent pane"
-                    ))
+                    return Err(RecoverableError::new(
+                        "the two panes are not from the same parent pane".to_string(),
+                    )
                     .into());
                 }
                 if borders1[usize::from(BorderSide::Right)] !=
-                    borders2[usize::from(usize::from(BorderSide::Right))]
+                    borders2[usize::from(BorderSide::Right)]
                 {
-                    return Err(RecoverableError::new(format!(
-                        "the two panes are not from the same parent pane"
-                    ))
+                    return Err(RecoverableError::new(
+                        "the two panes are not from the same parent pane".to_string(),
+                    )
                     .into());
                 }
 
-                let mut new_borders = borders1.clone();
+                let mut new_borders = *borders1;
                 if side == BorderSide::Top {
                     new_borders[usize::from(BorderSide::Bottom)] =
                         borders2[usize::from(BorderSide::Bottom)];
@@ -523,7 +522,7 @@ impl PaneManager {
         };
 
         if side_len < MIN_SPLITABLE_PANE_SIZE {
-            return Err(RecoverableError::new(format!("pane is too small to split")).into())
+            return Err(RecoverableError::new("pane is too small to split".to_string()).into())
         }
 
         let new_id = self.next_id;
@@ -538,7 +537,7 @@ impl PaneManager {
 
         // update the border info
         let id1_borders = self.borders.get_mut(&id).ok_or_eyre("pane not found (split)")?;
-        let mut id2_borders = id1_borders.clone();
+        let mut id2_borders = *id1_borders;
 
         match direction {
             Direction::Vertical => {
@@ -669,12 +668,12 @@ impl PaneManager {
 
     pub fn get_focused_pane_mut(&mut self) -> Result<&mut Pane> {
         let info = self.get_focused_info()?;
-        Ok(self.panes.get_mut(&info.pane_id).ok_or_eyre("invalid pane id")?)
+        self.panes.get_mut(&info.pane_id).ok_or_eyre("invalid pane id")
     }
 
     pub fn get_focused_pane(&self) -> Result<&Pane> {
         let info = self.get_focused_info()?;
-        Ok(self.panes.get(&info.pane_id).ok_or_eyre("invalid pane id")?)
+        self.panes.get(&info.pane_id).ok_or_eyre("invalid pane id")
     }
 
     pub fn get_focused_view(&self) -> Result<PaneView> {
@@ -702,13 +701,13 @@ impl PaneManager {
     pub fn get_flattened_layout<'a>(&'a self, app: Rect) -> Result<Vec<PaneFlattened<'a>>> {
         let layout = self.get_layout(app)?;
         let focus_info = self.get_focused_info()?;
-        Ok(layout
+        layout
             .0
             .iter()
             .map(|(id, rect)| {
                 let pane = self
                     .panes
-                    .get(&id)
+                    .get(id)
                     .ok_or_else(|| eyre::eyre!("pane not found (get_flattened_layout)"))?;
                 Ok(PaneFlattened {
                     rect: *rect,
@@ -718,7 +717,7 @@ impl PaneManager {
                     id: *id,
                 })
             })
-            .collect::<Result<Vec<PaneFlattened<'a>>>>()?)
+            .collect::<Result<Vec<PaneFlattened<'a>>>>()
     }
 
     pub fn get_layout(&self, app: Rect) -> Result<PaneLayout> {
@@ -777,11 +776,11 @@ impl PaneManager {
 
 impl VirtCoord {
     pub fn new(x: u16, y: u16) -> Self {
-        VirtCoord(x, y)
+        Self(x, y)
     }
 
-    pub fn project(x: u16, y: u16, rect: Rect) -> VirtCoord {
-        VirtCoord::new(
+    pub fn project(x: u16, y: u16, rect: Rect) -> Self {
+        Self::new(
             ((x as u64) * (VIRTUAL_RECT.width as u64) / (rect.width as u64)) as u16,
             ((y as u64) * (VIRTUAL_RECT.height as u64) / (rect.height as u64)) as u16,
         )

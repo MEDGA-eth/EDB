@@ -1,11 +1,9 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
-use alloy_primitives::{Address, Bytes};
-use alloy_sol_types::SolError;
+use alloy_primitives::Address;
 use revm::{
     interpreter::{
-        CallInputs, CallOutcome, CreateInputs, CreateOutcome, EOFCreateInputs, Gas,
-        InstructionResult, Interpreter, InterpreterResult,
+        CallInputs, CallOutcome, CreateInputs, CreateOutcome, EOFCreateInputs, Interpreter,
     },
     primitives::CreateScheme,
     Database, EvmContext, Inspector,
@@ -90,7 +88,7 @@ where
         if let Err(err) = context.load_account(inputs.caller) {
             // We cannot put `context.load_account` into the debug_assert! macro because this
             // assertion will not be triggered in the release mode.
-            debug_assert!(false, "load caller account error during contract creation: {}", err);
+            debug_assert!(false, "load caller account error during contract creation: {err}");
         }
 
         let nonce = context.journaled_state.account(inputs.caller).info.nonce;

@@ -35,10 +35,6 @@ pub struct DeployArtifact {
     pub sources: BTreeMap<u32, SourceFile>,
 }
 
-pub trait AsDeployArtifact {
-    fn as_artifact(self) -> Result<DeployArtifact>;
-}
-
 /// This trait is used to convert a tuple of contract name, bytecode, sources and compiler output
 /// into a DeployArtifact.
 ///
@@ -47,9 +43,11 @@ pub trait AsDeployArtifact {
 /// The compiler output is the output of the compiler.
 /// The metadata is the metadata collected from the block explorer.
 /// The bytecode is the on-chain bytecode of the subject contract.
-impl AsDeployArtifact for (String, Sources, CompilerOutput, Metadata, RevmBytecode) {
-    fn as_artifact(self) -> Result<DeployArtifact> {
-        let (contract_name, input_sources, mut output, meta, bytecode) = self;
+impl TryFrom<(String, Sources, CompilerOutput, Metadata, RevmBytecode)> for DeployArtifact {
+    type Error = eyre::Error;
+
+    fn try_from(value: (String, Sources, CompilerOutput, Metadata, RevmBytecode)) -> Result<Self> {
+        let (contract_name, input_sources, mut output, meta, bytecode) = value;
 
         trace!("building deployment artifact for {}", contract_name);
         let bytecode = bytecode.original_byte_slice();
@@ -134,11 +132,11 @@ impl AsDeployArtifact for (String, Sources, CompilerOutput, Metadata, RevmByteco
             let source_code = &input_sources.get(path).ok_or_eyre("missing source code")?.content;
             sources.insert(
                 source.id,
-                SourceFile { path: path.clone(), code: Arc::clone(&source_code), ast: ast.clone() },
+                SourceFile { path: path.clone(), code: Arc::clone(source_code), ast: ast.clone() },
             );
         }
 
-        Ok(DeployArtifact {
+        Ok(Self {
             contract_name: contract_name.to_string(),
             file_id,
             abi: compilation_ref.abi.as_ref().ok_or_eyre("missing abi")?.clone(),

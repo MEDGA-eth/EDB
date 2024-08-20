@@ -6,9 +6,9 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     symbols::border,
-    Frame,
     text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
+    Frame,
 };
 use revm::interpreter::opcode;
 use std::{
@@ -36,7 +36,7 @@ impl FrontendContext<'_> {
     #[inline]
     fn draw_layout(&mut self, f: &mut Frame<'_>) {
         // We need 100 columns to display a 32 byte word in the memory and stack panes.
-        let size = f.size();
+        let size = f.area();
         let min_width = 100;
         let min_height = 16;
         if size.width < min_width || size.height < min_height {
@@ -64,7 +64,7 @@ impl FrontendContext<'_> {
         let l1 = "Terminal size too small:";
         lines.push(Line::from(l1));
 
-        let size = f.size();
+        let size = f.area();
         let width_color = if size.width >= min_width { Color::Green } else { Color::Red };
         let height_color = if size.height >= min_height { Color::Green } else { Color::Red };
         let l2 = vec![
@@ -87,7 +87,7 @@ impl FrontendContext<'_> {
 
     /// Draws the layout in horizontal mode.
     fn screen_layout(&mut self, f: &mut Frame<'_>) {
-        let area = f.size();
+        let area = f.area();
         let h_height = if self.show_shortcuts { 4 } else { 0 };
 
         // Split off footer.
@@ -227,8 +227,8 @@ impl FrontendContext<'_> {
         editor_mut.set_cursor_style(cursor_style);
         editor_mut.set_block(block);
 
-        let widget = editor_mut.widget();
-        f.render_widget(widget, pane.rect);
+        // let widget = editor_mut.widget();
+        f.render_widget(&*editor_mut, pane.rect);
     }
 
     fn draw_popup(&self, f: &mut Frame<'_>, area: Rect, msg: PopupMessage) {
@@ -266,13 +266,13 @@ impl FrontendContext<'_> {
             .split(bg_rect)[0];
         if popup_chunk.width != chunk_width || popup_chunk.height != chunk_height {
             panic!(
-                "popup_chunk size mismatch: expected ({}, {}), got ({}, {})",
-                chunk_width, chunk_height, popup_chunk.width, popup_chunk.height
+                "popup_chunk size mismatch: expected ({chunk_width}, {chunk_height}), got ({}, {})",
+                popup_chunk.width, popup_chunk.height
             );
         }
 
         let block = Block::default()
-            .title(format!(" [ESC] {}", title))
+            .title(format!(" [ESC] {title}"))
             .borders(Borders::ALL)
             .style(Style::default().bg(Color::Black).fg(Color::White));
 
@@ -281,22 +281,23 @@ impl FrontendContext<'_> {
     }
 
     // TODO
-    fn draw_null<'a>(&'a self, f: &mut Frame<'_>, pane: PaneFlattened<'a>) {
+    fn draw_null(&self, f: &mut Frame<'_>, pane: PaneFlattened<'_>) {
         let block = self.get_focused_block(&pane);
-        let paragraph = Paragraph::new(Text::from(format!(
-            "There is no debug view to show.\n\nPlease try to press CTRL + c to register a view to this pane."
-        )))
+        let paragraph = Paragraph::new(Text::from(
+            "There is no debug view to show.\n\nPlease try to press CTRL + c to register a view to this pane.".to_string()
+        ))
         .block(block)
         .wrap(Wrap { trim: false });
         f.render_widget(paragraph, pane.rect);
     }
 
     // TODO
-    fn draw_trace<'a>(&self, f: &mut Frame<'_>, pane: PaneFlattened<'a>) {
+    fn draw_trace(&self, f: &mut Frame<'_>, pane: PaneFlattened<'_>) {
         let block = self.get_focused_block(&pane);
-        let paragraph = Paragraph::new(Text::from(format!("trace displaying under construction")))
-            .block(block)
-            .wrap(Wrap { trim: false });
+        let paragraph =
+            Paragraph::new(Text::from("trace displaying under construction".to_string()))
+                .block(block)
+                .wrap(Wrap { trim: false });
         f.render_widget(paragraph, pane.rect);
     }
 
@@ -304,7 +305,7 @@ impl FrontendContext<'_> {
     fn draw_variables<'a>(&'a self, f: &mut Frame<'_>, pane: PaneFlattened<'a>) {
         let block = self.get_focused_block(&pane);
         let paragraph =
-            Paragraph::new(Text::from(format!("variable displaying under construction")))
+            Paragraph::new(Text::from("variable displaying under construction".to_string()))
                 .block(block)
                 .wrap(Wrap { trim: false });
         f.render_widget(paragraph, pane.rect);
@@ -314,7 +315,7 @@ impl FrontendContext<'_> {
     fn draw_expressions<'a>(&'a self, f: &mut Frame<'_>, pane: PaneFlattened<'a>) {
         let block = self.get_focused_block(&pane);
         let paragraph =
-            Paragraph::new(Text::from(format!("watcher displaying under construction")))
+            Paragraph::new(Text::from("watcher displaying under construction".to_string()))
                 .block(block)
                 .wrap(Wrap { trim: false });
         f.render_widget(paragraph, pane.rect);
@@ -476,7 +477,7 @@ impl FrontendContext<'_> {
 
     /// Returns source map, source code and source name of the current line.
     fn src_map(&self) -> Result<(SourceElement, &str, &str), String> {
-        Err(format!("source code displaying under construction"))
+        Err("source code displaying under construction".to_string())
 
         // let address = self.address();
         // let Some(contract_name) = self.debugger.identified_contracts.get(address) else {
@@ -799,7 +800,7 @@ struct BufferAccesses {
 /// The memory_access variable stores the index on the stack that indicates the buffer
 /// offset/size accessed by the given opcode:
 ///   (read buffer, buffer read offset, buffer read size, write memory offset, write memory size)
-///   >= 1: the stack index
+///   \>= 1: the stack index
 ///   0: no memory access
 ///   -1: a fixed size of 32 bytes
 ///   -2: a fixed size of 1 byte
@@ -891,12 +892,12 @@ fn wrap_text<'a>(
         let mut l = String::new();
         for word in line.split_whitespace() {
             if l.len() + word.len() + 1 == width {
-                v.push(f(format!("{} {}\n", l, word)));
+                v.push(f(format!("{l} {word}\n")));
                 l.clear();
                 continue;
             }
             if l.len() + word.len() + 1 > width {
-                v.push(f(format!("{}{}\n", l, " ".repeat(width - l.len() % width))));
+                v.push(f(format!("{l}{}\n", " ".repeat(width - l.len() % width))));
                 l.clear();
             }
 

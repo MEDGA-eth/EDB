@@ -52,24 +52,22 @@ impl ASTPruner {
 
     pub fn prune_node(node: &mut Node) -> Result<()> {
         // check InlineAssembly nodes
-        if matches!(node.node_type, NodeType::InlineAssembly) {
-            if !node.other.contains_key("AST") {
-                // this means that the InlineAssembly node comes from older versions of Solidity
+        if matches!(node.node_type, NodeType::InlineAssembly) && !node.other.contains_key("AST") {
+            // this means that the InlineAssembly node comes from older versions of Solidity
 
-                // we add an empty YulBlock node to the AST field
-                let ast = serde_json::json!({
-                    "nodeType": "YulBlock",
-                    "src": node.src,
-                    "statements": [],
-                });
-                node.other.insert("AST".to_string(), ast);
+            // we add an empty YulBlock node to the AST field
+            let ast = serde_json::json!({
+                "nodeType": "YulBlock",
+                "src": node.src,
+                "statements": [],
+            });
+            node.other.insert("AST".to_string(), ast);
 
-                // we set the externalReferences field to an empty array
-                node.other.insert("externalReferences".to_string(), serde_json::json!([]));
+            // we set the externalReferences field to an empty array
+            node.other.insert("externalReferences".to_string(), serde_json::json!([]));
 
-                // we remove the operations field
-                node.other.remove("operations");
-            }
+            // we remove the operations field
+            node.other.remove("operations");
         }
 
         // check ImportDirective nodes

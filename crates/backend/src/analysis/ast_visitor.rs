@@ -377,9 +377,12 @@ macro_rules! impl_walk {
         impl_walk!($ty, |$val, $visitor| {
             $visitor.$func($val)?;
             let r = $e;
+
+            #[allow(clippy::question_mark)]
             if r.is_err() {
                 return r;
             }
+
             paste! { $visitor.[<post_ $func>]($val)?; }
             Ok(())
         });

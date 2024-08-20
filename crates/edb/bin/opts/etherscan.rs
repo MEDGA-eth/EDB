@@ -69,6 +69,7 @@ pub struct EtherscanOpts {
 }
 
 impl EtherscanOpts {
+    #[allow(dead_code)] // XXX: decide whether to keep this after having the first prototype
     /// Returns true if the Etherscan API key is set.
     pub fn has_key(&self) -> bool {
         self.key.as_ref().filter(|key| !key.trim().is_empty()).is_some()

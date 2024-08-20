@@ -94,11 +94,13 @@ impl<'a> FrontendContext<'a> {
         &self.debug_arena()[self.draw_memory.inner_call_index]
     }
 
+    #[allow(dead_code)] // XXX (ZZ): fix this after implementing the data panes
     /// Returns the current call address.
     pub(crate) fn address(&self) -> &Address {
         &self.debug_call().address
     }
 
+    #[allow(dead_code)] // XXX (ZZ): fix this after implementing the data panes
     /// Returns the current call kind.
     pub(crate) fn call_kind(&self) -> CallKind {
         self.debug_call().kind
@@ -127,6 +129,7 @@ impl<'a> FrontendContext<'a> {
         }
     }
 
+    #[allow(dead_code)] // XXX: fix this after implementing the data panes
     fn data_pane_height(&self) -> usize {
         // PaneView::Memory => self.current_step().memory.len() / 32,
         // PaneView::Calldata => self.current_step().calldata.len() / 32,
@@ -157,7 +160,7 @@ impl FrontendContext<'_> {
                     self.window.pop_error_message(e.to_string());
                     ControlFlow::Continue(())
                 } else {
-                    panic!("{:?}", report);
+                    panic!("{report:?}");
                 }
             }
         }
@@ -397,6 +400,7 @@ impl FrontendContext<'_> {
         Ok(ControlFlow::Continue(()))
     }
 
+    #[allow(dead_code)] // XXX (ZZ): fix this after implementing breakinkpoints
     fn handle_breakpoint(&mut self, _c: char) {
         // // Find the location of the called breakpoint in the whole debug arena (at this address
         // with // this pc)
@@ -439,6 +443,7 @@ impl FrontendContext<'_> {
         Ok(ControlFlow::Continue(()))
     }
 
+    #[allow(dead_code)] // XXX (ZZ): fix this after implementing stepping
     fn step_back(&mut self) {
         if self.current_step > 0 {
             self.current_step -= 1;
@@ -448,6 +453,7 @@ impl FrontendContext<'_> {
         }
     }
 
+    #[allow(dead_code)] // XXX (ZZ): fix this after implementing stepping
     fn step(&mut self) {
         if self.current_step < self.n_steps() - 1 {
             self.current_step += 1;

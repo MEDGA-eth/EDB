@@ -37,30 +37,30 @@ pub enum SourceLabel {
 
 impl Default for SourceLabel {
     fn default() -> Self {
-        SourceLabel::Others { scope: None, loc: None }
+        Self::Others { scope: None, loc: None }
     }
 }
 
 impl fmt::Display for SourceLabel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            SourceLabel::PrimitiveStmt { stmt, .. } => {
+            Self::PrimitiveStmt { stmt, .. } => {
                 write!(f, "SourceStatment({})", stmt.loc())
             }
-            SourceLabel::InlineAssembly { stmt, block, .. } => {
+            Self::InlineAssembly { stmt, block, .. } => {
                 if let Some(stmt) = stmt {
-                    write!(f, "InlineAssemblyStmt({})", stmt)
+                    write!(f, "InlineAssemblyStmt({stmt})")
                 } else {
                     write!(f, "InlineAssemblyBlock({})", block.loc())
                 }
             }
-            SourceLabel::Tag { tag } => {
+            Self::Tag { tag } => {
                 write!(f, "Tag({})", tag.loc())
             }
-            SourceLabel::Others { scope, loc } => match (scope, loc) {
+            Self::Others { scope, loc } => match (scope, loc) {
                 (Some(scope), Some(loc)) => write!(f, "Located({}, {})", loc, scope.loc()),
                 (Some(_), None) => write!(f, "Invalid"),
-                (None, Some(loc)) => write!(f, "Unlocated({})", loc),
+                (None, Some(loc)) => write!(f, "Unlocated({loc})"),
                 (None, None) => write!(f, "Others"),
             },
         }
@@ -69,12 +69,11 @@ impl fmt::Display for SourceLabel {
 
 impl SourceLabel {
     pub fn is_source(&self) -> bool {
-        matches!(self, SourceLabel::PrimitiveStmt { .. }) ||
-            matches!(self, SourceLabel::InlineAssembly { .. })
+        matches!(self, Self::PrimitiveStmt { .. }) || matches!(self, Self::InlineAssembly { .. })
     }
 
     pub fn is_tag(&self) -> bool {
-        matches!(self, SourceLabel::Tag { .. })
+        matches!(self, Self::Tag { .. })
     }
 }
 
@@ -143,8 +142,8 @@ impl SourceLabelAnalysis {
             if unit.contains(src.offset() as usize, src.length() as usize) {
                 match &unit {
                     DebugUnit::Primitive(_) => {
-                        let function = units.function(&unit).ok_or_eyre("no function found")?;
-                        let contract = units.contract(&unit).ok_or_eyre("no contract found")?;
+                        let function = units.function(unit).ok_or_eyre("no function found")?;
+                        let contract = units.contract(unit).ok_or_eyre("no contract found")?;
                         *source_labels.last_mut().expect("this cannot happen") =
                             SourceLabel::PrimitiveStmt {
                                 stmt: unit.clone(),
@@ -171,8 +170,8 @@ impl SourceLabelAnalysis {
                                 stmt.contains(src.offset() as usize, src.length() as usize)
                             })
                             .cloned();
-                        let function = units.function(&unit).ok_or_eyre("no function found")?;
-                        let contract = units.contract(&unit).ok_or_eyre("no contract found")?;
+                        let function = units.function(unit).ok_or_eyre("no function found")?;
+                        let contract = units.contract(unit).ok_or_eyre("no contract found")?;
                         *source_labels.last_mut().expect("this cannot happen") =
                             SourceLabel::InlineAssembly {
                                 stmt,
@@ -195,7 +194,7 @@ impl SourceLabelAnalysis {
             let code = bytecode.bytes().ok_or_eyre("no code found")?.as_ref();
             let ic_pc_map = crate::utils::opcode::IcPcMap::new(code);
             for (ic, (src, label)) in source_map.iter().zip(source_labels.iter()).enumerate() {
-                let pc = ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {}", ic))?;
+                let pc = ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {ic}"))?;
                 let opcode = revm::interpreter::OpCode::new(code[pc])
                     .ok_or_eyre(format!("invalid opcode: {}", code[pc]))?;
 
@@ -206,7 +205,7 @@ impl SourceLabelAnalysis {
                         crate::utils::opcode::get_push_value(code, pc)?
                     )
                 } else {
-                    format!("{}", opcode)
+                    format!("{opcode}")
                 };
                 if opcode_str.len() > 30 {
                     opcode_str = format!("{}...", &opcode_str[..27]);
@@ -225,7 +224,7 @@ impl SourceLabelAnalysis {
             // A debugging check to see if there are any labels that only have push opcodes.
             let mut reverse_map = std::collections::HashMap::new();
             for (ic, label) in source_labels.iter().enumerate().filter(|(.., l)| l.is_source()) {
-                let pc = ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {}", ic))?;
+                let pc = ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {ic}"))?;
                 let opcode = revm::interpreter::OpCode::new(code[pc])
                     .ok_or_eyre(format!("invalid opcode: {}", code[pc]))?;
                 reverse_map.entry(label.clone()).or_insert_with(Vec::new).push((opcode, pc, ic));

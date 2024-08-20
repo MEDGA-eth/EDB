@@ -6,7 +6,6 @@ use std::{
 
 use alloy_primitives::{Address, U256};
 use eyre::{bail, OptionExt, Result};
-use foundry_compilers::artifacts::sourcemap::Jump;
 use revm::{
     interpreter::{
         opcode::{DUP1, DUP16, JUMP, JUMPDEST, JUMPI, POP, PUSH0, PUSH32, SWAP1, SWAP16},
@@ -16,10 +15,12 @@ use revm::{
 };
 
 use crate::{
-    analysis::source_map::RefinedSourceMap, utils::opcode::get_push_value, RuntimeAddress,
+    analysis::source_map::{debug_unit::DebugUnit, source_label::SourceLabel, RefinedSourceMap},
+    utils::opcode::get_push_value,
+    AnalyzedBytecode, RuntimeAddress,
 };
 
-use super::{debug, AssertionUnwrap};
+use super::AssertionUnwrap;
 
 /// A jump instruction can have three labels (including JUMPI):
 ///  - `Block`: this instruction is a block jump.
@@ -43,9 +44,9 @@ pub enum JumpLabel {
 impl PartialOrd for JumpLabel {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match (self, other) {
-            (JumpLabel::Unknown, JumpLabel::Unknown) => Some(std::cmp::Ordering::Equal),
-            (JumpLabel::Unknown, _) => Some(std::cmp::Ordering::Less),
-            (_, JumpLabel::Unknown) => Some(std::cmp::Ordering::Greater),
+            (Self::Unknown, Self::Unknown) => Some(std::cmp::Ordering::Equal),
+            (Self::Unknown, _) => Some(std::cmp::Ordering::Less),
+            (_, Self::Unknown) => Some(std::cmp::Ordering::Greater),
             _ if self == other => Some(std::cmp::Ordering::Equal),
             _ => None,
         }
@@ -55,10 +56,10 @@ impl PartialOrd for JumpLabel {
 impl Display for JumpLabel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            JumpLabel::Block => write!(f, "JUMP::Block"),
-            JumpLabel::Call => write!(f, "JUMP::Call"),
-            JumpLabel::Return => write!(f, "JUMP::Return"),
-            JumpLabel::Unknown => write!(f, "JUMP::Unknown"),
+            Self::Block => write!(f, "JUMP::Block"),
+            Self::Call => write!(f, "JUMP::Call"),
+            Self::Return => write!(f, "JUMP::Return"),
+            Self::Unknown => write!(f, "JUMP::Unknown"),
         }
     }
 }
@@ -94,9 +95,9 @@ impl PartialOrd for PushLabel {
     ///  - The rest of the labels are incomparable.
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match (self, other) {
-            (PushLabel::Unknown, PushLabel::Unknown) => Some(std::cmp::Ordering::Equal),
-            (PushLabel::Unknown, _) => Some(std::cmp::Ordering::Less),
-            (_, PushLabel::Unknown) => Some(std::cmp::Ordering::Greater),
+            (Self::Unknown, Self::Unknown) => Some(std::cmp::Ordering::Equal),
+            (Self::Unknown, _) => Some(std::cmp::Ordering::Less),
+            (_, Self::Unknown) => Some(std::cmp::Ordering::Greater),
             _ if self == other => Some(std::cmp::Ordering::Equal),
             _ => None,
         }
@@ -106,11 +107,11 @@ impl PartialOrd for PushLabel {
 impl Display for PushLabel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PushLabel::CalleeAddr => write!(f, "PUSH::CalleeAddr"),
-            PushLabel::ReturnAddr => write!(f, "PUSH::ReturnAddr"),
-            PushLabel::BlockAddr => write!(f, "PUSH::BlockAddr"),
-            PushLabel::NumericVal => write!(f, "PUSH::NumericVal"),
-            PushLabel::Unknown => write!(f, "PUSH::Unknown"),
+            Self::CalleeAddr => write!(f, "PUSH::CalleeAddr"),
+            Self::ReturnAddr => write!(f, "PUSH::ReturnAddr"),
+            Self::BlockAddr => write!(f, "PUSH::BlockAddr"),
+            Self::NumericVal => write!(f, "PUSH::NumericVal"),
+            Self::Unknown => write!(f, "PUSH::Unknown"),
         }
     }
 }
@@ -188,13 +189,13 @@ impl CallFrame {
 ///
 /// Note that, while the analysis is not 100% accurate, we shall try to make the label of call as
 /// accurate as possible.
-#[derive(Debug, Default)]
-pub struct PushJumpInspector {
+#[derive(Debug)]
+pub struct PushJumpInspector<'a> {
+    /// The analyzed bytecode.
+    bytecodes: &'a BTreeMap<RuntimeAddress, AnalyzedBytecode>,
+
     /// The message call stack:
     stack: Vec<CallFrame>,
-
-    /// The executed code
-    pub code: BTreeMap<RuntimeAddress, BTreeMap<usize, OpCode>>,
 
     /// The pushed values
     pub pushed_values: BTreeMap<RuntimeAddress, BTreeMap<usize, U256>>,
@@ -219,45 +220,100 @@ pub struct PushJumpInspector {
     pub jump_labels: BTreeMap<RuntimeAddress, BTreeMap<usize, JumpLabel>>,
 }
 
-impl PushJumpInspector {
+impl<'a> PushJumpInspector<'a> {
+    /// Create a new push-jump inspector.
+    pub fn new(bytecodes: &'a BTreeMap<RuntimeAddress, AnalyzedBytecode>) -> Self {
+        Self {
+            bytecodes,
+            stack: Vec::new(),
+            pushed_values: BTreeMap::new(),
+            jump_targets: BTreeMap::new(),
+            jump_tags: BTreeMap::new(),
+            jump_pushes: BTreeMap::new(),
+            push_labels: BTreeMap::new(),
+            jump_labels: BTreeMap::new(),
+        }
+    }
+
     /// Refine the analysis result using the source map. In this function, we mainly focus on
     /// inferring more call jumps.
     pub fn refine_analysis_by_source_map(
         &mut self,
         source_map: &BTreeMap<RuntimeAddress, RefinedSourceMap>,
     ) -> Result<()> {
-        unimplemented!("refine_analysis_by_source_map");
-
         let r_addrs = self
             .jump_labels
             .keys()
             .filter(|r| source_map.contains_key(r))
             .cloned()
             .collect::<Vec<_>>();
+
         for r_addr in r_addrs {
             let source_map = source_map.get(&r_addr).expect("source map not found");
+            let bytecode = self
+                .bytecodes
+                .get(&r_addr)
+                .ok_or_eyre(format!("bytecode not found for {r_addr}"))?;
             let jump_labels = self.jump_labels.get_mut(&r_addr).expect("jump labels not found");
+            let jump_targets = self
+                .jump_targets
+                .get(&r_addr)
+                .ok_or_eyre(format!("jump targets not found for {r_addr}"))?;
 
             for (pc, label) in jump_labels.iter_mut() {
-                trace!(r_addr=?r_addr, pc=pc, label=?label, "try to refine jump label");
-                let pre_label = source_map.labels.get(*pc - 1); // previous pc may not exist
-                let cur_label = source_map
-                    .labels
-                    .get(*pc)
-                    .ok_or_eyre(format!("invalid pc: {}@{}", pc, r_addr))?;
-                let next_label = source_map.labels.get(*pc + 1); // next pc may not exist
-                trace!(r_addr=?r_addr, pc=pc, cur_label=format!("{}", cur_label), "source map labels");
+                let Some(opcode) = bytecode.get_opcode_at_pc(*pc) else {
+                    bail!("invalid pc");
+                };
 
-                if cur_label.is_source() &&
-                    pre_label == Some(cur_label) &&
-                    Some(cur_label) == next_label
-                {
-                    // This is a call jump.
-                    if JumpLabel::Call > *label {
-                        debug!(r_addr=?r_addr, pc=pc, label=?label, "refine call jump");
-                        *label = JumpLabel::Call;
-                    } else {
-                        debug!(r_addr=?r_addr, pc=pc, label=?label, "refine call jump (no change)");
+                if opcode.get() == JUMPI {
+                    debug_assert!(*label == JumpLabel::Block, "invalid jump label");
+                    continue;
+                }
+
+                let targets = jump_targets
+                    .get(pc)
+                    .expect("jump targets not found")
+                    .iter()
+                    .map(|t| t.to::<usize>())
+                    .collect::<Vec<_>>();
+
+                let ic = bytecode.pc_ic_map.get(*pc).expect("invalid pc");
+                trace!(r_addr=?r_addr, pc=pc, ic=ic, opcode=opcode.as_str(), label=?label, "try to refine jump label");
+
+                let pre_src_label = source_map.labels.get(ic - 1).ok_or_eyre(format!(
+                    "invalid ic: {}@{}",
+                    ic - 1,
+                    r_addr
+                ))?;
+                let cur_src_label =
+                    source_map.labels.get(ic).ok_or_eyre(format!("invalid ic: {ic}@{r_addr}"))?;
+                let next_src_label = source_map.labels.get(ic + 1); // next pc may not exist
+
+                if pre_src_label == cur_src_label && Some(cur_src_label) == next_src_label {
+                    if let SourceLabel::PrimitiveStmt { func: func_1, .. } = cur_src_label {
+                        if targets.iter().all(|t_pc| {
+                            let Some(t_ic) = bytecode.pc_ic_map.get(*t_pc) else {
+                                return false;
+                            };
+
+                            let Some(t_label) = source_map.labels.get(t_ic) else {
+                                return false;
+                            };
+
+                            match t_label {
+                                SourceLabel::PrimitiveStmt { func: func_2, .. } => func_1 != func_2,
+                                SourceLabel::Tag { tag: func_2 }
+                                    if matches!(func_2, DebugUnit::Function(..)) =>
+                                {
+                                    func_1 != func_2
+                                }
+                                _ => false,
+                            }
+                        }) {
+                            debug!(r_addr=?r_addr, pc=pc, label=?label, targets=?targets, "refine call jump");
+                            debug_assert!(JumpLabel::Call >= *label, "failed to refine jump label");
+                            *label = JumpLabel::Call;
+                        }
                     }
                 }
             }
@@ -284,9 +340,10 @@ impl PushJumpInspector {
         let jump_targets = self
             .jump_targets
             .get(&r_addr)
-            .ok_or_eyre(format!("jump targets not found for {}", r_addr))?;
+            .ok_or_eyre(format!("jump targets not found for {r_addr}"))?;
         let jump_pushes = self.jump_pushes.get(&r_addr).ok_or_eyre("jump pushes not found")?;
-        let code = self.code.get(&r_addr).ok_or_eyre("code not found")?;
+        let bytecode =
+            self.bytecodes.get(&r_addr).ok_or_eyre(format!("bytecode not found for {r_addr}"))?;
 
         // Heuristic: if a jump instruction can jump to multiple targets, we will treat it as a
         // return jump.
@@ -322,19 +379,21 @@ impl PushJumpInspector {
                         jump_targets.get(&pc).ok_or_eyre("jump target not found (call)")?
                     {
                         trace!(pc=pc, callee_addr=?callee_addr, callee_addrs=?jump_targets[&pc], "callee address during worklist iteration");
-                        debug_assert!(code.contains_key(&pc), "the code should contain the pc");
                         let callee_addr = callee_addr.to::<usize>();
                         if callee_addrs.insert(callee_addr) {
                             worklist.extend(self.find_new_callee_addr(r_addr, callee_addr)?.iter());
                         }
                     }
 
-                    // Rule 2: the address right after a call jump is a return jump.
-                    let next_pc = pc + 1;
-                    if code.get(&next_pc).map_or(false, |op| op.is_jumpdest()) &&
-                        return_addrs.insert(next_pc)
-                    {
-                        worklist.extend(self.find_new_return_addr(r_addr, next_pc)?.iter());
+                    // Rule 2: the address right after a call jump is a return jump. Note that we
+                    // can directly cacluate the next pc since JUMP is a single byte instruction.
+                    if let Some(next_pc) = bytecode.next_insn_pc(pc) {
+                        debug_assert!(next_pc == pc + 1, "invalid jump opcode");
+                        if bytecode.get_opcode_at_pc(next_pc).map_or(false, |op| op.is_jumpdest()) &&
+                            return_addrs.insert(next_pc)
+                        {
+                            worklist.extend(self.find_new_return_addr(r_addr, next_pc)?.iter());
+                        }
                     }
 
                     // Rule 3: any push instruction used by a call jump is to push a callee
@@ -383,7 +442,11 @@ impl PushJumpInspector {
     /// Strictly check whether a jump instruction is a call jump. Specifically, we will check
     /// whether its predecessor is a push instruction and the pushed value is the jump target.
     fn strict_check_call(&self, r_addr: RuntimeAddress, pc: usize) -> bool {
-        let Some(op) = self.code.get(&r_addr).and_then(|m| m.get(&pc)) else {
+        let Some(bytecode) = self.bytecodes.get(&r_addr) else {
+            return false;
+        };
+
+        let Some(op) = bytecode.get_opcode_at_pc(pc) else {
             return false;
         };
 
@@ -392,7 +455,10 @@ impl PushJumpInspector {
         }
 
         if let Some(pushes) = self.jump_pushes.get(&r_addr).and_then(|m| m.get(&pc)) {
-            pushes.len() == 1 && pushes.iter().all(|&push_pc| push_pc + 1 == pc)
+            pushes.len() == 1 &&
+                pushes.iter().all(|&push_pc| {
+                    bytecode.pc_ic_map.get(push_pc).map(|ic| ic + 1) == bytecode.pc_ic_map.get(pc)
+                })
         } else {
             false
         }
@@ -401,22 +467,31 @@ impl PushJumpInspector {
     /// Strictly check whether a jump instruction is a return jump. Specifically, we will check
     /// whether its predecessor is a non-push stack manipulation instruction.
     fn strict_check_return(&self, r_addr: RuntimeAddress, pc: usize) -> bool {
-        let Some(op) = self.code.get(&r_addr).and_then(|m| m.get(&pc)) else {
+        let Some(bytecode) = self.bytecodes.get(&r_addr) else {
             return false;
         };
+
+        let Some(op) = bytecode.get_opcode_at_pc(pc) else {
+            return false;
+        };
+
+        let Some(ic) = bytecode.pc_ic_map.get(pc) else {
+            return false;
+        };
+
+        if ic == 0 {
+            return false;
+        }
 
         if !op.is_jump() {
             return false;
         }
 
-        let Some(prev_op) = self.code.get(&r_addr).and_then(|m| m.get(&(pc - 1))) else {
+        let Some(prev_op) = bytecode.get_opcode_at_ic(ic - 1) else {
             return false;
         };
 
-        match prev_op.get() {
-            DUP1..=DUP16 | SWAP1..=SWAP16 | POP..=POP => true,
-            _ => false,
-        }
+        matches!(prev_op.get(), DUP1..=DUP16 | SWAP1..=SWAP16 | POP..=POP)
     }
 
     fn find_new_callee_addr(
@@ -463,6 +538,8 @@ impl PushJumpInspector {
 
         let jump_labels = self.jump_labels.get(&r_addr).expect("this should not happen");
         let jump_targets = self.jump_targets.get(&r_addr).ok_or_eyre("jump targets not found")?;
+        let bytecode =
+            self.bytecodes.get(&r_addr).ok_or_eyre(format!("bytecode not found for {r_addr}"))?;
 
         // Rule R1: jump to return address is a return jump.
         for (pc, targets) in jump_targets {
@@ -483,8 +560,9 @@ impl PushJumpInspector {
         }
 
         // Rule R2: the address right before a return address is a call jump.
-        let call_pc = return_addr - 1;
-        if self.strict_check_call(r_addr, call_pc) &&
+        let call_pc = bytecode.prev_insn_pc(return_addr).ok_or_eyre("invalid pc")?;
+        if call_pc + 1 == return_addr &&
+            self.strict_check_call(r_addr, call_pc) &&
             self.jump_labels.get(&r_addr).and_then(|m| m.get(&call_pc)) ==
                 Some(&JumpLabel::Unknown)
         {
@@ -515,7 +593,7 @@ impl PushJumpInspector {
     }
 }
 
-impl<'a, DB> Inspector<DB> for PushJumpInspector
+impl<'a, DB> Inspector<DB> for PushJumpInspector<'a>
 where
     DB: Database,
     DB::Error: std::error::Error,
@@ -555,11 +633,6 @@ where
 
         let r_addr = frame.runtime_address();
         trace!(r_addr=?r_addr, pc=pc, op=op, "step (PushJumpInspector)");
-
-        self.code
-            .entry(r_addr)
-            .or_default()
-            .insert(pc, OpCode::new(op).assert_unwrap("invalid opcode"));
 
         match op {
             PUSH0..=PUSH32 => {
@@ -800,7 +873,7 @@ where
         if let Err(err) = context.load_account(inputs.caller) {
             // We cannot put `context.load_account` into the debug_assert! macro because this
             // assertion will not be triggered in the release mode.
-            debug_assert!(false, "load caller account error during contract creation: {}", err);
+            debug_assert!(false, "load caller account error during contract creation: {err}");
         }
 
         let nonce = context.journaled_state.account(inputs.caller).info.nonce;
@@ -886,9 +959,7 @@ where
             let ord = old_value.partial_cmp(&value);
             debug_assert!(
                 ord == Some(std::cmp::Ordering::Less) || ord == Some(std::cmp::Ordering::Equal),
-                "decending order is not allowed ({} -> {})",
-                old_value,
-                value
+                "decending order is not allowed ({old_value} -> {value})"
             );
         }
     }

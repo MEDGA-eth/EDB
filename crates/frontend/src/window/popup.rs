@@ -38,7 +38,7 @@ impl PopupMode {
                 for i in 0..PaneView::num_of_valid_views() {
                     let view = PaneView::from(i);
                     if !pane.has_view(&view) {
-                        let new_line = format!("({}) {}\n", assign_count, view.to_string());
+                        let new_line = format!("({assign_count}) {view}\n");
                         message.push_str(&new_line);
                         if *k == assign_count {
                             highlights.insert(new_line.trim().to_string());
@@ -56,8 +56,7 @@ impl PopupMode {
                 for i in 0..PaneView::num_of_valid_views() {
                     let view = PaneView::from(i);
                     if pane.has_view(&view) {
-                        let new_line =
-                            format!("({}) {}\n", (unassign_count + b'a') as char, view.to_string());
+                        let new_line = format!("({}) {view}\n", (unassign_count + b'a') as char);
                         message.push_str(&new_line);
                         if *k == assign_count + unassign_count {
                             highlights.insert(new_line.trim().to_string());
@@ -142,9 +141,7 @@ impl Window<'_> {
                         let target = pane.id;
                         self.get_pane_manager_mut()?.assign(view, target).map_err(|e| {
                             RecoverableError::new(format!(
-                                "Failed to register the selectced view ({})\n\nReason: {}",
-                                view.to_string(),
-                                e.to_string()
+                                "Failed to register the selectced view ({view})\n\nReason: {e}",
                             ))
                         })?;
                         self.exit_popup();
@@ -155,7 +152,7 @@ impl Window<'_> {
             }
         } else {
             // this will be unregistration
-            k = k - (PaneView::num_of_valid_views() - pane.len() as u8);
+            k -= PaneView::num_of_valid_views() - pane.len() as u8;
             let mut count = 0u8;
             for i in 0..PaneView::num_of_valid_views() {
                 let view = PaneView::from(i);
@@ -163,9 +160,7 @@ impl Window<'_> {
                     if count == k {
                         self.get_pane_manager_mut()?.unassign(view).map_err(|e| {
                             RecoverableError::new(format!(
-                                "Failed to unregister the selectced view ({})\n\nReason: {}",
-                                view.to_string(),
-                                e.to_string()
+                                "Failed to unregister the selectced view ({view})\n\nReason: {e}"
                             ))
                         })?;
                         self.exit_popup();

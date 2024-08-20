@@ -5,7 +5,7 @@ mod visited_address;
 use std::fmt::Display;
 
 pub use debug::DebugInspector;
-pub use push_jmp::{JumpLabel, PushJumpInspector, PushLabel};
+pub use push_jmp::PushJumpInspector;
 pub use visited_address::VisitedAddrInspector;
 
 trait AssertionUnwrap<T> {
@@ -20,7 +20,7 @@ where
         match self {
             Some(value) => value,
             None => {
-                debug_assert!(false, "{}", msg);
+                debug_assert!(false, "{msg}");
                 T::default()
             }
         }
@@ -36,7 +36,7 @@ where
         match self {
             Ok(value) => value,
             Err(err) => {
-                debug_assert!(false, "{}: {}", msg, err);
+                debug_assert!(false, "{msg}: {err}");
                 T::default()
             }
         }

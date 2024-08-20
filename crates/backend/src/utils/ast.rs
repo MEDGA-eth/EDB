@@ -73,7 +73,7 @@ pub fn source_with_debug_units(
 
         // Append the highlighted segment using ANSI escape codes for yellow
         let segment = &source[offset..offset + length];
-        result.push_str(&format!("{}{}{}", color, segment, reset));
+        result.push_str(&format!("{color}{segment}{reset}"));
 
         current_index = offset + length;
     }

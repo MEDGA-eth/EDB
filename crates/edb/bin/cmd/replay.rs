@@ -67,6 +67,8 @@ impl ReplayArgs {
         Ok(())
     }
 
+    #[allow(unused_mut, unused_variables, unreachable_code)]
+    // XXX: Remove this after finishing the backend design
     pub async fn debug(&self, db: ForkedDatabase, env: EnvWithHandlerCfg) -> Result<()> {
         let debug_artifact = if !self.no_cache {
             DebugBackend::<ForkedDatabase>::builder()
@@ -89,8 +91,7 @@ impl ReplayArgs {
         };
 
         let mut frontend = DebugFrontend::builder().build(debug_artifact);
-
-        todo!();
+        todo!("Implement the backend for the frontend");
         frontend.render().await?;
         Ok(())
     }

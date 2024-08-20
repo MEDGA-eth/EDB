@@ -16,6 +16,7 @@ pub use core::DebugBackend;
 use std::fmt::Display;
 
 use alloy_primitives::Address;
+use revm::interpreter::OpCode;
 use utils::opcode::{IcPcMap, PcIcMap};
 
 /// Runtime Address. It can be either a constructor address or a deployed address.
@@ -64,6 +65,27 @@ impl AnalyzedBytecode {
         let ic_pc_map = IcPcMap::new(code);
 
         Self { code: code.to_vec(), pc_ic_map, ic_pc_map }
+    }
+
+    pub fn len(&self) -> usize {
+        self.code.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.code.is_empty()
+    }
+
+    pub fn inst_n(&self) -> usize {
+        self.ic_pc_map.len()
+    }
+
+    pub fn get_opcode_at_pc(&self, pc: usize) -> Option<OpCode> {
+        self.code.get(pc).and_then(|&byte| OpCode::new(byte))
+    }
+
+    pub fn get_opcode_at_ic(&self, ic: usize) -> Option<OpCode> {
+        let pc = self.ic_pc_map.get(ic)?;
+        self.get_opcode_at_pc(pc)
     }
 
     pub fn next_insn_pc(&self, pc: usize) -> Option<usize> {

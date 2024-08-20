@@ -30,7 +30,7 @@ trait AsSourceLocation {
 impl AsSourceLocation for pt::Loc {
     fn as_source_location(&self, l_off: usize, g_off: usize) -> Result<SourceLocation> {
         match self {
-            pt::Loc::File(file_index, start, end) => Ok(SourceLocation {
+            Self::File(file_index, start, end) => Ok(SourceLocation {
                 index: Some(*file_index),
                 start: Some(*start - l_off + g_off), // we need to adjust the offset
                 length: Some(*end - *start),
@@ -109,9 +109,9 @@ impl TryFrom<&SourceLocation> for UnitLocation {
     type Error = eyre::Error;
 
     fn try_from(src: &SourceLocation) -> Result<Self, Self::Error> {
-        let start = src.start.ok_or_else(|| eyre!("invalid source location"))? as usize;
-        let length = src.length.ok_or_else(|| eyre!("invalid source location"))? as usize;
-        let index = src.index.ok_or_else(|| eyre!("invalid source location"))? as usize;
+        let start = src.start.ok_or_else(|| eyre!("invalid source location"))?;
+        let length = src.length.ok_or_else(|| eyre!("invalid source location"))?;
+        let index = src.index.ok_or_else(|| eyre!("invalid source location"))?;
 
         Ok(Self { start, length, index, code: Arc::default() })
     }
@@ -142,10 +142,10 @@ impl Deref for DebugUnit {
 
     fn deref(&self) -> &Self::Target {
         match self {
-            DebugUnit::Primitive(loc) |
-            DebugUnit::InlineAssembly(loc, _) |
-            DebugUnit::Function(loc, _) |
-            DebugUnit::Contract(loc) => loc,
+            Self::Primitive(loc) |
+            Self::InlineAssembly(loc, _) |
+            Self::Function(loc, _) |
+            Self::Contract(loc) => loc,
         }
     }
 }
@@ -153,10 +153,10 @@ impl Deref for DebugUnit {
 impl DerefMut for DebugUnit {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match self {
-            DebugUnit::Primitive(loc) |
-            DebugUnit::InlineAssembly(loc, _) |
-            DebugUnit::Function(loc, _) |
-            DebugUnit::Contract(loc) => loc,
+            Self::Primitive(loc) |
+            Self::InlineAssembly(loc, _) |
+            Self::Function(loc, _) |
+            Self::Contract(loc) => loc,
         }
     }
 }
@@ -164,42 +164,42 @@ impl DerefMut for DebugUnit {
 impl DebugUnit {
     pub fn loc(&self) -> &UnitLocation {
         match self {
-            DebugUnit::Primitive(loc) |
-            DebugUnit::InlineAssembly(loc, _) |
-            DebugUnit::Function(loc, _) |
-            DebugUnit::Contract(loc) => loc,
+            Self::Primitive(loc) |
+            Self::InlineAssembly(loc, _) |
+            Self::Function(loc, _) |
+            Self::Contract(loc) => loc,
         }
     }
 
     pub fn loc_mut(&mut self) -> &mut UnitLocation {
         match self {
-            DebugUnit::Primitive(loc) |
-            DebugUnit::InlineAssembly(loc, _) |
-            DebugUnit::Function(loc, _) |
-            DebugUnit::Contract(loc) => loc,
+            Self::Primitive(loc) |
+            Self::InlineAssembly(loc, _) |
+            Self::Function(loc, _) |
+            Self::Contract(loc) => loc,
         }
     }
 
     pub fn get_asm_stmts(&self) -> Option<&Vec<UnitLocation>> {
         match self {
-            DebugUnit::InlineAssembly(_, stmts) => Some(stmts),
+            Self::InlineAssembly(_, stmts) => Some(stmts),
             _ => None,
         }
     }
 
     pub fn is_execution_unit(&self) -> bool {
         match self {
-            DebugUnit::Primitive(_) | DebugUnit::InlineAssembly(_, _) => true,
-            DebugUnit::Function(_, _) | DebugUnit::Contract(_) => false,
+            Self::Primitive(_) | Self::InlineAssembly(_, _) => true,
+            Self::Function(_, _) | Self::Contract(_) => false,
         }
     }
 
     pub fn iter(&self) -> DebugUnitIterator<'_> {
         match self {
-            DebugUnit::Primitive(loc) | DebugUnit::Function(loc, _) | DebugUnit::Contract(loc) => {
+            Self::Primitive(loc) | Self::Function(loc, _) | Self::Contract(loc) => {
                 DebugUnitIterator { unit: vec![loc], index: 0 }
             }
-            DebugUnit::InlineAssembly(_, stmts) => {
+            Self::InlineAssembly(_, stmts) => {
                 DebugUnitIterator { unit: stmts.iter().collect(), index: 0 }
             }
         }
@@ -486,7 +486,7 @@ impl DebugUnitVisitor {
     fn insert_debug_unit(&mut self, unit: DebugUnit) -> Result<()> {
         self.units
             .entry(unit.index)
-            .or_insert_with(BTreeMap::new)
+            .or_default()
             .insert(unit.start, unit)
             .map_or(Ok(()), |_| Err(eyre!("overlapping contract units")))
     }
@@ -559,7 +559,7 @@ impl DebugUnitVisitor {
 
     /// Check whether there is any overlapping primitive debugging unit.
     pub fn check_integrity(&self) -> Result<()> {
-        for (_, stmts) in &self.units {
+        for stmts in self.units.values() {
             let stmts = stmts.values();
 
             // Check whether there is any overlapping execution debugging unit.
@@ -597,7 +597,7 @@ impl DebugUnitVisitor {
         let mut asm_code = &source[sloc.start..sloc.start + sloc.length];
 
         // wrap the inline assembly code in a random function to parse it
-        let mut wrapped_func = format!("function _medga_edb_150502() {{ {} }}", asm_code);
+        let mut wrapped_func = format!("function _medga_edb_150502() {{ {asm_code} }}");
 
         // get the AST of the inline assembly
         let mut asm_ast = match solang_parser::parse(wrapped_func.as_str(), sloc.index) {
@@ -612,7 +612,7 @@ impl DebugUnitVisitor {
 
                 let (last_start, _, _) = lex.last().ok_or_eyre("no token in the inline asm")?;
                 asm_code = &asm_code[..last_start];
-                wrapped_func = format!("function _medga_edb_150502() {{ {} }}", asm_code);
+                wrapped_func = format!("function _medga_edb_150502() {{ {asm_code} }}");
                 solang_parser::parse(wrapped_func.as_str(), sloc.index)
                     .map_err(|e| eyre!(format!("fail to parse inline assembly: {:?}", e)))?
                     .0
@@ -645,7 +645,7 @@ impl DebugUnitVisitor {
 
         // Parse each Yul statments.
         let local_offset = wrapped_func.find(asm_code).expect("this should not happen");
-        let global_offset = stmt.src.start.ok_or_eyre("invalid source location")? as usize;
+        let global_offset = stmt.src.start.ok_or_eyre("invalid source location")?;
         for yul_stmt in &yul_block.statements {
             self.visit_yul_statment_solang(yul_stmt, local_offset, global_offset)?;
         }

@@ -69,7 +69,6 @@ strip = "debuginfo"
 panic = "abort"
 codegen-units = 1
 
-
 [workspace.dependencies]
 edb = { path = "crates/edb" }
 edb-backend = { path = "crates/backend" }

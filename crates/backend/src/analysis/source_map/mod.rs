@@ -7,10 +7,7 @@ use debug_unit::{DebugUnitAnlaysis, DebugUnits};
 use eyre::{OptionExt, Result};
 use foundry_compilers::artifacts::{sourcemap::SourceElement, Bytecode};
 
-use crate::{
-    artifact::deploy::DeployArtifact,
-    utils::opcode::{IcPcMap, PcIcMap},
-};
+use crate::artifact::deploy::DeployArtifact;
 use source_label::{SourceLabelAnalysis, SourceLabels};
 
 const CONSTRUCTOR_IDX: usize = 0;

@@ -50,10 +50,12 @@ impl ScreenManager {
         self.get_pane_manager()?.get_focused_view()
     }
 
+    #[allow(dead_code)] // XXX (ZZ): Remove this later after the implementation is done.
     pub fn get_available_pane_profiles(&self) -> Vec<String> {
         self.panes.keys().cloned().collect()
     }
 
+    #[allow(dead_code)] // XXX (ZZ): Remove this later after the implementation is done.
     pub fn use_default_pane_profile(&mut self, use_default_pane: bool) {
         self.use_default_pane = use_default_pane;
     }
@@ -80,6 +82,7 @@ impl ScreenManager {
         Ok(())
     }
 
+    #[allow(dead_code)] // XXX (ZZ): Remove this later after the implementation is done.
     pub fn change_pane_manager(&mut self, name: &str) -> Result<()> {
         if self.panes.contains_key(name) {
             self.current_pane = name.to_string();
@@ -185,7 +188,7 @@ impl ScreenManager {
         Err(RecoverableError::new("The current pane cannot be merged with others due to one of the following reasons:\n\n1. The current pane cannot be merged with any adjacent panes.\n\n2. The current pane contains valid debug views but can only be merged with a Terminal Pane.\n\n3. The current pane has an adjacent pane, but these two are not directly split from the same parent pane.\n\nTo close this pane, you may consider unregistering some views or closing other panes first.").into())
     }
 
-    pub fn get_flattened_layout<'a>(&'a self, app: Rect) -> Result<Vec<PaneFlattened<'a>>> {
+    pub fn get_flattened_layout(&self, app: Rect) -> Result<Vec<PaneFlattened<'_>>> {
         if self.full_screen {
             let pane = self.get_pane_manager()?.get_focused_pane()?;
             Ok(vec![PaneFlattened {

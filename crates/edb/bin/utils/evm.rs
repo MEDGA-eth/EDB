@@ -4,7 +4,7 @@ use alloy_chains::NamedChain;
 use alloy_consensus::TxType;
 use alloy_primitives::{TxKind, U256};
 use alloy_provider::{network::AnyNetwork, Provider};
-use alloy_rpc_types::{AccessListItem, BlockNumberOrTag, Transaction};
+use alloy_rpc_types::{BlockNumberOrTag, Transaction};
 use alloy_transport::{Transport, TransportError};
 use anvil::Hardfork;
 use eyre::{eyre, OptionExt, Result};
@@ -124,7 +124,7 @@ pub async fn setup_fork_db<
     let chain_id = env.cfg.chain_id;
     let fork_block_number = env.block.number.try_into()?;
 
-    let meta = BlockchainDbMeta::new(*env.env.clone(), eth_rpc_url.to_string());
+    let meta = BlockchainDbMeta::new(*env.env, eth_rpc_url.to_string());
     let block_chain_db = BlockchainDb::new_skip_check(
         meta,
         cache_path.or(CachePath::edb_block_cache_file(chain_id, fork_block_number)),
@@ -233,18 +233,6 @@ pub fn fill_tx_env(env: &mut Env, tx: &Transaction) -> Result<()> {
         }
         TxType::Eip7702 => {
             unimplemented!("EIP-7702 is not supported")
-        }
-        #[cfg(feature = "optimism")]
-        Transaction::Deposit(tx) => {
-            env.tx.access_list.clear();
-            env.tx.gas_limit = tx.gas_limit;
-            env.tx.gas_price = U256::ZERO;
-            env.tx.gas_priority_fee = None;
-            env.tx.transact_to = tx.to;
-            env.tx.value = tx.value;
-            env.tx.data = tx.input.clone();
-            env.tx.chain_id = None;
-            env.tx.nonce = None;
         }
     }
 

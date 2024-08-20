@@ -61,6 +61,7 @@ impl RpcOpts {
         Ok(url)
     }
 
+    #[allow(dead_code)] // XXX: decide whether to keep this after having the first prototype
     /// Returns the JWT secret.
     pub fn jwt(&self) -> Result<Option<Cow<'_, str>>> {
         Ok(self.jwt_secret.as_deref().map(Cow::Borrowed))

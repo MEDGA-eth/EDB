@@ -42,5 +42,5 @@ pub fn bytecode_similarity(bytecode1: &[u8], bytecode2: &[u8]) -> f64 {
         }
     }
 
-    return lcs_table[len_s1][len_s2] as f64 / len_s1.max(len_s2) as f64;
+    lcs_table[len_s1][len_s2] as f64 / len_s1.max(len_s2) as f64
 }

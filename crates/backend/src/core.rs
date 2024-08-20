@@ -1,12 +1,7 @@
-use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
-    fmt::Debug,
-    path::PathBuf,
-    time::Duration,
-};
+use std::{collections::BTreeMap, fmt::Debug, path::PathBuf, time::Duration};
 
 use alloy_chains::Chain;
-use alloy_primitives::{Address, Bytes};
+use alloy_primitives::Address;
 use edb_utils::{
     cache::{Cache, CachePath},
     init_progress,
@@ -30,9 +25,9 @@ use crate::{
     analysis::source_map::{RefinedSourceMap, SourceMapAnalysis},
     artifact::{
         debug::{DebugArtifact, DebugNodeFlat},
-        deploy::{AsDeployArtifact, DeployArtifact},
+        deploy::DeployArtifact,
     },
-    inspector::{DebugInspector, JumpLabel, PushJumpInspector, PushLabel, VisitedAddrInspector},
+    inspector::{DebugInspector, PushJumpInspector, VisitedAddrInspector},
     utils::{db, evm::new_evm_with_inspector},
     AnalyzedBytecode, RuntimeAddress,
 };
@@ -97,14 +92,15 @@ impl DebugBackendBuilder {
     // XXX (ZZ): let's support them later
     /// Set the deployment artifacts.
     /// If not set, the deployment artifacts will not be used.
-    pub fn deploy_artifacts(
-        mut self,
-        deploy_artifacts: BTreeMap<Address, impl AsDeployArtifact>,
-    ) -> Result<Self> {
+    pub fn deploy_artifacts<T>(mut self, deploy_artifacts: BTreeMap<Address, T>) -> Result<Self>
+    where
+        T: TryInto<DeployArtifact>,
+        T::Error: std::error::Error + Send + Sync + 'static,
+    {
         let result: Result<BTreeMap<Address, DeployArtifact>, _> = deploy_artifacts
             .into_iter()
             .map(|(k, v)| {
-                let artifact = v.as_artifact()?;
+                let artifact = v.try_into()?;
                 Ok::<_, eyre::Error>((k, artifact))
             })
             .collect();
@@ -123,9 +119,8 @@ impl DebugBackendBuilder {
 
         // XXX: the following code looks bad and needs to be refactored
         let cb = Client::builder().with_cache(
-            self.etherscan_cache_root.or(CachePath::edb_etherscan_chain_cache_dir(
-                self.chain.unwrap_or(Chain::default()),
-            )),
+            self.etherscan_cache_root
+                .or(CachePath::edb_etherscan_chain_cache_dir(self.chain.unwrap_or_default())),
             self.etherscan_cache_ttl.unwrap_or(Duration::from_secs(DEFAULT_CACHE_TTL)),
         );
         let cb = if let Some(chain) = self.chain { cb.chain(chain)? } else { cb };
@@ -215,12 +210,12 @@ where
         source_maps: &BTreeMap<RuntimeAddress, RefinedSourceMap>,
     ) -> Result<()> {
         // we first need to analyze the labels for both push and jump instructions
-        let mut inspector = PushJumpInspector::default();
+        let mut inspector = PushJumpInspector::new(&self.addresses);
         let mut evm = new_evm_with_inspector(&mut self.base_db, self.env.clone(), &mut inspector);
         evm.transact().map_err(|err| eyre!("failed to transact: {}", err))?;
         drop(evm);
         inspector.posterior_analysis()?;
-        // inspector.refine_analysis_by_source_map(source_maps)?;
+        inspector.refine_analysis_by_source_map(source_maps)?;
 
         #[cfg(debug_assertions)]
         inspector.log_unknown_labels();
@@ -231,7 +226,8 @@ where
     fn analyze_source_map(&mut self) -> Result<BTreeMap<RuntimeAddress, RefinedSourceMap>> {
         let mut source_maps = BTreeMap::new();
         for (addr, artifact) in &self.deploy_artifacts {
-            println!("\nanalyzing source map for {:#?}", addr);
+            println!("\nanalyzing source map for {addr:#?}");
+            debug!("\nanalyzing source map for {addr:#?}");
             let [constructor, deployed] = SourceMapAnalysis::analyze(artifact)?;
 
             source_maps.insert(RuntimeAddress::constructor(*addr), constructor);
@@ -275,7 +271,7 @@ where
 
                     // compile the source code
                     if let Some((meta, sources, output)) =
-                        self.compiler.compile(&mut self.etherscan, addr.address).await?
+                        self.compiler.compile(&self.etherscan, addr.address).await?
                     {
                         if output.errors.iter().any(|err| err.severity == Severity::Error) {
                             return Err(eyre!(format!(
@@ -285,11 +281,7 @@ where
                                     .errors
                                     .iter()
                                     .filter(|err| err.severity == Severity::Error)
-                                    .map(|err| err
-                                        .formatted_message
-                                        .as_ref()
-                                        .map(|s| s.as_str())
-                                        .unwrap_or_default())
+                                    .map(|err| err.formatted_message.as_deref().unwrap_or_default())
                                     .collect::<Vec<_>>()
                                     .join("\n\n")
                             )));
@@ -298,8 +290,8 @@ where
                         // get contract name
                         let contract_name = meta.contract_name.to_string();
 
-                        let artifact = (contract_name, sources, output, meta, deployed_bytecode)
-                            .as_artifact()?;
+                        let artifact =
+                            (contract_name, sources, output, meta, deployed_bytecode).try_into()?;
 
                         self.cache.save_cache(addr.address.to_string(), &artifact)?;
 

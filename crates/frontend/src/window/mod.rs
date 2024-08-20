@@ -4,7 +4,7 @@ mod popup;
 mod screen;
 
 use std::{
-    cell::{RefCell, RefMut},
+    cell::RefCell,
     ops::{Deref, DerefMut},
     rc::Rc,
 };

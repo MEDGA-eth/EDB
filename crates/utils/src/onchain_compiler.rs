@@ -18,8 +18,8 @@ pub struct OnchainCompiler {
 }
 
 impl OnchainCompiler {
-    pub fn new(cache_root: impl Into<PathBuf>) -> Result<OnchainCompiler> {
-        Ok(OnchainCompiler {
+    pub fn new(cache_root: impl Into<PathBuf>) -> Result<Self> {
+        Ok(Self {
             cache: Cache::new(cache_root, None)?, // None for no expiry
         })
     }
