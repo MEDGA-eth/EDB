@@ -35,19 +35,31 @@ pub struct DeployArtifact {
     pub sources: BTreeMap<u32, SourceFile>,
 }
 
-/// This trait is used to convert a tuple of contract name, bytecode, sources and compiler output
-/// into a DeployArtifact.
+/// This builder is used to build a deployment artifact.
 ///
 /// The contract name is the one of the subject contract.
 /// The source map is the source code of all contracts involved in the compilation process.
 /// The compiler output is the output of the compiler.
 /// The metadata is the metadata collected from the block explorer.
 /// The bytecode is the on-chain bytecode of the subject contract.
-impl TryFrom<(String, Sources, CompilerOutput, Metadata, RevmBytecode)> for DeployArtifact {
-    type Error = eyre::Error;
+#[derive(Debug)]
+pub struct DeployArtifactBuilder {
+    pub contract_name: String,
+    pub input_sources: Sources,
+    pub compilation_output: CompilerOutput,
+    pub explorer_meta: Metadata,
+    pub onchain_bytecode: RevmBytecode,
+}
 
-    fn try_from(value: (String, Sources, CompilerOutput, Metadata, RevmBytecode)) -> Result<Self> {
-        let (contract_name, input_sources, mut output, meta, bytecode) = value;
+impl DeployArtifactBuilder {
+    pub fn build(self) -> Result<DeployArtifact> {
+        let Self {
+            contract_name,
+            input_sources,
+            compilation_output: mut output,
+            explorer_meta: meta,
+            onchain_bytecode: bytecode,
+        } = self;
 
         trace!("building deployment artifact for {}", contract_name);
         let bytecode = bytecode.original_byte_slice();
@@ -136,7 +148,7 @@ impl TryFrom<(String, Sources, CompilerOutput, Metadata, RevmBytecode)> for Depl
             );
         }
 
-        Ok(Self {
+        Ok(DeployArtifact {
             contract_name: contract_name.to_string(),
             file_id,
             abi: compilation_ref.abi.as_ref().ok_or_eyre("missing abi")?.clone(),

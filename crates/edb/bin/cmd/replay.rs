@@ -92,6 +92,7 @@ impl ReplayArgs {
 
         let mut frontend = DebugFrontend::builder().build(debug_artifact);
         todo!("Implement the backend for the frontend");
+
         frontend.render().await?;
         Ok(())
     }

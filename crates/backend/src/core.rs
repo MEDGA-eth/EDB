@@ -25,7 +25,7 @@ use crate::{
     analysis::source_map::{RefinedSourceMap, SourceMapAnalysis},
     artifact::{
         debug::{DebugArtifact, DebugNodeFlat},
-        deploy::DeployArtifact,
+        deploy::{DeployArtifact, DeployArtifactBuilder},
     },
     inspector::{DebugInspector, PushJumpInspector, VisitedAddrInspector},
     utils::{db, evm::new_evm_with_inspector},
@@ -227,8 +227,16 @@ where
         let mut source_maps = BTreeMap::new();
         for (addr, artifact) in &self.deploy_artifacts {
             println!("\nanalyzing source map for {addr:#?}");
-            debug!("\nanalyzing source map for {addr:#?}");
+            debug!("analyzing source map for {addr:#?}");
             let [constructor, deployed] = SourceMapAnalysis::analyze(artifact)?;
+
+            // XXX (ZZ): Debug only
+            if constructor.is_corrupted {
+                debug!(addr=?addr, "constructor source map is corrupted");
+            }
+            if deployed.is_corrupted {
+                debug!(addr=?addr, "deployed source map is corrupted");
+            }
 
             source_maps.insert(RuntimeAddress::constructor(*addr), constructor);
             source_maps.insert(RuntimeAddress::deployed(*addr), deployed);
@@ -290,8 +298,14 @@ where
                         // get contract name
                         let contract_name = meta.contract_name.to_string();
 
-                        let artifact =
-                            (contract_name, sources, output, meta, deployed_bytecode).try_into()?;
+                        let artifact = DeployArtifactBuilder {
+                            contract_name,
+                            input_sources: sources,
+                            compilation_output: output,
+                            explorer_meta: meta,
+                            onchain_bytecode: deployed_bytecode,
+                        }
+                        .build()?;
 
                         self.cache.save_cache(addr.address.to_string(), &artifact)?;
 

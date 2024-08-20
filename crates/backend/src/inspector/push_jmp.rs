@@ -250,6 +250,11 @@ impl<'a> PushJumpInspector<'a> {
 
         for r_addr in r_addrs {
             let source_map = source_map.get(&r_addr).expect("source map not found");
+            if source_map.is_corrupted {
+                // If the source map is corrupted, we will skip the refinement.
+                continue;
+            }
+
             let bytecode = self
                 .bytecodes
                 .get(&r_addr)
