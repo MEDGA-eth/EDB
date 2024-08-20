@@ -231,6 +231,9 @@ pub fn fill_tx_env(env: &mut Env, tx: &Transaction) -> Result<()> {
             env.tx.max_fee_per_blob_gas = tx.max_fee_per_blob_gas.map(U256::from);
             env.tx.access_list = tx.access_list.clone().ok_or_eyre("missing access list")?.to_vec();
         }
+        TxType::Eip7702 => {
+            unimplemented!("EIP-7702 is not supported")
+        }
         #[cfg(feature = "optimism")]
         Transaction::Deposit(tx) => {
             env.tx.access_list.clear();

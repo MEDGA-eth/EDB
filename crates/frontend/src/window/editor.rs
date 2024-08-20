@@ -1,5 +1,4 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use tui_textarea::TextArea;
 
 use super::{TerminalMode, Window};
 
