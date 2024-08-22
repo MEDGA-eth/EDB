@@ -1,5 +1,3 @@
-use std::{fs::File, io::Write};
-
 use eyre::{OptionExt, Result};
 use foundry_compilers::artifacts::{Ast, Node, NodeType, SourceUnit};
 
@@ -26,9 +24,6 @@ impl ASTPruner {
     pub fn convert(ast: &mut Ast) -> Result<SourceUnit> {
         Self::prune(ast)?;
         let serialized = serde_json::to_string(ast)?;
-
-        let mut file = File::create("/tmp/txt.json")?;
-        file.write_all(serialized.as_bytes())?;
 
         Ok(serde_json::from_str(&serialized)?)
     }
@@ -176,7 +171,7 @@ mod tests {
         let compiler_cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../testdata/cache/solc")
             .join(chain.to_string());
-        let compiler = OnchainCompiler::new(compiler_cache_root)?;
+        let compiler = OnchainCompiler::new(Some(compiler_cache_root))?;
 
         let (_, _, mut output) =
             compiler.compile(&client, addr).await?.ok_or_eyre("missing compiler output")?;

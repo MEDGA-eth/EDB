@@ -24,14 +24,25 @@ pub fn link_contracts_fakely(bytecode: &mut Bytecode, addr: Option<Address>) -> 
 }
 
 #[inline]
-pub fn bytecode_similarity(bytecode1: &[u8], bytecode2: &[u8]) -> f64 {
+pub fn bytecode_align_similarity(bytecode1: &[u8], bytecode2: &[u8]) -> f64 {
+    if bytecode1.is_empty() || bytecode2.is_empty() || bytecode1.len() != bytecode2.len() {
+        return 0.0;
+    }
+
+    bytecode1.iter().zip(bytecode2.iter()).filter(|(a, b)| a == b).count() as f64 /
+        bytecode1.len() as f64
+}
+
+#[inline]
+#[allow(dead_code)]
+pub fn bytecode_lcs_similarity(bytecode1: &[u8], bytecode2: &[u8]) -> f64 {
     let len_s1 = bytecode1.len();
     let len_s2 = bytecode2.len();
 
-    // create a 2D array to store lengths of longest common subsequence
+    // Create a 2D array to store lengths of longest common subsequence.
     let mut lcs_table = vec![vec![0; len_s2 + 1]; len_s1 + 1];
 
-    // build the table in bottom-up fashion
+    // Build the table in bottom-up fashion.
     for i in 1..=len_s1 {
         for j in 1..=len_s2 {
             if bytecode1[i - 1] == bytecode2[j - 1] {

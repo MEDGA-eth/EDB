@@ -18,9 +18,10 @@ pub struct OnchainCompiler {
 }
 
 impl OnchainCompiler {
-    pub fn new(cache_root: impl Into<PathBuf>) -> Result<Self> {
+    pub fn new(cache_root: Option<PathBuf>) -> Result<Self> {
         Ok(Self {
-            cache: Cache::new(cache_root, None)?, // None for no expiry
+            // None for no expiry
+            cache: Cache::new(cache_root, None)?,
         })
     }
 
@@ -58,7 +59,7 @@ impl OnchainCompiler {
             let mut settings = meta.settings()?;
             // enforce compiler output all possible outputs
             settings.output_selection = OutputSelection::complete_output_selection();
-            trace!("using settings: {:?}", settings);
+            debug!(addr=?addr, settings=?settings, "using settings");
 
             // prepare the sources
             let sources = meta
@@ -71,7 +72,7 @@ impl OnchainCompiler {
             // prepare the compiler
             let version = meta.compiler_version()?;
             let compiler = Solc::find_or_install(&version)?;
-            trace!("using compiler: {:?}", compiler);
+            debug!(addr=?addr, compiler=?compiler, "using compiler");
 
             // compile the source code
             let output = match compiler.compile_exact(&input) {
@@ -108,10 +109,8 @@ mod tests {
             .chain(chain_id)?
             .build()?;
 
-        // We create a temporary directory for the compiler cache, so that we can enforce the
-        // compiler to recompile the contract.
-        let compiler_cache_root = tempfile::tempdir()?;
-        let compiler = OnchainCompiler::new(compiler_cache_root.path())?;
+        // We disable the cache for testing.
+        let compiler = OnchainCompiler::new(None)?;
         compiler.compile(&etherscan, Address::from_str(addr)?).await
     }
 

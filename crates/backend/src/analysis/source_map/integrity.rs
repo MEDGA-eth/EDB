@@ -11,7 +11,7 @@ use super::{AnalysisStore, CONSTRUCTOR_IDX, DEPLOYED_IDX};
 pub struct IntegrityAnalsysis {}
 
 impl IntegrityAnalsysis {
-    pub fn analyze(_artifact: &DeployArtifact, store: &mut AnalysisStore<'_>) -> Result<()> {
+    pub fn analyze(artifact: &DeployArtifact, store: &mut AnalysisStore<'_>) -> Result<()> {
         let source_maps = store.source_map.as_ref().ok_or_eyre("no source map found")?;
         let bytecodes = store.bytecode.as_ref().ok_or_eyre("no bytecode found")?;
 
@@ -19,6 +19,10 @@ impl IntegrityAnalsysis {
 
         is_corrupted[CONSTRUCTOR_IDX] = Self::check::<CONSTRUCTOR_IDX>(source_maps, bytecodes)?;
         is_corrupted[DEPLOYED_IDX] = Self::check::<DEPLOYED_IDX>(source_maps, bytecodes)?;
+
+        if is_corrupted.iter().any(|&x| x) {
+            warn!(addr=?artifact.onchain_address, "source map is corrupted");
+        }
 
         store.is_corrupted = Some(is_corrupted);
 
@@ -40,10 +44,6 @@ impl IntegrityAnalsysis {
                 let pc = ic_pc_map.get(ic).ok_or_eyre("invalid instruction counter")?;
                 let opcode = *bytecode.get(pc).ok_or_eyre("invalid program counter")?;
                 if opcode != JUMP && opcode != JUMPI {
-                    debug!(
-                        ic = ic,
-                        "source map is corrupted: jump label is not with JUMP or JUMPI instruction"
-                    );
                     return Ok(true);
                 }
             }

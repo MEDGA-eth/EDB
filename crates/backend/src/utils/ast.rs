@@ -1,3 +1,4 @@
+#[cfg(debug_assertions)]
 use std::collections::BTreeMap;
 
 use foundry_compilers::artifacts::{ast::SourceLocation, Expression};

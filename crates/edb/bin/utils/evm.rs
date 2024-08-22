@@ -15,8 +15,6 @@ use foundry_evm::{
 use foundry_fork_db::{cache::BlockchainDbMeta, BlockchainDb, SharedBackend};
 use revm::primitives::{BlobExcessGasAndPrice, BlockEnv, Env, EnvWithHandlerCfg};
 
-use edb_utils::cache::CachePath;
-
 pub async fn setup_block_env<
     T: Transport + Clone + Unpin,
     P: Provider<T, AnyNetwork> + Unpin + 'static + Clone,
@@ -120,15 +118,10 @@ pub async fn setup_fork_db<
     cache_path: Option<PathBuf>,
 ) -> Result<ForkedDatabase> {
     let env = setup_block_env(Arc::clone(&provider), fork_block_number).await?;
-
-    let chain_id = env.cfg.chain_id;
-    let fork_block_number = env.block.number.try_into()?;
+    let fork_block_number: u64 = env.block.number.try_into()?;
 
     let meta = BlockchainDbMeta::new(*env.env, eth_rpc_url.to_string());
-    let block_chain_db = BlockchainDb::new_skip_check(
-        meta,
-        cache_path.or(CachePath::edb_block_cache_file(chain_id, fork_block_number)),
-    );
+    let block_chain_db = BlockchainDb::new(meta, cache_path);
 
     // This will spawn the background thread that will use the provider to fetch
     // blockchain data from the other client

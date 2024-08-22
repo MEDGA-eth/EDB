@@ -1,7 +1,11 @@
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use alloy_json_abi::JsonAbi;
-use alloy_primitives::Bytes;
+use alloy_primitives::{Address, Bytes};
 use eyre::{eyre, OptionExt, Result};
 use foundry_block_explorers::contract::Metadata;
 use foundry_compilers::artifacts::{CompilerOutput, DeployedBytecode, Evm, SourceUnit, Sources};
@@ -10,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     analysis::prune::ASTPruner,
-    utils::compilation::{bytecode_similarity, link_contracts_fakely},
+    utils::compilation::{bytecode_align_similarity, link_contracts_fakely},
 };
 
 const SIMILARITY_THRESHOLD: f64 = 0.7;
@@ -31,6 +35,9 @@ pub struct DeployArtifact {
     pub evm: Evm,
     pub constructor_arguments: Bytes,
 
+    // Onchain Address
+    pub onchain_address: Address,
+
     // Other contract's source code may also get involved in the compilation process
     pub sources: BTreeMap<u32, SourceFile>,
 }
@@ -49,6 +56,7 @@ pub struct DeployArtifactBuilder {
     pub compilation_output: CompilerOutput,
     pub explorer_meta: Metadata,
     pub onchain_bytecode: RevmBytecode,
+    pub onchain_address: Address,
 }
 
 impl DeployArtifactBuilder {
@@ -59,12 +67,13 @@ impl DeployArtifactBuilder {
             compilation_output: mut output,
             explorer_meta: meta,
             onchain_bytecode: bytecode,
+            onchain_address,
         } = self;
 
         trace!("building deployment artifact for {}", contract_name);
         let bytecode = bytecode.original_byte_slice();
 
-        // let first link the contracts, to have a more accurate similarity check
+        // Let first link the contracts, to have a more accurate similarity check.
         for (_, contracts) in output.contracts.iter_mut() {
             for (_, contract) in contracts.iter_mut() {
                 // link deployed bytecode
@@ -87,44 +96,52 @@ impl DeployArtifactBuilder {
             }
         }
 
-        // let first find the correct compiler artifact for the specific contract
+        // Let first find the correct compiler artifact for the specific contract.
         let mut selected = None;
         let mut max_similarity = 0.0;
-        for (path, contracts) in output.contracts.iter() {
-            trace!(
-                "all compiled contracts: {}",
-                contracts.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>().join(", ")
-            );
 
-            for (_, contract) in contracts.iter().filter(|(name, _)| name.as_str() == contract_name)
-            {
+        // Collect all contracts with the same name.
+        let matched_contracts = output
+            .contracts
+            .iter()
+            .flat_map(|(path, cs)| cs.iter().map(move |(name, contract)| (path, name, contract)))
+            .filter_map(|(path, name, contract)| {
+                if name.as_str() != contract_name {
+                    return None;
+                }
+
                 if let Some(Evm {
-                    deployed_bytecode:
-                        Some(DeployedBytecode { bytecode: Some(bytecode_to_check), .. }),
+                    deployed_bytecode: Some(DeployedBytecode { bytecode: Some(code), .. }),
                     ..
                 }) = &contract.evm
                 {
-                    let bytecod_to_check = bytecode_to_check
-                        .object
-                        .as_bytes()
-                        .ok_or_eyre("missing bytecode object")?
-                        .as_ref();
+                    code.object.as_bytes().map(|c| (Vec::from(c.as_ref()), (path, contract)))
+                } else {
+                    None
+                }
+            })
+            .collect::<HashMap<_, _>>();
+        debug!(name=contract_name, addr=?onchain_address, n=matched_contracts.len(), "contracts with the same name");
 
-                    let similarity = bytecode_similarity(bytecode, bytecod_to_check);
-                    trace!("similarity of contracts with the same name: {}", similarity);
+        if matched_contracts.is_empty() {
+            return Err(eyre!("no contract with the same name found"));
+        } else {
+            // If there are multiple contracts with the same name, then we need to find the most
+            // similar one
+            for (bytecode_to_check, (path_ref, contract_ref)) in matched_contracts.iter() {
+                let similarity = bytecode_align_similarity(bytecode, bytecode_to_check);
+                trace!("similarity of contracts with the same name: {}", similarity);
 
-                    if similarity > max_similarity {
-                        max_similarity = similarity;
-                        selected = Some((contract, path));
-                    }
+                if similarity > max_similarity {
+                    max_similarity = similarity;
+                    selected = Some((*contract_ref, *path_ref));
                 }
             }
         }
 
         if max_similarity < SIMILARITY_THRESHOLD {
             return Err(eyre!(format!(
-                "no similar contract found, with the max similarity of {}",
-                max_similarity
+                "no similar contract found, with the max similarity of {max_similarity} for {onchain_address}",
             )));
         }
 
@@ -155,6 +172,7 @@ impl DeployArtifactBuilder {
             evm: compilation_ref.evm.as_ref().ok_or_eyre("missing evm")?.clone(),
             constructor_arguments: meta.constructor_arguments,
             sources,
+            onchain_address,
         })
     }
 }

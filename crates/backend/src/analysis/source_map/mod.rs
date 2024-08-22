@@ -150,7 +150,7 @@ mod tests {
         let cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../testdata/cache/backend")
             .join(chain.to_string());
-        let cache = Cache::new(cache_root, None)?;
+        let cache = Cache::new(Some(cache_root), None)?;
         let artifact: DeployArtifact =
             cache.load_cache(addr.to_string()).ok_or_eyre("missing cached artifact")?;
 

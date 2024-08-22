@@ -2,13 +2,8 @@ use std::{collections::BTreeMap, fmt::Debug, path::PathBuf, time::Duration};
 
 use alloy_chains::Chain;
 use alloy_primitives::Address;
-use edb_utils::{
-    cache::{Cache, CachePath},
-    init_progress,
-    onchain_compiler::OnchainCompiler,
-    update_progress,
-};
-use eyre::{eyre, OptionExt, Result};
+use edb_utils::{cache::Cache, init_progress, onchain_compiler::OnchainCompiler, update_progress};
+use eyre::{eyre, Result};
 use foundry_block_explorers::Client;
 use foundry_compilers::artifacts::Severity;
 use revm::{
@@ -56,8 +51,8 @@ impl DebugBackendBuilder {
 
     /// Set the cache root directory.
     /// If not set, the default cache directory will be used.
-    pub fn etherscan_cache_root(mut self, path: PathBuf) -> Self {
-        self.etherscan_cache_root = Some(path);
+    pub fn etherscan_cache_root(mut self, path: Option<PathBuf>) -> Self {
+        self.etherscan_cache_root = path;
         self
     }
 
@@ -70,15 +65,15 @@ impl DebugBackendBuilder {
 
     /// Set the compiler cache root directory.
     /// If not set, the default compiler cache directory will be used.
-    pub fn compiler_cache_root(mut self, path: PathBuf) -> Self {
-        self.compiler_cache_root = Some(path);
+    pub fn compiler_cache_root(mut self, path: Option<PathBuf>) -> Self {
+        self.compiler_cache_root = path;
         self
     }
 
     /// Set the backend cache root directory.
     /// If not set, the default backend cache directory will be used.
-    pub fn cache_root(mut self, path: PathBuf) -> Self {
-        self.cache_root = Some(path);
+    pub fn cache_root(mut self, path: Option<PathBuf>) -> Self {
+        self.cache_root = path;
         self
     }
 
@@ -119,27 +114,19 @@ impl DebugBackendBuilder {
 
         // XXX: the following code looks bad and needs to be refactored
         let cb = Client::builder().with_cache(
-            self.etherscan_cache_root
-                .or(CachePath::edb_etherscan_chain_cache_dir(self.chain.unwrap_or_default())),
+            self.etherscan_cache_root,
             self.etherscan_cache_ttl.unwrap_or(Duration::from_secs(DEFAULT_CACHE_TTL)),
         );
         let cb = if let Some(chain) = self.chain { cb.chain(chain)? } else { cb };
         let cb = if let Some(api_key) = self.api_key { cb.with_api_key(api_key) } else { cb };
-        let chain_id = cb.get_chain().unwrap_or_default();
         let client = cb.build()?;
 
-        let compiler_cache_root = self
-            .compiler_cache_root
-            .or(CachePath::edb_compiler_chain_cache_dir(chain_id))
-            .ok_or_eyre("missing cache_root")?;
+        let compiler_cache_root = self.compiler_cache_root;
 
         let deploy_artifacts = self.deploy_artifacts.unwrap_or_default();
-        let compiler = OnchainCompiler::new(&compiler_cache_root)?;
+        let compiler = OnchainCompiler::new(compiler_cache_root)?;
 
-        let cache_root = self
-            .cache_root
-            .or(CachePath::edb_backend_chain_cache_dir(chain_id))
-            .ok_or_eyre("missing cache_root")?;
+        let cache_root = self.cache_root;
         // We do not set the cache TTL for the backend cache.
         let cache = Cache::new(cache_root, None)?;
 
@@ -230,14 +217,6 @@ where
             debug!("analyzing source map for {addr:#?}");
             let [constructor, deployed] = SourceMapAnalysis::analyze(artifact)?;
 
-            // XXX (ZZ): Debug only
-            if constructor.is_corrupted {
-                debug!(addr=?addr, "constructor source map is corrupted");
-            }
-            if deployed.is_corrupted {
-                debug!(addr=?addr, "deployed source map is corrupted");
-            }
-
             source_maps.insert(RuntimeAddress::constructor(*addr), constructor);
             source_maps.insert(RuntimeAddress::deployed(*addr), deployed);
         }
@@ -276,6 +255,7 @@ where
                 None => {
                     // get the deployed bytecode
                     let deployed_bytecode = db::get_code(&mut db, addr.address)?;
+                    debug!(addr=?addr.address, len=deployed_bytecode.len(), "fetching deployed bytecode from database");
 
                     // compile the source code
                     if let Some((meta, sources, output)) =
@@ -304,6 +284,7 @@ where
                             compilation_output: output,
                             explorer_meta: meta,
                             onchain_bytecode: deployed_bytecode,
+                            onchain_address: addr.address,
                         }
                         .build()?;
 
