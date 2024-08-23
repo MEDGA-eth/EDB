@@ -269,7 +269,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
-    async fn test_e2e_tx1() {
+    async fn test_replay_e2e_tx1() {
         run_e2e_test("0x1282e09bb5118f619da81b6a24c97999e7057ee9975628562c7cecbb4aa9f5af")
             .await
             .unwrap();
@@ -277,7 +277,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
-    async fn test_e2e_tx2() {
+    async fn test_replay_e2e_tx2() {
         run_e2e_test("0xd253e3b563bf7b8894da2a69db836a4e98e337157564483d8ac72117df355a9d")
             .await
             .unwrap();
@@ -285,7 +285,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
-    async fn test_e2e_tx3() {
+    async fn test_replay_e2e_tx3() {
         run_e2e_test("0x6f4d3b21b69335e210202c8f47867761315e824c5c360d1ab8910f5d7ce5d526")
             .await
             .unwrap();
@@ -293,7 +293,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
-    async fn test_e2e_tx4() {
+    async fn test_replay_e2e_tx4() {
         run_e2e_test("0x0fe2542079644e107cbf13690eb9c2c65963ccb79089ff96bfaf8dced2331c92")
             .await
             .unwrap();
@@ -301,7 +301,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
-    async fn test_e2e_constract_with_library() {
+    async fn test_replay_e2e_constract_with_library() {
         run_e2e_test("0x9404771a145b4df4a6694a9896509d263448f5f27c2fd55ec8c47f37c9468b76")
             .await
             .unwrap();
@@ -309,7 +309,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
-    async fn test_e2e_creation() {
+    async fn test_replay_e2e_creation() {
         run_e2e_test("0x1e20cd6d47d7021ae7e437792823517eeadd835df09dde17ab45afd7a5df4603")
             .await
             .unwrap();
@@ -317,7 +317,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
-    async fn test_coinbase_consistency() {
+    async fn test_replay_coinbase_consistency() {
         run_e2e_test("0xc445aa7724e2b8b96a3e3b0c4d921a9329c12a9b2dda00368bb5f7b5da0b3e96")
             .await
             .unwrap();

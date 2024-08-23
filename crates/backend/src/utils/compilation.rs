@@ -26,6 +26,7 @@ pub fn link_contracts_fakely(bytecode: &mut Bytecode, addr: Option<Address>) -> 
 #[inline]
 pub fn bytecode_align_similarity(bytecode1: &[u8], bytecode2: &[u8]) -> f64 {
     if bytecode1.is_empty() || bytecode2.is_empty() || bytecode1.len() != bytecode2.len() {
+        debug!(len1=bytecode1.len(), len2=bytecode2.len(), "bytecode align similarity: empty or different length");
         return 0.0;
     }
 
