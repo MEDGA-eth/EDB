@@ -9,8 +9,8 @@ pub mod analysis;
 pub mod artifact;
 mod core;
 mod handler;
-mod inspector;
-mod utils;
+pub mod inspector;
+pub mod utils;
 
 pub use core::DebugBackend;
 use std::fmt::Display;

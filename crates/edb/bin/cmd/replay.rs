@@ -6,9 +6,7 @@ use alloy_rpc_types::{BlockTransactions, BlockTransactionsKind};
 use clap::Parser;
 use edb_backend::DebugBackend;
 use edb_frontend::DebugFrontend;
-use edb_utils::{
-    api_keys::next_etherscan_api_key, cache::CachePath, init_progress, update_progress,
-};
+use edb_utils::{cache::CachePath, init_progress, update_progress};
 use eyre::{ensure, OptionExt, Result};
 use foundry_common::{is_known_system_sender, SYSTEM_TRANSACTION_TYPE};
 use foundry_evm::{fork::database::ForkedDatabase, utils::new_evm_with_inspector};
@@ -51,13 +49,6 @@ impl ReplayArgs {
         if self.quick {
             // Enforce no validation when quick is enabled.
             self.no_validation = true;
-        }
-
-        if self.etherscan.key().is_none() {
-            // Set the etherscan key if not provided.
-            let next_key = next_etherscan_api_key();
-            trace!(next_key = next_key, "using pre-defined etherscan key since not provided");
-            self.etherscan.key = Some(next_key);
         }
 
         let (db, env) = self.prepare().await?;
@@ -207,7 +198,7 @@ mod tests {
                     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/cache"),
                 ),
             },
-            etherscan: EtherscanOpts { key: Some(next_etherscan_api_key()), ..Default::default() },
+            etherscan: EtherscanOpts::default(),
             rpc: RpcOpts {
                 url: Some("https://rpc.mevblocker.io".to_string()),
                 jwt_secret: None,

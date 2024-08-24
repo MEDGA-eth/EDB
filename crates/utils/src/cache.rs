@@ -4,6 +4,10 @@ use alloy_chains::Chain;
 use eyre::Result;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
+/// Default cache TTL for etherscan.
+/// Set to 1 day since the source code of a contract is unlikely to change frequently.
+pub const DEFAULT_ETHERSCAN_CACHE_TTL: u64 = 86400;
+
 pub trait CachePath {
     /// Returns the path to edb's cache dir: `~/.edb/cache` by default.
     fn edb_cache_dir(&self) -> Option<PathBuf>;

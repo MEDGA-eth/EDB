@@ -27,6 +27,15 @@ pub struct DebugInspector<DB> {
     phantom: std::marker::PhantomData<DB>,
 }
 
+impl<DB> Default for DebugInspector<DB>
+where
+    DB: Database,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<DB> DebugInspector<DB>
 where
     DB: Database,

@@ -8,7 +8,9 @@ use alloy_json_abi::JsonAbi;
 use alloy_primitives::{Address, Bytes};
 use eyre::{eyre, OptionExt, Result};
 use foundry_block_explorers::contract::Metadata;
-use foundry_compilers::artifacts::{CompilerOutput, DeployedBytecode, Evm, SourceUnit, Sources};
+use foundry_compilers::artifacts::{
+    Bytecode, CompilerOutput, DeployedBytecode, Evm, SourceUnit, Sources,
+};
 use revm::primitives::Bytecode as RevmBytecode;
 use serde::{Deserialize, Serialize};
 
@@ -35,11 +37,21 @@ pub struct DeployArtifact {
     pub evm: Evm,
     pub constructor_arguments: Bytes,
 
-    // Onchain Address
-    pub onchain_address: Address,
+    // Onchain Address. It is None if the deployed artifact is compiled from local source code.
+    pub onchain_address: Option<Address>,
 
     // Other contract's source code may also get involved in the compilation process
     pub sources: BTreeMap<u32, SourceFile>,
+}
+
+impl DeployArtifact {
+    pub fn deployed_bytecode(&self) -> Option<&Bytecode> {
+        self.evm.deployed_bytecode.as_ref().and_then(|b| b.bytecode.as_ref())
+    }
+
+    pub fn constructor_bytecode(&self) -> Option<&Bytecode> {
+        self.evm.bytecode.as_ref()
+    }
 }
 
 /// This builder is used to build a deployment artifact.
@@ -51,7 +63,6 @@ pub struct DeployArtifact {
 /// The bytecode is the on-chain bytecode of the subject contract.
 #[derive(Debug)]
 pub struct DeployArtifactBuilder {
-    pub contract_name: String,
     pub input_sources: Sources,
     pub compilation_output: CompilerOutput,
     pub explorer_meta: Metadata,
@@ -62,13 +73,14 @@ pub struct DeployArtifactBuilder {
 impl DeployArtifactBuilder {
     pub fn build(self) -> Result<DeployArtifact> {
         let Self {
-            contract_name,
             input_sources,
             compilation_output: mut output,
             explorer_meta: meta,
             onchain_bytecode: bytecode,
             onchain_address,
         } = self;
+
+        let contract_name = meta.contract_name.to_string();
 
         trace!("building deployment artifact for {}", contract_name);
         let bytecode = bytecode.original_byte_slice();
@@ -172,7 +184,7 @@ impl DeployArtifactBuilder {
             evm: compilation_ref.evm.as_ref().ok_or_eyre("missing evm")?.clone(),
             constructor_arguments: meta.constructor_arguments,
             sources,
-            onchain_address,
+            onchain_address: Some(onchain_address),
         })
     }
 }

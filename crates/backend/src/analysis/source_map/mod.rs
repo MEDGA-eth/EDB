@@ -17,6 +17,8 @@ const DEPLOYED_IDX: usize = 1;
 
 /// The refined source map analysis result.
 pub struct RefinedSourceMap {
+    type_id: usize,
+
     /// Debugging units.
     pub debug_units: Rc<DebugUnits>,
 
@@ -28,6 +30,16 @@ pub struct RefinedSourceMap {
 
     /// Whether the source map is corrupted.
     pub is_corrupted: bool,
+}
+
+impl RefinedSourceMap {
+    pub fn is_constructor(&self) -> bool {
+        self.type_id == CONSTRUCTOR_IDX
+    }
+
+    pub fn is_deployed(&self) -> bool {
+        self.type_id == DEPLOYED_IDX
+    }
 }
 
 /// The analysis result store.
@@ -64,14 +76,10 @@ impl<'a> AnalysisStore<'a> {
     store_getter!(source_map, [Vec<SourceElement>; 2]);
 
     pub fn init(artifact: &'a DeployArtifact) -> Result<Self> {
-        let deployed_bytecode = artifact
-            .evm
-            .deployed_bytecode
-            .as_ref()
-            .and_then(|b| b.bytecode.as_ref())
-            .ok_or_eyre("no deployed bytecode found")?;
+        let deployed_bytecode =
+            artifact.deployed_bytecode().ok_or_eyre("no deployed bytecode found")?;
         let construction_bytecode =
-            artifact.evm.bytecode.as_ref().ok_or_eyre("no construction bytecode found")?;
+            artifact.constructor_bytecode().ok_or_eyre("no construction bytecode found")?;
 
         let source_map = [
             construction_bytecode.source_map().ok_or_eyre("no source map found")??,
@@ -95,12 +103,14 @@ impl<'a> AnalysisStore<'a> {
 
         Ok([
             RefinedSourceMap {
+                type_id: CONSTRUCTOR_IDX,
                 debug_units: units.clone(),
                 labels: c_labels,
                 source_map: c_map,
                 is_corrupted: c_is_corrupted,
             },
             RefinedSourceMap {
+                type_id: DEPLOYED_IDX,
                 debug_units: units,
                 labels: d_labels,
                 source_map: d_map,

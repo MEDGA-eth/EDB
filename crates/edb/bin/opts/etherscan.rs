@@ -5,6 +5,7 @@ use clap::{
     builder::{PossibleValuesParser, TypedValueParser},
     Parser,
 };
+use edb_utils::api_keys;
 use eyre::Result;
 use foundry_block_explorers::Client;
 use serde::Serialize;
@@ -89,12 +90,11 @@ impl EtherscanOpts {
     /// Create an Etherscan Client.
     pub fn client(&self) -> Result<Client> {
         let chain = self.chain();
-        let cb = Client::builder().chain(chain)?;
 
-        if let Some(key) = self.key() {
-            Ok(cb.with_api_key(key).build()?)
-        } else {
-            Ok(cb.build()?)
-        }
+        // If the key is not set, we use the pre-defined API keys.
+        Ok(Client::builder()
+            .chain(chain)?
+            .with_api_key(self.key().unwrap_or_else(api_keys::next_etherscan_api_key))
+            .build()?)
     }
 }

@@ -4,7 +4,7 @@ use alloy_chains::Chain;
 use alloy_primitives::Address;
 use edb_utils::{
     api_keys,
-    cache::{Cache, CachePath, EDBCache, EDBCachePath},
+    cache::{Cache, CachePath, EDBCache, EDBCachePath, DEFAULT_ETHERSCAN_CACHE_TTL},
     init_progress,
     onchain_compiler::OnchainCompiler,
     update_progress,
@@ -17,10 +17,6 @@ use revm::{
     primitives::{CreateScheme, EnvWithHandlerCfg},
     DatabaseRef,
 };
-
-/// Default cache TTL for etherscan.
-/// Set to 1 day since the source code of a contract is unlikely to change frequently.
-const DEFAULT_ETHERSCAN_CACHE_TTL: u64 = 86400;
 
 use crate::{
     analysis::source_map::{RefinedSourceMap, SourceMapAnalysis},
@@ -262,11 +258,7 @@ where
                             )));
                         }
 
-                        // get contract name
-                        let contract_name = meta.contract_name.to_string();
-
                         let artifact = DeployArtifactBuilder {
-                            contract_name,
                             input_sources: sources,
                             compilation_output: output,
                             explorer_meta: meta,
