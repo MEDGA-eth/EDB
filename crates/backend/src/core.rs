@@ -199,6 +199,8 @@ where
             println!("\nanalyzing source map for {addr:#?}");
             debug!("analyzing source map for {addr:#?}");
             let [constructor, deployed] = SourceMapAnalysis::analyze(artifact)?;
+            debug_assert!(constructor.is_constructor());
+            debug_assert!(deployed.is_deployed());
 
             source_maps.insert(RuntimeAddress::constructor(*addr), constructor);
             source_maps.insert(RuntimeAddress::deployed(*addr), deployed);

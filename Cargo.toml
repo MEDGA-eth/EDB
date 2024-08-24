@@ -130,6 +130,8 @@ alloy-chains = "0.1"
 alloy-rlp = "0.3.3"
 alloy-trie = "0.4.1"
 
+# async
+async-trait = "0.1"
 
 ## misc
 arrayvec = "0.7"

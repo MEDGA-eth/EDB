@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 
+use alloy_provider::network::AnyNetwork;
 use clap::Parser;
+use edb_utils::rpc::CachedProvider;
 use eyre::Result;
 use foundry_common::provider::{ProviderBuilder, RetryProvider};
 
@@ -69,7 +71,10 @@ impl RpcOpts {
     }
 
     /// Create a RPC provider.
-    pub fn provider(&self, fallback_to_default: bool) -> Result<RetryProvider> {
+    pub fn provider(
+        &self,
+        fallback_to_default: bool,
+    ) -> Result<CachedProvider<RetryProvider, AnyNetwork>> {
         let fork_url = self.url(fallback_to_default)?.unwrap().to_string();
         let compute_units_per_second =
             if self.no_rate_limit { Some(u64::MAX) } else { self.compute_units_per_second };
@@ -83,6 +88,6 @@ impl RpcOpts {
 
         let provider = provider_builder.build()?;
 
-        Ok(provider)
+        Ok(CachedProvider::new(provider))
     }
 }

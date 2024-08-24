@@ -193,33 +193,6 @@ impl SourceLabelAnalysis {
             let bytecode = store.bytecode()?.get(IDX).ok_or_eyre("no bytecode found")?;
             let code = bytecode.bytes().ok_or_eyre("no code found")?.as_ref();
             let ic_pc_map = crate::utils::opcode::IcPcMap::new(code);
-            for (ic, (src, label)) in source_map.iter().zip(source_labels.iter()).enumerate() {
-                let pc = ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {ic}"))?;
-                let opcode = revm::interpreter::OpCode::new(code[pc])
-                    .ok_or_eyre(format!("invalid opcode: {}", code[pc]))?;
-
-                let mut opcode_str = if opcode.is_push() {
-                    format!(
-                        "PUSH{} {}",
-                        code[pc] - revm::interpreter::opcode::PUSH0,
-                        crate::utils::opcode::get_push_value(code, pc)?
-                    )
-                } else {
-                    format!("{opcode}")
-                };
-                if opcode_str.len() > 30 {
-                    opcode_str = format!("{}...", &opcode_str[..27]);
-                }
-
-                trace!(
-                    "ic: {:05} | pc: {:05} | opcode: {:<30} | source element: {:<20} | label: {}",
-                    ic,
-                    pc,
-                    opcode_str,
-                    src.to_string(),
-                    label
-                );
-            }
 
             // A debugging check to see if there are any labels that only have push opcodes.
             let mut reverse_map = std::collections::HashMap::new();

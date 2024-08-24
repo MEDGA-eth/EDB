@@ -81,17 +81,14 @@ impl ReplayArgs {
     ///  - cache_root: the path to the rpc cache directory. If not provided, the default cache
     ///    directory will be used.
     pub async fn prepare(&self) -> Result<(ForkedDatabase, EnvWithHandlerCfg)> {
-        let Self {
-            tx_hash, quick, rpc, no_validation, etherscan: EtherscanOpts { chain, .. }, ..
-        } = self;
+        let Self { tx_hash, quick, rpc, no_validation, etherscan, cache, .. } = self;
         let fork_url = rpc.url(true)?.unwrap().to_string();
+        let cache_path = cache.cache_path();
+        let chain = etherscan.chain();
 
         // step 0. prepare rpc provider
-        let provider = Arc::new(rpc.provider(true)?);
-        ensure!(
-            provider.get_chain_id().await? == chain.unwrap_or_default().id(),
-            "inconsistent chain id"
-        );
+        let provider = Arc::new(rpc.provider(true)?.with_cache(chain, cache_path)?);
+        ensure!(provider.get_chain_id().await? == chain.id(), "inconsistent chain id");
 
         // step 1. get the transaction and block data
         let tx = provider
@@ -111,10 +108,7 @@ impl ReplayArgs {
 
         // step 2. set enviroment and database
         // note that database should be set to tx_block_number - 1
-        let cache_path = self
-            .cache
-            .cache_path()
-            .rpc_block_cache_file(chain.unwrap_or_default(), tx_block_number - 1);
+        let cache_path = self.cache.cache_path().rpc_storage_cache_file(chain, tx_block_number - 1);
         let mut db =
             setup_fork_db(Arc::clone(&provider), &fork_url, Some(tx_block_number - 1), cache_path)
                 .await?;

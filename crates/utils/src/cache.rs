@@ -21,16 +21,34 @@ pub trait CachePath {
         Some(self.edb_rpc_cache_dir()?.join(chain_id.into().to_string()))
     }
 
+    /// Returns the path to the cached block information on the `chain`:
+    /// `<cache_root>/rpc/<chain>/block`
+    fn rpc_block_cache_dir(&self, chain_id: impl Into<Chain>) -> Option<PathBuf> {
+        Some(self.rpc_chain_cache_dir(chain_id)?.join("block"))
+    }
+
+    /// Returns the path to the cached transaction information on the `chain`:
+    /// `<cache_root>/rpc/<chain>/txs`
+    fn rpc_tx_cache_dir(&self, chain_id: impl Into<Chain>) -> Option<PathBuf> {
+        Some(self.rpc_chain_cache_dir(chain_id)?.join("txs"))
+    }
+
+    /// Returns the path to the cached transaction receipt on the `chain`:
+    /// `<cache_root>/rpc/<chain>/receipts`
+    fn rpc_receipt_cache_dir(&self, chain_id: impl Into<Chain>) -> Option<PathBuf> {
+        Some(self.rpc_chain_cache_dir(chain_id)?.join("receipts"))
+    }
+
     /// Returns the path to the cache dir of the `block` on the `chain`:
-    /// `<cache_root>/rpc/<chain>/<block>`
-    fn rpc_block_cache_dir(&self, chain_id: impl Into<Chain>, block: u64) -> Option<PathBuf> {
-        Some(self.rpc_chain_cache_dir(chain_id)?.join(format!("{block}")))
+    /// `<cache_root>/rpc/<chain>/storage`
+    fn rpc_storage_cache_dir(&self, chain_id: impl Into<Chain>) -> Option<PathBuf> {
+        Some(self.rpc_chain_cache_dir(chain_id)?.join("storage"))
     }
 
     /// Returns the path to the cache file of the `block` on the `chain`:
     /// `<cache_root>/rpc/<chain>/<block>/storage.json`
-    fn rpc_block_cache_file(&self, chain_id: impl Into<Chain>, block: u64) -> Option<PathBuf> {
-        Some(self.rpc_block_cache_dir(chain_id, block)?.join("storage.json"))
+    fn rpc_storage_cache_file(&self, chain_id: impl Into<Chain>, block: u64) -> Option<PathBuf> {
+        Some(self.rpc_storage_cache_dir(chain_id)?.join(format!("{block}.json")))
     }
 
     /// Returns the path to edb's etherscan cache dir: `<cache_root>/etherscan`.
