@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use alloy_primitives::TxHash;
 use alloy_provider::Provider;
@@ -13,7 +13,7 @@ use foundry_evm::{fork::database::ForkedDatabase, utils::new_evm_with_inspector}
 use revm::{inspectors::NoOpInspector, primitives::EnvWithHandlerCfg};
 
 use crate::{
-    opts::{EtherscanOpts, RpcOpts},
+    opts::{CacheOpts, EtherscanOpts, RpcOpts},
     utils::{
         api_keys::next_etherscan_api_key,
         evm::{fill_tx_env, setup_block_env, setup_fork_db},
@@ -33,17 +33,12 @@ pub struct ReplayArgs {
     #[arg(long, short)]
     pub quick: bool,
 
-    /// Do not use any cached data. This is mainly used for debugging.
-    #[arg(long)]
-    pub no_cache: bool,
-
-    /// Cache root. This is conflicting with `no_cache`.
-    #[arg(long, conflicts_with = "no_cache")]
-    pub cache_root: Option<PathBuf>,
-
     /// Skips validation of transactions replayed before the target transaction.
     #[arg(long)]
     pub no_validation: bool,
+
+    #[command(flatten)]
+    pub cache: CacheOpts,
 
     #[command(flatten)]
     pub etherscan: EtherscanOpts,
@@ -74,27 +69,18 @@ impl ReplayArgs {
     #[allow(unused_mut, unused_variables, unreachable_code)]
     // XXX: Remove this after finishing the backend design
     pub async fn debug(&self, db: ForkedDatabase, env: EnvWithHandlerCfg) -> Result<()> {
-        let debug_artifact = if self.no_cache {
-            DebugBackend::<ForkedDatabase>::builder()
-                .chain(self.etherscan.chain.unwrap_or_default())
-                .etherscan_api_key(self.etherscan.key().unwrap_or_default())
-                .build::<ForkedDatabase>(&db, env)?
-                .analyze()
-                .await?
-        } else {
-            let cache = CachePath::new(self.cache_root.clone());
-            let chain_id = self.etherscan.chain.unwrap_or_default();
-            DebugBackend::<ForkedDatabase>::builder()
-                .chain(self.etherscan.chain.unwrap_or_default())
-                .etherscan_api_key(self.etherscan.key().unwrap_or_default())
-                .compiler_cache_root(cache.edb_compiler_chain_cache_dir(chain_id))
-                .etherscan_cache_root(cache.edb_etherscan_chain_cache_dir(chain_id))
-                .etherscan_cache_ttl(Duration::from_secs(u32::MAX as u64))
-                .cache_root(cache.edb_backend_chain_cache_dir(chain_id))
-                .build::<ForkedDatabase>(&db, env)?
-                .analyze()
-                .await?
-        };
+        let chain_id = self.etherscan.chain.unwrap_or_default();
+        let cache = self.cache.cache_path();
+        let debug_artifact = DebugBackend::<ForkedDatabase>::builder()
+            .chain(self.etherscan.chain.unwrap_or_default())
+            .etherscan_api_key(self.etherscan.key().unwrap_or_default())
+            .compiler_cache_root(cache.compiler_chain_cache_dir(chain_id))
+            .etherscan_cache_root(cache.etherscan_chain_cache_dir(chain_id))
+            .etherscan_cache_ttl(Duration::from_secs(u32::MAX as u64))
+            .cache_root(cache.backend_chain_cache_dir(chain_id))
+            .build::<ForkedDatabase>(&db, env)?
+            .analyze()
+            .await?;
 
         let mut frontend = DebugFrontend::builder().build(debug_artifact);
         todo!("Implement the backend for the frontend");
@@ -113,14 +99,7 @@ impl ReplayArgs {
         let fork_url = rpc.url(true)?.unwrap().to_string();
 
         // step 0. prepare rpc provider
-        let compute_units_per_second =
-            if rpc.no_rate_limit { Some(u64::MAX) } else { rpc.compute_units_per_second };
-        let mut provider_builder = foundry_common::provider::ProviderBuilder::new(&fork_url)
-            .compute_units_per_second_opt(compute_units_per_second);
-        if let Some(jwt) = rpc.jwt_secret.as_deref() {
-            provider_builder = provider_builder.jwt(jwt);
-        }
-        let provider = Arc::new(provider_builder.build()?);
+        let provider = Arc::new(rpc.provider(true)?);
         ensure!(
             provider.get_chain_id().await? == chain.unwrap_or_default().id(),
             "inconsistent chain id"
@@ -144,12 +123,10 @@ impl ReplayArgs {
 
         // step 2. set enviroment and database
         // note that database should be set to tx_block_number - 1
-        let cache_path = if self.no_cache {
-            None
-        } else {
-            CachePath::new(self.cache_root.clone())
-                .edb_block_cache_file(chain.unwrap_or_default(), tx_block_number - 1)
-        };
+        let cache_path = self
+            .cache
+            .cache_path()
+            .rpc_block_cache_file(chain.unwrap_or_default(), tx_block_number - 1);
         let mut db =
             setup_fork_db(Arc::clone(&provider), &fork_url, Some(tx_block_number - 1), cache_path)
                 .await?;
@@ -217,7 +194,7 @@ impl ReplayArgs {
 
 #[cfg(test)]
 mod tests {
-    use std::{env, str::FromStr, time::Duration};
+    use std::{env, path::PathBuf, str::FromStr, time::Duration};
 
     use super::*;
     use serial_test::serial;
@@ -227,10 +204,12 @@ mod tests {
             tx_hash: TxHash::from_str(tx_hash)?,
             quick: false,
             no_validation: false,
-            no_cache: false,
-            cache_root: Some(
-                PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/cache"),
-            ),
+            cache: CacheOpts {
+                no_cache: false,
+                cache_root: Some(
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../testdata/cache"),
+                ),
+            },
             etherscan: EtherscanOpts { key: Some(next_etherscan_api_key()), ..Default::default() },
             rpc: RpcOpts {
                 url: Some("https://rpc.mevblocker.io".to_string()),
@@ -241,17 +220,17 @@ mod tests {
             },
         };
 
-        let cache = CachePath::new(args.cache_root.clone());
+        let cache = args.cache.cache_path();
         let chain_id = args.etherscan.chain.unwrap_or_default();
 
         let (db, env) = args.prepare().await?;
         let backend = DebugBackend::<ForkedDatabase>::builder()
             .chain(args.etherscan.chain.unwrap_or_default())
             .etherscan_api_key(args.etherscan.key().unwrap_or_default())
-            .etherscan_cache_root(cache.edb_etherscan_chain_cache_dir(chain_id))
+            .etherscan_cache_root(cache.etherscan_chain_cache_dir(chain_id))
             .etherscan_cache_ttl(Duration::from_secs(u32::MAX as u64)) // we don't want the cache to expire
-            .compiler_cache_root(cache.edb_compiler_chain_cache_dir(chain_id))
-            .cache_root(cache.edb_backend_chain_cache_dir(chain_id))
+            .compiler_cache_root(cache.compiler_chain_cache_dir(chain_id))
+            .cache_root(cache.backend_chain_cache_dir(chain_id))
             .build::<ForkedDatabase>(&db, env)?;
         let _ = backend.analyze().await?;
 

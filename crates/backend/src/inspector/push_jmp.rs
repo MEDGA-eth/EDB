@@ -315,8 +315,13 @@ impl<'a> PushJumpInspector<'a> {
                                 _ => false,
                             }
                         }) {
-                            debug!(r_addr=?r_addr, pc=pc, label=?label, targets=?targets, "refine call jump");
-                            debug_assert!(JumpLabel::Call >= *label, "failed to refine jump label");
+                            // Three contiguous instructions (including the jump instruction) are in
+                            // the same statement, and the jump targets are all in different
+                            // functions. We will refine the jump label to `Call`.
+                            debug_assert!(
+                                JumpLabel::Call >= *label,
+                                "failed to refine jump label: r_addr={r_addr:?}, pc={pc}, label={label:?}, targets={targets:?}"
+                            );
                             *label = JumpLabel::Call;
                         }
                     }
@@ -404,6 +409,9 @@ impl<'a> PushJumpInspector<'a> {
                     // Rule 3: any push instruction used by a call jump is to push a callee
                     // address.
                     if let Some(pushes) = jump_pushes.get(&pc) {
+                        // We do not further propogate the callee address information. It is because
+                        // there is not indirect call in Solidity, so in
+                        // most cases, we already handle the callee address.
                         for push_pc in pushes {
                             self.push_labels.ordered_insert(
                                 r_addr,
@@ -776,12 +784,6 @@ where
                     // }
                     // ```
                 } else {
-                    // Heuristic: if the jump instruction does not use any recorded stack-pushed
-                    // values, i.e., the target address is not directly pushed onto stack but
-                    // calculated from other operations, we will treat it as a
-                    // call jump.
-                    //
-                    // FIXME (ZZ): fix it later
                     trace!(addr=?r_addr, pc=pc, "we cannot determine the jump target value");
                     self.jump_labels.or_insert(r_addr, pc, JumpLabel::Unknown);
                 }

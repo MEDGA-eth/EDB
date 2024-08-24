@@ -21,5 +21,6 @@ fn main() -> Result<()> {
         EDBSubcommand::Replay(cmd) => utils::block_on(cmd.run()),
         EDBSubcommand::Script(cmd) => utils::block_on(cmd.run()),
         EDBSubcommand::Test(cmd) => utils::block_on(cmd.run()),
+        EDBSubcommand::Disasm(cmd) => utils::block_on(cmd.run()),
     }
 }

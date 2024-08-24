@@ -4,73 +4,90 @@ use alloy_chains::Chain;
 use eyre::Result;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-pub struct CachePath {
-    root: Option<PathBuf>,
-}
-
-impl CachePath {
-    /// New cache path.
-    pub fn new(root: Option<impl Into<PathBuf>>) -> Self {
-        Self { root: root.map(Into::into) }
-    }
-
+pub trait CachePath {
     /// Returns the path to edb's cache dir: `~/.edb/cache` by default.
-    pub fn edb_cache_dir(&self) -> Option<PathBuf> {
-        self.root.clone().or_else(|| dirs_next::home_dir().map(|p| p.join(".edb").join("cache")))
-    }
+    fn edb_cache_dir(&self) -> Option<PathBuf>;
 
     /// Returns the path to edb rpc cache dir: `<cache_root>/rpc`.
-    pub fn edb_rpc_cache_dir(&self) -> Option<PathBuf> {
+    fn edb_rpc_cache_dir(&self) -> Option<PathBuf> {
         Some(self.edb_cache_dir()?.join("rpc"))
     }
     /// Returns the path to edb chain's cache dir: `<cache_root>/rpc/<chain>`
-    pub fn edb_chain_cache_dir(&self, chain_id: impl Into<Chain>) -> Option<PathBuf> {
+    fn rpc_chain_cache_dir(&self, chain_id: impl Into<Chain>) -> Option<PathBuf> {
         Some(self.edb_rpc_cache_dir()?.join(chain_id.into().to_string()))
     }
 
     /// Returns the path to the cache dir of the `block` on the `chain`:
     /// `<cache_root>/rpc/<chain>/<block>`
-    pub fn edb_block_cache_dir(&self, chain_id: impl Into<Chain>, block: u64) -> Option<PathBuf> {
-        Some(self.edb_chain_cache_dir(chain_id)?.join(format!("{block}")))
+    fn rpc_block_cache_dir(&self, chain_id: impl Into<Chain>, block: u64) -> Option<PathBuf> {
+        Some(self.rpc_chain_cache_dir(chain_id)?.join(format!("{block}")))
     }
 
     /// Returns the path to the cache file of the `block` on the `chain`:
     /// `<cache_root>/rpc/<chain>/<block>/storage.json`
-    pub fn edb_block_cache_file(&self, chain_id: impl Into<Chain>, block: u64) -> Option<PathBuf> {
-        Some(self.edb_block_cache_dir(chain_id, block)?.join("storage.json"))
+    fn rpc_block_cache_file(&self, chain_id: impl Into<Chain>, block: u64) -> Option<PathBuf> {
+        Some(self.rpc_block_cache_dir(chain_id, block)?.join("storage.json"))
     }
 
     /// Returns the path to edb's etherscan cache dir: `<cache_root>/etherscan`.
-    pub fn edb_etherscan_cache_dir(&self) -> Option<PathBuf> {
+    fn etherscan_cache_dir(&self) -> Option<PathBuf> {
         Some(self.edb_cache_dir()?.join("etherscan"))
     }
 
     /// Returns the path to edb's etherscan cache dir for `chain_id`:
     /// `<cache_root>/etherscan/<chain>`
-    pub fn edb_etherscan_chain_cache_dir(&self, chain_id: impl Into<Chain>) -> Option<PathBuf> {
-        Some(self.edb_etherscan_cache_dir()?.join(chain_id.into().to_string()))
+    fn etherscan_chain_cache_dir(&self, chain_id: impl Into<Chain>) -> Option<PathBuf> {
+        Some(self.etherscan_cache_dir()?.join(chain_id.into().to_string()))
     }
 
     /// Returns the path to edb's compiler cache dir: `<cache_root>/solc`.
-    pub fn edb_compiler_cache_dir(&self) -> Option<PathBuf> {
+    fn compiler_cache_dir(&self) -> Option<PathBuf> {
         Some(self.edb_cache_dir()?.join("solc"))
     }
 
     /// Returns the path to edb's compiler cache dir for `chain_id`:
     /// `<cache_root>/solc/<chain>`
-    pub fn edb_compiler_chain_cache_dir(&self, chain_id: impl Into<Chain>) -> Option<PathBuf> {
-        Some(self.edb_compiler_cache_dir()?.join(chain_id.into().to_string()))
+    fn compiler_chain_cache_dir(&self, chain_id: impl Into<Chain>) -> Option<PathBuf> {
+        Some(self.compiler_cache_dir()?.join(chain_id.into().to_string()))
     }
 
     /// Returns the path to edb's backend cache dir: `<cache_root>/backend`.
-    pub fn edb_backend_cache_dir(&self) -> Option<PathBuf> {
+    fn backend_cache_dir(&self) -> Option<PathBuf> {
         Some(self.edb_cache_dir()?.join("backend"))
     }
 
     /// Returns the path to edb's backend cache dir for `chain_id`:
     /// `<cache_root>/backend/<chain>`
-    pub fn edb_backend_chain_cache_dir(&self, chain_id: impl Into<Chain>) -> Option<PathBuf> {
-        Some(self.edb_backend_cache_dir()?.join(chain_id.into().to_string()))
+    fn backend_chain_cache_dir(&self, chain_id: impl Into<Chain>) -> Option<PathBuf> {
+        Some(self.backend_cache_dir()?.join(chain_id.into().to_string()))
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct EDBCachePath {
+    root: Option<PathBuf>,
+}
+
+impl EDBCachePath {
+    /// New cache path.
+    pub fn new(root: Option<impl Into<PathBuf>>) -> Self {
+        Self {
+            root: root
+                .map(Into::into)
+                .or_else(|| dirs_next::home_dir().map(|p| p.join(".edb").join("cache"))),
+        }
+    }
+}
+
+impl CachePath for EDBCachePath {
+    fn edb_cache_dir(&self) -> Option<PathBuf> {
+        self.root.clone()
+    }
+}
+
+impl CachePath for Option<EDBCachePath> {
+    fn edb_cache_dir(&self) -> Option<PathBuf> {
+        self.as_ref()?.edb_cache_dir()
     }
 }
 
@@ -95,45 +112,59 @@ impl<T> CacheWrapper<T> {
     }
 }
 
+pub trait Cache {
+    type Data: Serialize + DeserializeOwned;
+
+    fn load_cache(&self, label: impl Into<String>) -> Option<Self::Data>;
+    fn save_cache(&self, label: impl Into<String>, data: &Self::Data) -> Result<()>;
+}
+
 /// A cache manager that stores data in the file system.
 ///  - `T` is the type of the data to be cached.
 ///  - `cache_dir` is the directory where the cache files are stored.
 ///  - `cache_ttl` is the time-to-live of the cache files. If it is `None`, the cache files will
 ///    never expire.
 #[derive(Debug, Clone)]
-pub struct Cache<T> {
-    cache_dir: Option<PathBuf>,
+pub struct EDBCache<T> {
+    cache_dir: PathBuf,
     cache_ttl: Option<Duration>,
     phantom: PhantomData<T>,
 }
 
-impl<T> Cache<T>
+impl<T> EDBCache<T>
 where
     T: Serialize + DeserializeOwned,
 {
-    pub fn new(cache_dir: Option<impl Into<PathBuf>>, cache_ttl: Option<Duration>) -> Result<Self> {
-        let cache_dir = cache_dir
-            .map(|p| {
-                let p = p.into();
-                fs::create_dir_all(&p)?;
-                Ok::<_, std::io::Error>(p)
-            })
-            .transpose()?;
-
-        Ok(Self { cache_dir, cache_ttl, phantom: PhantomData })
+    pub fn new(
+        cache_dir: Option<impl Into<PathBuf>>,
+        cache_ttl: Option<Duration>,
+    ) -> Result<Option<Self>> {
+        if let Some(cache_dir) = cache_dir {
+            let cache_dir = cache_dir.into();
+            fs::create_dir_all(&cache_dir)?;
+            Ok(Some(Self { cache_dir, cache_ttl, phantom: PhantomData }))
+        } else {
+            Ok(None)
+        }
     }
 
-    pub fn cache_dir(&self) -> Option<&PathBuf> {
-        self.cache_dir.as_ref()
+    pub fn cache_dir(&self) -> &PathBuf {
+        &self.cache_dir
     }
 
     pub fn cache_ttl(&self) -> Option<Duration> {
         self.cache_ttl
     }
+}
 
-    pub fn load_cache(&self, label: impl Into<String>) -> Option<T> {
-        let cache_dir = self.cache_dir()?;
-        let cache_file = cache_dir.join(format!("{}.json", label.into()));
+impl<T> Cache for EDBCache<T>
+where
+    T: Serialize + DeserializeOwned,
+{
+    type Data = T;
+
+    fn load_cache(&self, label: impl Into<String>) -> Option<T> {
+        let cache_file = self.cache_dir.join(format!("{}.json", label.into()));
         trace!("loading cache: {:?}", cache_file);
         if !cache_file.exists() {
             return None;
@@ -158,15 +189,30 @@ where
         }
     }
 
-    pub fn save_cache(&self, label: impl Into<String>, data: &T) -> Result<()> {
-        if let Some(cache_dir) = self.cache_dir() {
-            let cache_file = cache_dir.join(format!("{}.json", label.into()));
-            trace!("saving cache: {:?}", cache_file);
+    fn save_cache(&self, label: impl Into<String>, data: &T) -> Result<()> {
+        let cache_file = self.cache_dir.join(format!("{}.json", label.into()));
+        trace!("saving cache: {:?}", cache_file);
 
-            let cache = CacheWrapper::new(data, self.cache_ttl);
-            let content = serde_json::to_string(&cache)?;
-            fs::write(&cache_file, content)?;
-            Ok(())
+        let cache = CacheWrapper::new(data, self.cache_ttl);
+        let content = serde_json::to_string(&cache)?;
+        fs::write(&cache_file, content)?;
+        Ok(())
+    }
+}
+
+impl<T> Cache for Option<EDBCache<T>>
+where
+    T: Serialize + DeserializeOwned,
+{
+    type Data = T;
+
+    fn load_cache(&self, label: impl Into<String>) -> Option<T> {
+        self.as_ref()?.load_cache(label)
+    }
+
+    fn save_cache(&self, label: impl Into<String>, data: &T) -> Result<()> {
+        if let Some(cache) = self {
+            cache.save_cache(label, data)
         } else {
             Ok(())
         }

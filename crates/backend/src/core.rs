@@ -2,7 +2,12 @@ use std::{collections::BTreeMap, fmt::Debug, path::PathBuf, time::Duration};
 
 use alloy_chains::Chain;
 use alloy_primitives::Address;
-use edb_utils::{cache::Cache, init_progress, onchain_compiler::OnchainCompiler, update_progress};
+use edb_utils::{
+    cache::{Cache, EDBCache},
+    init_progress,
+    onchain_compiler::OnchainCompiler,
+    update_progress,
+};
 use eyre::{eyre, Result};
 use foundry_block_explorers::Client;
 use foundry_compilers::artifacts::Severity;
@@ -14,7 +19,7 @@ use revm::{
 
 /// Default cache TTL for etherscan.
 /// Set to 1 day since the source code of a contract is unlikely to change frequently.
-const DEFAULT_CACHE_TTL: u64 = 86400;
+const DEFAULT_ETHERSCAN_CACHE_TTL: u64 = 86400;
 
 use crate::{
     analysis::source_map::{RefinedSourceMap, SourceMapAnalysis},
@@ -110,12 +115,12 @@ impl DebugBackendBuilder {
         DBRef: DatabaseRef,
         DBRef::Error: std::error::Error,
     {
-        debug!("building debug backend with {:?}", self);
+        trace!("building debug backend with {:?}", self);
 
         // XXX: the following code looks bad and needs to be refactored
         let cb = Client::builder().with_cache(
             self.etherscan_cache_root,
-            self.etherscan_cache_ttl.unwrap_or(Duration::from_secs(DEFAULT_CACHE_TTL)),
+            self.etherscan_cache_ttl.unwrap_or(Duration::from_secs(DEFAULT_ETHERSCAN_CACHE_TTL)),
         );
         let cb = if let Some(chain) = self.chain { cb.chain(chain)? } else { cb };
         let cb = if let Some(api_key) = self.api_key { cb.with_api_key(api_key) } else { cb };
@@ -128,7 +133,7 @@ impl DebugBackendBuilder {
 
         let cache_root = self.cache_root;
         // We do not set the cache TTL for the backend cache.
-        let cache = Cache::new(cache_root, None)?;
+        let cache = EDBCache::new(cache_root, None)?;
 
         Ok(DebugBackend {
             deploy_artifacts,
@@ -155,7 +160,7 @@ pub struct DebugBackend<DBRef> {
     pub deploy_artifacts: BTreeMap<Address, DeployArtifact>,
 
     /// Cache for backend
-    pub cache: Cache<DeployArtifact>,
+    pub cache: Option<EDBCache<DeployArtifact>>,
 
     // Etherscan client
     etherscan: Client,
@@ -255,7 +260,7 @@ where
                 None => {
                     // get the deployed bytecode
                     let deployed_bytecode = db::get_code(&mut db, addr.address)?;
-                    debug!(addr=?addr.address, len=deployed_bytecode.len(), "fetching deployed bytecode from database");
+                    trace!(addr=?addr.address, len=deployed_bytecode.len(), "fetching deployed bytecode from database");
 
                     // compile the source code
                     if let Some((meta, sources, output)) =

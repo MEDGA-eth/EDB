@@ -2,6 +2,7 @@ use std::borrow::Cow;
 
 use clap::Parser;
 use eyre::Result;
+use foundry_common::provider::{ProviderBuilder, RetryProvider};
 
 const FLASHBOTS_URL: &str = "https://rpc.flashbots.net/fast";
 const LOCALHOST_URL: &str = "http://localhost:8545";
@@ -65,5 +66,23 @@ impl RpcOpts {
     /// Returns the JWT secret.
     pub fn jwt(&self) -> Result<Option<Cow<'_, str>>> {
         Ok(self.jwt_secret.as_deref().map(Cow::Borrowed))
+    }
+
+    /// Create a RPC provider.
+    pub fn provider(&self, fallback_to_default: bool) -> Result<RetryProvider> {
+        let fork_url = self.url(fallback_to_default)?.unwrap().to_string();
+        let compute_units_per_second =
+            if self.no_rate_limit { Some(u64::MAX) } else { self.compute_units_per_second };
+
+        let mut provider_builder =
+            ProviderBuilder::new(&fork_url).compute_units_per_second_opt(compute_units_per_second);
+
+        if let Some(jwt) = self.jwt_secret.as_deref() {
+            provider_builder = provider_builder.jwt(jwt);
+        }
+
+        let provider = provider_builder.build()?;
+
+        Ok(provider)
     }
 }

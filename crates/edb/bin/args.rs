@@ -1,4 +1,4 @@
-use crate::cmd::{replay::ReplayArgs, script::ScriptArgs, test::TestArgs};
+use crate::cmd::{disasm::DisasmArgs, replay::ReplayArgs, script::ScriptArgs, test::TestArgs};
 use clap::{Parser, Subcommand};
 
 const VERSION_MESSAGE: &str = concat!(
@@ -37,6 +37,11 @@ pub enum EDBSubcommand {
     /// Debug a test case.
     #[command(visible_alias = "t")]
     Test(TestArgs),
+
+    /// Disassemble a contract, if source code is avaiable, a refined source-mapped information
+    /// will be displayed as well.
+    #[command(visible_alias = "d")]
+    Disasm(DisasmArgs),
 }
 
 #[cfg(test)]

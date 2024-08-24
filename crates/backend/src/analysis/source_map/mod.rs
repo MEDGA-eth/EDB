@@ -137,8 +137,7 @@ mod tests {
 
     use alloy_chains::Chain;
     use alloy_primitives::Address;
-    use edb_utils::cache::Cache;
-    use eyre::OptionExt;
+    use edb_utils::cache::{Cache, EDBCache};
     use serial_test::serial;
 
     use crate::artifact::deploy::DeployArtifact;
@@ -150,7 +149,7 @@ mod tests {
         let cache_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../testdata/cache/backend")
             .join(chain.to_string());
-        let cache = Cache::new(Some(cache_root), None)?;
+        let cache = EDBCache::new(Some(cache_root), None)?;
         let artifact: DeployArtifact =
             cache.load_cache(addr.to_string()).ok_or_eyre("missing cached artifact")?;
 

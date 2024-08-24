@@ -121,7 +121,7 @@ impl DeployArtifactBuilder {
                 }
             })
             .collect::<HashMap<_, _>>();
-        debug!(name=contract_name, addr=?onchain_address, n=matched_contracts.len(), "contracts with the same name");
+        trace!(name=contract_name, addr=?onchain_address, n=matched_contracts.len(), "contracts with the same name");
 
         if matched_contracts.is_empty() {
             return Err(eyre!("no contract with the same name found"));

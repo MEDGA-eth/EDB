@@ -8,20 +8,23 @@ use foundry_compilers::{
     solc::{Solc, SolcLanguage},
 };
 
-use crate::{cache::Cache, etherscan_rate_limit_guard};
+use crate::{
+    cache::{Cache, EDBCache},
+    etherscan_rate_limit_guard,
+};
 
 type CompileOutput = (Metadata, Sources, CompilerOutput);
 
 #[derive(Debug, Clone)]
 pub struct OnchainCompiler {
-    pub cache: Cache<CompileOutput>,
+    pub cache: Option<EDBCache<CompileOutput>>,
 }
 
 impl OnchainCompiler {
     pub fn new(cache_root: Option<PathBuf>) -> Result<Self> {
         Ok(Self {
             // None for no expiry
-            cache: Cache::new(cache_root, None)?,
+            cache: EDBCache::new(cache_root, None)?,
         })
     }
 
@@ -59,7 +62,7 @@ impl OnchainCompiler {
             let mut settings = meta.settings()?;
             // enforce compiler output all possible outputs
             settings.output_selection = OutputSelection::complete_output_selection();
-            debug!(addr=?addr, settings=?settings, "using settings");
+            trace!(addr=?addr, settings=?settings, "using settings");
 
             // prepare the sources
             let sources = meta
@@ -72,7 +75,7 @@ impl OnchainCompiler {
             // prepare the compiler
             let version = meta.compiler_version()?;
             let compiler = Solc::find_or_install(&version)?;
-            debug!(addr=?addr, compiler=?compiler, "using compiler");
+            trace!(addr=?addr, compiler=?compiler, "using compiler");
 
             // compile the source code
             let output = match compiler.compile_exact(&input) {
