@@ -28,6 +28,8 @@ dirs-next = "2"
 eyre.workspace = true
 foundry-compilers = { workspace = true, features = ["svm-solc", "async"] }
 foundry-block-explorers = { workspace = true, features = ["foundry-compilers"] }
+once_cell.workspace = true
+rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio = { workspace = true, features = ["full"] }

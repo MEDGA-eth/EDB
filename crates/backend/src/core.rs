@@ -1,9 +1,10 @@
-use std::{collections::BTreeMap, fmt::Debug, path::PathBuf, time::Duration};
+use std::{collections::BTreeMap, fmt::Debug, time::Duration};
 
 use alloy_chains::Chain;
 use alloy_primitives::Address;
 use edb_utils::{
-    cache::{Cache, EDBCache},
+    api_keys,
+    cache::{Cache, CachePath, EDBCache, EDBCachePath},
     init_progress,
     onchain_compiler::OnchainCompiler,
     update_progress,
@@ -34,12 +35,9 @@ use crate::{
 
 #[derive(Debug, Default)]
 pub struct DebugBackendBuilder {
+    cache_path: Option<EDBCachePath>,
     chain: Option<Chain>,
-    api_key: Option<String>,
-    cache_root: Option<PathBuf>,
-    compiler_cache_root: Option<PathBuf>,
-    etherscan_cache_root: Option<PathBuf>,
-    etherscan_cache_ttl: Option<Duration>,
+    client: Option<Client>,
 
     // Deployment artifact from local file system
     // XXX (ZZ): let's support them later
@@ -47,45 +45,21 @@ pub struct DebugBackendBuilder {
 }
 
 impl DebugBackendBuilder {
-    /// Set the chain to use.
-    /// If not set, the default chain will be used.
-    pub fn chain(mut self, chain: Chain) -> Self {
-        self.chain = Some(chain);
+    /// Set the cache path. If not set, no cache will be used.
+    pub fn cache_path(mut self, path: Option<EDBCachePath>) -> Self {
+        self.cache_path = path;
         self
     }
 
-    /// Set the cache root directory.
-    /// If not set, the default cache directory will be used.
-    pub fn etherscan_cache_root(mut self, path: Option<PathBuf>) -> Self {
-        self.etherscan_cache_root = path;
+    /// Set the etherscan client. If not set, a default client will be used.
+    pub fn etherscan_client(mut self, client: Option<Client>) -> Self {
+        self.client = client;
         self
     }
 
-    /// Set the cache TTL.
-    /// If not set, the default cache TTL will be used.
-    pub fn etherscan_cache_ttl(mut self, duration: Duration) -> Self {
-        self.etherscan_cache_ttl = Some(duration);
-        self
-    }
-
-    /// Set the compiler cache root directory.
-    /// If not set, the default compiler cache directory will be used.
-    pub fn compiler_cache_root(mut self, path: Option<PathBuf>) -> Self {
-        self.compiler_cache_root = path;
-        self
-    }
-
-    /// Set the backend cache root directory.
-    /// If not set, the default backend cache directory will be used.
-    pub fn cache_root(mut self, path: Option<PathBuf>) -> Self {
-        self.cache_root = path;
-        self
-    }
-
-    /// Set the etherscan API key.
-    /// If not set, a blank API key will be used.
-    pub fn etherscan_api_key(mut self, etherscan_api_key: String) -> Self {
-        self.api_key = Some(etherscan_api_key);
+    /// Set the chain. If not set, the default chain will be used.
+    pub fn chain(mut self, chain: Option<Chain>) -> Self {
+        self.chain = chain;
         self
     }
 
@@ -117,23 +91,31 @@ impl DebugBackendBuilder {
     {
         trace!("building debug backend with {:?}", self);
 
-        // XXX: the following code looks bad and needs to be refactored
-        let cb = Client::builder().with_cache(
-            self.etherscan_cache_root,
-            self.etherscan_cache_ttl.unwrap_or(Duration::from_secs(DEFAULT_ETHERSCAN_CACHE_TTL)),
-        );
-        let cb = if let Some(chain) = self.chain { cb.chain(chain)? } else { cb };
-        let cb = if let Some(api_key) = self.api_key { cb.with_api_key(api_key) } else { cb };
-        let client = cb.build()?;
+        let chain = self.chain.unwrap_or_default();
 
-        let compiler_cache_root = self.compiler_cache_root;
+        let mut client = self.client.map_or_else(
+            || {
+                Client::builder()
+                    .chain(chain)?
+                    .with_api_key(api_keys::next_etherscan_api_key())
+                    .build()
+            },
+            Ok,
+        )?;
 
-        let deploy_artifacts = self.deploy_artifacts.unwrap_or_default();
+        if let Some(etherscan_cache_path) = self.cache_path.etherscan_chain_cache_dir(chain) {
+            client
+                .set_cache(etherscan_cache_path, Duration::from_secs(DEFAULT_ETHERSCAN_CACHE_TTL));
+        }
+
+        let compiler_cache_root = self.cache_path.compiler_chain_cache_dir(chain);
         let compiler = OnchainCompiler::new(compiler_cache_root)?;
 
-        let cache_root = self.cache_root;
+        let cache_root = self.cache_path.backend_chain_cache_dir(chain);
         // We do not set the cache TTL for the backend cache.
         let cache = EDBCache::new(cache_root, None)?;
+
+        let deploy_artifacts = self.deploy_artifacts.unwrap_or_default();
 
         Ok(DebugBackend {
             deploy_artifacts,

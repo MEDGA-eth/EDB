@@ -6,6 +6,7 @@ use clap::{
     Parser,
 };
 use eyre::Result;
+use foundry_block_explorers::Client;
 use serde::Serialize;
 use strum::VariantNames;
 
@@ -78,5 +79,22 @@ impl EtherscanOpts {
     /// Returns the Etherscan API key.
     pub fn key(&self) -> Option<String> {
         self.key.as_ref().filter(|key| !key.trim().is_empty()).cloned()
+    }
+
+    /// Returns the chain.
+    pub fn chain(&self) -> Chain {
+        self.chain.unwrap_or_default()
+    }
+
+    /// Create an Etherscan Client.
+    pub fn client(&self) -> Result<Client> {
+        let chain = self.chain();
+        let cb = Client::builder().chain(chain)?;
+
+        if let Some(key) = self.key() {
+            Ok(cb.with_api_key(key).build()?)
+        } else {
+            Ok(cb.build()?)
+        }
     }
 }

@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 
 use alloy_primitives::TxHash;
 use alloy_provider::Provider;
@@ -6,7 +6,9 @@ use alloy_rpc_types::{BlockTransactions, BlockTransactionsKind};
 use clap::Parser;
 use edb_backend::DebugBackend;
 use edb_frontend::DebugFrontend;
-use edb_utils::{cache::CachePath, init_progress, update_progress};
+use edb_utils::{
+    api_keys::next_etherscan_api_key, cache::CachePath, init_progress, update_progress,
+};
 use eyre::{ensure, OptionExt, Result};
 use foundry_common::{is_known_system_sender, SYSTEM_TRANSACTION_TYPE};
 use foundry_evm::{fork::database::ForkedDatabase, utils::new_evm_with_inspector};
@@ -14,10 +16,7 @@ use revm::{inspectors::NoOpInspector, primitives::EnvWithHandlerCfg};
 
 use crate::{
     opts::{CacheOpts, EtherscanOpts, RpcOpts},
-    utils::{
-        api_keys::next_etherscan_api_key,
-        evm::{fill_tx_env, setup_block_env, setup_fork_db},
-    },
+    utils::evm::{fill_tx_env, setup_block_env, setup_fork_db},
 };
 
 /// CLI arguments for `edb replay`.
@@ -69,15 +68,13 @@ impl ReplayArgs {
     #[allow(unused_mut, unused_variables, unreachable_code)]
     // XXX: Remove this after finishing the backend design
     pub async fn debug(&self, db: ForkedDatabase, env: EnvWithHandlerCfg) -> Result<()> {
-        let chain_id = self.etherscan.chain.unwrap_or_default();
-        let cache = self.cache.cache_path();
+        let chain = self.etherscan.chain();
+        let client = self.etherscan.client()?;
+        let cache_path = self.cache.cache_path();
         let debug_artifact = DebugBackend::<ForkedDatabase>::builder()
-            .chain(self.etherscan.chain.unwrap_or_default())
-            .etherscan_api_key(self.etherscan.key().unwrap_or_default())
-            .compiler_cache_root(cache.compiler_chain_cache_dir(chain_id))
-            .etherscan_cache_root(cache.etherscan_chain_cache_dir(chain_id))
-            .etherscan_cache_ttl(Duration::from_secs(u32::MAX as u64))
-            .cache_root(cache.backend_chain_cache_dir(chain_id))
+            .chain(Some(chain))
+            .cache_path(cache_path)
+            .etherscan_client(Some(client))
             .build::<ForkedDatabase>(&db, env)?
             .analyze()
             .await?;
@@ -194,7 +191,7 @@ impl ReplayArgs {
 
 #[cfg(test)]
 mod tests {
-    use std::{env, path::PathBuf, str::FromStr, time::Duration};
+    use std::{env, path::PathBuf, str::FromStr};
 
     use super::*;
     use serial_test::serial;
@@ -221,16 +218,14 @@ mod tests {
         };
 
         let cache = args.cache.cache_path();
-        let chain_id = args.etherscan.chain.unwrap_or_default();
+        let chain = args.etherscan.chain();
+        let client = args.etherscan.client()?;
 
         let (db, env) = args.prepare().await?;
         let backend = DebugBackend::<ForkedDatabase>::builder()
-            .chain(args.etherscan.chain.unwrap_or_default())
-            .etherscan_api_key(args.etherscan.key().unwrap_or_default())
-            .etherscan_cache_root(cache.etherscan_chain_cache_dir(chain_id))
-            .etherscan_cache_ttl(Duration::from_secs(u32::MAX as u64)) // we don't want the cache to expire
-            .compiler_cache_root(cache.compiler_chain_cache_dir(chain_id))
-            .cache_root(cache.backend_chain_cache_dir(chain_id))
+            .chain(Some(chain))
+            .cache_path(cache)
+            .etherscan_client(Some(client))
             .build::<ForkedDatabase>(&db, env)?;
         let _ = backend.analyze().await?;
 
