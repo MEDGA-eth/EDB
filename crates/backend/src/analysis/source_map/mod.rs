@@ -2,7 +2,7 @@ pub mod debug_unit;
 pub mod integrity;
 pub mod source_label;
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use debug_unit::{DebugUnitAnlaysis, DebugUnits};
 use eyre::{OptionExt, Result};
@@ -20,7 +20,7 @@ pub struct RefinedSourceMap {
     type_id: usize,
 
     /// Debugging units.
-    pub debug_units: Rc<DebugUnits>,
+    pub debug_units: Arc<DebugUnits>,
 
     /// Constructor/Deployed source labels.
     pub labels: SourceLabels,
@@ -94,7 +94,7 @@ impl<'a> AnalysisStore<'a> {
     }
 
     pub fn produce(self) -> Result<[RefinedSourceMap; 2]> {
-        let units = Rc::new(self.debug_units.ok_or_eyre("no debug units found")?);
+        let units = Arc::new(self.debug_units.ok_or_eyre("no debug units found")?);
 
         let [c_labels, d_labels] = self.source_labels.ok_or_eyre("no source labels found")?;
         let [c_map, d_map] = self.source_map.ok_or_eyre("no source map found")?;

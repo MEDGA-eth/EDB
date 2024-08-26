@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt::Debug, time::Duration};
+use std::{collections::BTreeMap, fmt::Debug, sync::Mutex, time::Duration};
 
 use alloy_chains::Chain;
 use alloy_primitives::Address;
@@ -12,6 +12,7 @@ use edb_utils::{
 use eyre::{eyre, Result};
 use foundry_block_explorers::Client;
 use foundry_compilers::artifacts::Severity;
+use rayon::prelude::*;
 use revm::{
     db::CacheDB,
     primitives::{CreateScheme, EnvWithHandlerCfg},
@@ -194,19 +195,22 @@ where
     }
 
     fn analyze_source_map(&mut self) -> Result<BTreeMap<RuntimeAddress, RefinedSourceMap>> {
-        let mut source_maps = BTreeMap::new();
-        for (addr, artifact) in &self.deploy_artifacts {
+        let source_maps = Mutex::new(BTreeMap::new());
+
+        self.deploy_artifacts.par_iter().try_for_each(|(addr, artifact)| -> Result<()> {
             println!("\nanalyzing source map for {addr:#?}");
             debug!("analyzing source map for {addr:#?}");
             let [constructor, deployed] = SourceMapAnalysis::analyze(artifact)?;
             debug_assert!(constructor.is_constructor());
             debug_assert!(deployed.is_deployed());
 
+            let mut source_maps = source_maps.lock().expect("this should not happen");
             source_maps.insert(RuntimeAddress::constructor(*addr), constructor);
             source_maps.insert(RuntimeAddress::deployed(*addr), deployed);
-        }
+            Ok(())
+        })?;
 
-        Ok(source_maps)
+        Ok(source_maps.into_inner()?)
     }
 
     async fn collect_deploy_artifacts(&mut self) -> Result<()> {
