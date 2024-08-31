@@ -1,9 +1,11 @@
+mod call_trace;
 mod debug;
 mod push_jmp;
 mod visited_address;
 
 use std::fmt::Display;
 
+pub use call_trace::CallTraceInspector;
 pub use debug::DebugInspector;
 pub use push_jmp::PushJumpInspector;
 pub use visited_address::VisitedAddrInspector;

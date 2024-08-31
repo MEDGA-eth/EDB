@@ -242,7 +242,7 @@ impl<'a> InfoWrapper<'a> {
         Self { bytecode, info: PushJmpInfo::default() }
     }
 
-    fn per_contract_analysis(&mut self) -> Result<()> {
+    fn heuristic_analysis(&mut self) -> Result<()> {
         let mut callee_addrs = BTreeSet::new();
         let mut return_addrs = BTreeSet::new();
 
@@ -568,8 +568,7 @@ impl<'a> PushJumpInspector<'a> {
     /// We mainly leverage heuristics to determine the label of each push and jump instruction.
     pub fn posterior_analysis(&mut self) -> Result<()> {
         self.info.par_iter_mut().try_for_each(|(_, r_info)| {
-            r_info.per_contract_analysis()?;
-
+            r_info.heuristic_analysis()?;
             Ok(())
         })
     }

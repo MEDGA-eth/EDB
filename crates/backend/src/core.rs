@@ -25,7 +25,7 @@ use crate::{
         debug::{DebugArtifact, DebugNodeFlat},
         deploy::{DeployArtifact, DeployArtifactBuilder},
     },
-    inspector::{DebugInspector, PushJumpInspector, VisitedAddrInspector},
+    inspector::{CallTraceInspector, DebugInspector, PushJumpInspector, VisitedAddrInspector},
     utils::{db, evm::new_evm_with_inspector},
     AnalyzedBytecode, RuntimeAddress,
 };
@@ -169,14 +169,14 @@ where
         self.collect_deploy_artifacts().await?;
 
         let source_maps = self.analyze_source_map()?;
-        self.analyze_call_graph(&source_maps)?;
+        self.analyze_call_trace(&source_maps)?;
 
         let debug_arena = self.collect_debug_trace()?;
 
         Ok(DebugArtifact { debug_arena, deploy_artifacts: self.deploy_artifacts })
     }
 
-    fn analyze_call_graph(
+    fn analyze_call_trace(
         &mut self,
         source_maps: &BTreeMap<RuntimeAddress, RefinedSourceMap>,
     ) -> Result<()> {
@@ -190,6 +190,14 @@ where
 
         #[cfg(debug_assertions)]
         inspector.log_unknown_labels();
+
+        // we then try to construct the fine-grained call trace, which includes the call graph within 
+        // each contract call.
+        let push_jump_info = inspector.extract();
+        let mut inspector = CallTraceInspector::new(&push_jump_info, &self.addresses);
+        let mut evm = new_evm_with_inspector(&mut self.base_db, self.env.clone(), &mut inspector);
+        evm.transact().map_err(|err| eyre!("failed to transact: {}", err))?;
+        drop(evm);
 
         Ok(())
     }
