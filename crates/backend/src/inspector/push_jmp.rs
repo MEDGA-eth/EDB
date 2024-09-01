@@ -24,12 +24,12 @@ use crate::{
 
 use super::AssertionUnwrap;
 
-/// A jump instruction can have three labels (including JUMPI):
+/// A jump instruction can have three hints (including JUMPI):
 ///  - `Block`: this instruction is a block jump.
 ///  - `Call`: this instruction is a call jump.
 ///  - `Ret`: this instruction is a return jump.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum JumpLabel {
+pub enum JumpHint {
     /// This instruction is a block jump.
     Block,
 
@@ -43,7 +43,7 @@ pub enum JumpLabel {
     Unknown,
 }
 
-impl PartialOrd for JumpLabel {
+impl PartialOrd for JumpHint {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match (self, other) {
             (Self::Unknown, Self::Unknown) => Some(std::cmp::Ordering::Equal),
@@ -55,7 +55,7 @@ impl PartialOrd for JumpLabel {
     }
 }
 
-impl Display for JumpLabel {
+impl Display for JumpHint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Block => write!(f, "JUMP::Block"),
@@ -66,7 +66,7 @@ impl Display for JumpLabel {
     }
 }
 
-/// A pushed item can have three labels:
+/// A pushed item can have three hints:
 ///  - `CalleeAddr`: this item has been explictly used as a callee address during execution.
 ///  - `RetAddr`: this item has been explictly used a return address during execution.
 ///  - `BlockAddr`: this item has been explictly used by intra-procedural control flow.
@@ -74,7 +74,7 @@ impl Display for JumpLabel {
 ///  - `Unknown(bool)`: this item has not been used during execution. The boolean value indicates
 ///    whether this item is a jump destination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PushLabel {
+pub enum PushHint {
     /// The item has been used as a callee address.
     CalleeAddr,
 
@@ -91,10 +91,10 @@ pub enum PushLabel {
     Unknown,
 }
 
-impl PartialOrd for PushLabel {
+impl PartialOrd for PushHint {
     /// The partial order of the push label. We construct it as a lattice:
     ///  - Bottom: Unknown
-    ///  - The rest of the labels are incomparable.
+    ///  - The rest of the hints are incomparable.
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match (self, other) {
             (Self::Unknown, Self::Unknown) => Some(std::cmp::Ordering::Equal),
@@ -106,7 +106,7 @@ impl PartialOrd for PushLabel {
     }
 }
 
-impl Display for PushLabel {
+impl Display for PushHint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::CalleeAddr => write!(f, "PUSH::CalleeAddr"),
@@ -186,27 +186,28 @@ impl CallFrame {
 }
 
 #[derive(Debug)]
-struct InfoWrapper<'a> {
+struct HintWrapper<'a> {
     bytecode: &'a AnalyzedBytecode,
-    info: PushJmpInfo,
+    hint: PJHint,
 }
 
-impl Deref for InfoWrapper<'_> {
-    type Target = PushJmpInfo;
+impl Deref for HintWrapper<'_> {
+    type Target = PJHint;
 
     fn deref(&self) -> &Self::Target {
-        &self.info
+        &self.hint
     }
 }
 
-impl DerefMut for InfoWrapper<'_> {
+impl DerefMut for HintWrapper<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.info
+        &mut self.hint
     }
 }
 
+/// Hints for potential Push and Jump hints. Note that the hints are not 100% accurate.
 #[derive(Debug, Default)]
-pub struct PushJmpInfo {
+pub struct PJHint {
     /// The address of the subject contract.
     pub addr: RuntimeAddress,
 
@@ -226,20 +227,20 @@ pub struct PushJmpInfo {
     /// jump.
     pub jump_pushes: BTreeMap<usize, BTreeSet<usize>>,
 
-    /// The push labels: push_pc -> label
-    pub push_labels: BTreeMap<usize, PushLabel>,
+    /// The push hints: push_pc -> label
+    pub push_hints: BTreeMap<usize, PushHint>,
 
-    /// The jump labels: jmp_pc -> label
-    pub jump_labels: BTreeMap<usize, JumpLabel>,
+    /// The jump hints: jmp_pc -> hint
+    pub jump_hints: BTreeMap<usize, JumpHint>,
 }
 
-impl<'a> InfoWrapper<'a> {
-    fn unwrap(self) -> PushJmpInfo {
-        self.info
+impl<'a> HintWrapper<'a> {
+    fn unwrap(self) -> PJHint {
+        self.hint
     }
 
     fn new(bytecode: &'a AnalyzedBytecode) -> Self {
-        Self { bytecode, info: PushJmpInfo::default() }
+        Self { bytecode, hint: PJHint::default() }
     }
 
     fn heuristic_analysis(&mut self) -> Result<()> {
@@ -250,11 +251,11 @@ impl<'a> InfoWrapper<'a> {
 
         // Heuristic: if a jump instruction can jump to multiple targets, we will treat it as a
         // return jump.
-        let jump_targets = &self.info.jump_targets;
-        let jump_labels = &mut self.info.jump_labels;
+        let jump_targets = &self.hint.jump_targets;
+        let jump_hints = &mut self.hint.jump_hints;
         for (pc, targets) in jump_targets {
             if targets.len() > 1 {
-                jump_labels.ordered_insert(*pc, JumpLabel::Return);
+                jump_hints.ordered_insert(*pc, JumpHint::Return);
             }
         }
 
@@ -265,14 +266,14 @@ impl<'a> InfoWrapper<'a> {
         // However, they are not always true. We will refine them using `strict_check_call` and
         // `strict_check_return` functions.
         let mut worklist =
-            self.jump_labels.iter().map(|(&pc, &label)| (pc, label)).collect::<VecDeque<_>>();
+            self.jump_hints.iter().map(|(&pc, &label)| (pc, label)).collect::<VecDeque<_>>();
 
         while let Some((pc, label)) = worklist.pop_front() {
-            // update the jump labels
-            self.jump_labels.ordered_insert(pc, label);
+            // update the jump hints
+            self.jump_hints.ordered_insert(pc, label);
 
             match label {
-                JumpLabel::Call => {
+                JumpHint::Call => {
                     // Rule 1: a jump instruction labelled as call will always jump to a callee
                     // address.
                     for callee_addr in
@@ -298,18 +299,18 @@ impl<'a> InfoWrapper<'a> {
 
                     // Rule 3: any push instruction used by a call jump is to push a callee
                     // address.
-                    let jump_pushes = &self.info.jump_pushes;
-                    let push_labels = &mut self.info.push_labels;
+                    let jump_pushes = &self.hint.jump_pushes;
+                    let push_hints = &mut self.hint.push_hints;
                     if let Some(pushes) = jump_pushes.get(&pc) {
                         // We do not further propogate the callee address information. It is because
                         // there is not indirect call in Solidity, so in
                         // most cases, we already handle the callee address.
                         for push_pc in pushes {
-                            push_labels.ordered_insert(*push_pc, PushLabel::CalleeAddr);
+                            push_hints.ordered_insert(*push_pc, PushHint::CalleeAddr);
                         }
                     }
                 }
-                JumpLabel::Return => {
+                JumpHint::Return => {
                     // Rule 4: a jump instruction labelled as return will always jump to a
                     // return address.
                     for return_addr in
@@ -323,11 +324,11 @@ impl<'a> InfoWrapper<'a> {
 
                     // Rule 5: any push instruction used by a return jump is to push a return
                     // address.
-                    let jump_pushes = &self.info.jump_pushes;
-                    let push_labels = &mut self.info.push_labels;
+                    let jump_pushes = &self.hint.jump_pushes;
+                    let push_hints = &mut self.hint.push_hints;
                     if let Some(pushes) = jump_pushes.get(&pc) {
                         for push_pc in pushes {
-                            push_labels.ordered_insert(*push_pc, PushLabel::ReturnAddr);
+                            push_hints.ordered_insert(*push_pc, PushHint::ReturnAddr);
                         }
                     }
                 }
@@ -387,21 +388,21 @@ impl<'a> InfoWrapper<'a> {
         matches!(prev_op.get(), DUP1..=DUP16 | SWAP1..=SWAP16 | POP..=POP)
     }
 
-    fn find_new_callee_addr(&self, callee_addr: usize) -> Result<Vec<(usize, JumpLabel)>> {
+    fn find_new_callee_addr(&self, callee_addr: usize) -> Result<Vec<(usize, JumpHint)>> {
         let r_addr = self.addr;
         trace!(addr=?r_addr, callee_addr, "find new callee addr");
 
-        let mut new_labels = Vec::new();
+        let mut new_hints = Vec::new();
 
         // Rule C1: jump to callee address is a call jump.
         for (pc, targets) in &self.jump_targets {
             if targets.contains(&U256::from(callee_addr)) {
-                match self.jump_labels.get(pc) {
+                match self.jump_hints.get(pc) {
                     Some(&l) => {
                         // We will have strict constraint for propagation
-                        if JumpLabel::Call > l && self.strict_check_call(*pc) {
-                            debug!(r_addr=?r_addr, pc=pc, targets=?targets, callee_addr, original_label=?self.jump_labels.get(pc), "new finding by Rule C1");
-                            new_labels.push((*pc, JumpLabel::Call));
+                        if JumpHint::Call > l && self.strict_check_call(*pc) {
+                            trace!(r_addr=?r_addr, pc=pc, targets=?targets, callee_addr, original_label=?self.jump_hints.get(pc), "new finding by Rule C1");
+                            new_hints.push((*pc, JumpHint::Call));
                         }
                     }
                     None => {
@@ -411,26 +412,26 @@ impl<'a> InfoWrapper<'a> {
             }
         }
 
-        Ok(new_labels)
+        Ok(new_hints)
     }
 
-    fn find_new_return_addr(&self, return_addr: usize) -> Result<Vec<(usize, JumpLabel)>> {
+    fn find_new_return_addr(&self, return_addr: usize) -> Result<Vec<(usize, JumpHint)>> {
         let r_addr = self.addr;
         let bytecode = self.bytecode;
 
         trace!(r_addr=?r_addr, return_addr, "find new return addr");
 
-        let mut new_labels = Vec::new();
+        let mut new_hints = Vec::new();
 
         // Rule R1: jump to return address is a return jump.
         for (pc, targets) in &self.jump_targets {
             if targets.contains(&U256::from(return_addr)) {
-                match self.jump_labels.get(pc) {
+                match self.jump_hints.get(pc) {
                     Some(&l) => {
                         // We will have strict constraint for propagation.
-                        if JumpLabel::Return > l && self.strict_check_return(*pc, bytecode) {
-                            debug!(r_addr=?r_addr, pc=pc, targets=?targets, return_addr, original_label=?self.jump_labels.get(pc), "new finding by Rule R1");
-                            new_labels.push((*pc, JumpLabel::Return));
+                        if JumpHint::Return > l && self.strict_check_return(*pc, bytecode) {
+                            trace!(r_addr=?r_addr, pc=pc, targets=?targets, return_addr, original_label=?self.jump_hints.get(pc), "new finding by Rule R1");
+                            new_hints.push((*pc, JumpHint::Return));
                         }
                     }
                     None => {
@@ -444,13 +445,13 @@ impl<'a> InfoWrapper<'a> {
         let call_pc = bytecode.prev_insn_pc(return_addr).ok_or_eyre("invalid pc")?;
         if call_pc + 1 == return_addr &&
             self.strict_check_call(call_pc) &&
-            self.jump_labels.get(&call_pc) == Some(&JumpLabel::Unknown)
+            self.jump_hints.get(&call_pc) == Some(&JumpHint::Unknown)
         {
-            debug!(r_addr=?r_addr, pc=call_pc, return_addr=return_addr, original_label=?self.jump_labels.get(&call_pc), "new finding by Rule R2");
-            new_labels.push((call_pc, JumpLabel::Call));
+            trace!(r_addr=?r_addr, pc=call_pc, return_addr=return_addr, original_label=?self.jump_hints.get(&call_pc), "new finding by Rule R2");
+            new_hints.push((call_pc, JumpHint::Call));
         }
 
-        Ok(new_labels)
+        Ok(new_hints)
     }
 
     fn refine_by_source_map(&mut self, source_map: &RefinedSourceMap) -> Result<()> {
@@ -461,17 +462,17 @@ impl<'a> InfoWrapper<'a> {
 
         let r_addr = self.addr;
 
-        let jump_labels = &mut self.info.jump_labels;
-        let jump_targets = &mut self.info.jump_targets;
+        let jump_hints = &mut self.hint.jump_hints;
+        let jump_targets = &mut self.hint.jump_targets;
         let bytecode = &self.bytecode;
 
-        for (pc, label) in jump_labels.iter_mut() {
+        for (pc, label) in jump_hints.iter_mut() {
             let Some(opcode) = bytecode.get_opcode_at_pc(*pc) else {
                 bail!("invalid pc");
             };
 
             if opcode.get() == JUMPI {
-                debug_assert!(*label == JumpLabel::Block, "invalid jump label");
+                debug_assert!(*label == JumpHint::Block, "invalid jump label");
                 continue;
             }
 
@@ -519,10 +520,10 @@ impl<'a> InfoWrapper<'a> {
                         // the same statement, and the jump targets are all in different
                         // functions. We will refine the jump label to `Call`.
                         debug_assert!(
-                            JumpLabel::Call >= *label,
+                            JumpHint::Call >= *label,
                             "failed to refine jump label: r_addr={r_addr:?}, pc={pc}, label={label:?}, targets={targets:?}"
                         );
-                        *label = JumpLabel::Call;
+                        *label = JumpHint::Call;
                     }
                 }
             }
@@ -544,22 +545,22 @@ pub struct PushJumpInspector<'a> {
     stack: Vec<CallFrame>,
 
     /// The Push-Jump information.
-    info: BTreeMap<RuntimeAddress, InfoWrapper<'a>>,
+    hint: BTreeMap<RuntimeAddress, HintWrapper<'a>>,
 }
 
 impl<'a> PushJumpInspector<'a> {
     /// Extract the push-jump information.
-    pub fn extract(self) -> BTreeMap<RuntimeAddress, PushJmpInfo> {
-        self.info.into_iter().map(|(addr, info)| (addr, info.unwrap())).collect()
+    pub fn extract(self) -> BTreeMap<RuntimeAddress, PJHint> {
+        self.hint.into_iter().map(|(addr, info)| (addr, info.unwrap())).collect()
     }
 
     /// Create a new push-jump inspector.
     pub fn new(bytecodes: &'a BTreeMap<RuntimeAddress, AnalyzedBytecode>) -> Self {
         Self {
             stack: Vec::new(),
-            info: bytecodes
+            hint: bytecodes
                 .iter()
-                .map(|(addr, bytecode)| (*addr, InfoWrapper::new(bytecode)))
+                .map(|(addr, bytecode)| (*addr, HintWrapper::new(bytecode)))
                 .collect(),
         }
     }
@@ -567,8 +568,8 @@ impl<'a> PushJumpInspector<'a> {
     /// perform the post-analysis after the execution.
     /// We mainly leverage heuristics to determine the label of each push and jump instruction.
     pub fn posterior_analysis(&mut self) -> Result<()> {
-        self.info.par_iter_mut().try_for_each(|(_, r_info)| {
-            r_info.heuristic_analysis()?;
+        self.hint.par_iter_mut().try_for_each(|(_, r_hint)| {
+            r_hint.heuristic_analysis()?;
             Ok(())
         })
     }
@@ -579,29 +580,29 @@ impl<'a> PushJumpInspector<'a> {
         &mut self,
         source_map: &BTreeMap<RuntimeAddress, RefinedSourceMap>,
     ) -> Result<()> {
-        self.info.par_iter_mut().try_for_each(|(r_addr, r_info)| {
+        self.hint.par_iter_mut().try_for_each(|(r_addr, r_hint)| {
             let Some(source_map) = source_map.get(r_addr) else {
                 // This contract does not have a source map (i.e., not verified). We will skip the
                 // refinement.
                 return Ok(());
             };
 
-            r_info.refine_by_source_map(source_map)
+            r_hint.refine_by_source_map(source_map)
         })
     }
 
     #[cfg(debug_assertions)]
-    pub fn log_unknown_labels(&self) {
-        for (addr, info) in &self.info {
-            for (pc, label) in &info.push_labels {
-                if *label == PushLabel::Unknown {
+    pub fn log_unknown_hints(&self) {
+        for (addr, info) in &self.hint {
+            for (pc, label) in &info.push_hints {
+                if *label == PushHint::Unknown {
                     trace!(addr=?addr, pc=pc, label=?label, "unknown push label");
                 }
             }
 
-            for (pc, label) in &info.jump_labels {
-                if *label == JumpLabel::Unknown {
-                    debug!(addr=?addr, pc=pc, label=?label, targets=?info.jump_targets[pc], "unknown jump label");
+            for (pc, label) in &info.jump_hints {
+                if *label == JumpHint::Unknown {
+                    trace!(addr=?addr, pc=pc, label=?label, targets=?info.jump_targets[pc], "unknown jump label");
                 }
             }
         }
@@ -647,7 +648,7 @@ where
         };
 
         let r_addr = frame.runtime_address();
-        let r_info = self.info.get_mut(&r_addr).expect("info not found");
+        let r_hint = self.hint.get_mut(&r_addr).expect("info not found");
         trace!(r_addr=?r_addr, pc=pc, op=op, "step (PushJumpInspector)");
 
         match op {
@@ -655,13 +656,13 @@ where
                 let code = interp.bytecode.as_ref();
                 let value = get_push_value(code, pc).assert_unwrap("invalid bytecode");
 
-                r_info.pushed_values.equal_insert(pc, value);
+                r_hint.pushed_values.equal_insert(pc, value);
 
                 // Check whether the pushed value is larger than the code size
                 if value >= U256::from(code.len()) || code[value.to::<usize>()] != JUMPDEST {
                     // The pushed value is a not jump destination. As a result, it must be a
                     // numerical value.
-                    r_info.push_labels.ordered_insert(pc, PushLabel::NumericVal);
+                    r_hint.push_hints.ordered_insert(pc, PushHint::NumericVal);
 
                     frame.push(None);
                 } else {
@@ -697,17 +698,17 @@ where
                 if let Some(pt) = frame.pop() {
                     // Consistency check.
                     stack_top_check(interp, pt.value);
-                    r_info.push_labels.or_insert(pt.push_pc, PushLabel::Unknown);
+                    r_hint.push_hints.or_insert(pt.push_pc, PushHint::Unknown);
                 }
             }
             JUMP..=JUMP => {
                 let jump_target =
                     interp.stack().data().last().cloned().assert_unwrap("empty evm stack");
-                r_info.jump_targets.entry(pc).or_default().insert(jump_target);
+                r_hint.jump_targets.entry(pc).or_default().insert(jump_target);
 
                 // The collection of all push instructions that are going to be tagged with
                 // this jump instruction.
-                let jump_tags = r_info.jump_tags.entry(pc).or_default();
+                let jump_tags = r_hint.jump_tags.entry(pc).or_default();
 
                 // Update `next_jump` for all untagged push items.
                 let untagged_n = frame.untagged_pushes.len();
@@ -723,7 +724,7 @@ where
                 if let Some(pt) = frame.pop() {
                     stack_top_check(interp, pt.value);
 
-                    r_info.jump_pushes.entry(pc).or_default().insert(pt.push_pc);
+                    r_hint.jump_pushes.entry(pc).or_default().insert(pt.push_pc);
 
                     let Some((pjmp_pc, pjmp_step)) = pt.next_jump else {
                         debug_assert!(false, "next_jump is not set");
@@ -736,24 +737,24 @@ where
                         // instruction.
                         //
                         // THIS IS A STRONG INDICATION THAT THE PUSHED VALUE IS A RETURN ADDRESS.
-                        r_info.jump_labels.ordered_insert(pc, JumpLabel::Return);
-                        r_info.push_labels.ordered_insert(pt.push_pc, PushLabel::ReturnAddr);
+                        r_hint.jump_hints.ordered_insert(pc, JumpHint::Return);
+                        r_hint.push_hints.ordered_insert(pt.push_pc, PushHint::ReturnAddr);
 
                         // We will also tag the corresponding jump instruction.
-                        r_info.jump_labels.ordered_insert(pjmp_pc, JumpLabel::Call);
-                        let jump_pushes = &mut r_info.info.jump_pushes;
-                        let push_labels = &mut r_info.info.push_labels;
+                        r_hint.jump_hints.ordered_insert(pjmp_pc, JumpHint::Call);
+                        let jump_pushes = &mut r_hint.hint.jump_pushes;
+                        let push_hints = &mut r_hint.hint.push_hints;
                         for push_pc in jump_pushes.entry(pjmp_pc).or_default().iter() {
-                            push_labels.ordered_insert(*push_pc, PushLabel::CalleeAddr);
+                            push_hints.ordered_insert(*push_pc, PushHint::CalleeAddr);
                         }
                     } else if untagged_n == 0 {
                         // Heuristic: if the jump instruction is not tagged with any push
                         // instruction, we will treat it as a return jump.
-                        r_info.jump_labels.ordered_insert(pc, JumpLabel::Return);
-                        r_info.push_labels.ordered_insert(pt.push_pc, PushLabel::ReturnAddr);
+                        r_hint.jump_hints.ordered_insert(pc, JumpHint::Return);
+                        r_hint.push_hints.ordered_insert(pt.push_pc, PushHint::ReturnAddr);
                     } else {
                         trace!(addr=?r_addr, pc=pc, untagged_n=untagged_n, pt=?pt, "we cannot determine the label of the jump instruction");
-                        r_info.jump_labels.or_insert(pc, JumpLabel::Unknown);
+                        r_hint.jump_hints.or_insert(pc, JumpHint::Unknown);
                     }
 
                     // note: the following heurisitc may be usefule, but many test cases have shown
@@ -763,26 +764,26 @@ where
                     // if untagged_n == 1 && pjmp_step == frame.step {
                     //     // The pushed item is used by its corresponding jump instruction. Meanwhile,
                     //     // it is the only untagged push item.
-                    //     self.jump_labels.ordered_insert(r_addr, pc, JumpLabel::Block);
-                    //     self.push_labels.ordered_insert(r_addr, pt.push_pc, PushLabel::BlockAddr);
+                    //     self.jump_hints.ordered_insert(r_addr, pc, JumpLabel::Block);
+                    //     self.push_hints.ordered_insert(r_addr, pt.push_pc, PushLabel::BlockAddr);
                     // }
                     // ```
                 } else {
                     trace!(addr=?r_addr, pc=pc, "we cannot determine the jump target value");
-                    r_info.jump_labels.or_insert(pc, JumpLabel::Unknown);
+                    r_hint.jump_hints.or_insert(pc, JumpHint::Unknown);
                 }
             }
             JUMPI..=JUMPI => {
                 // the jumpi instruction is a block jump.
-                r_info.jump_labels.ordered_insert(pc, JumpLabel::Block);
+                r_hint.jump_hints.ordered_insert(pc, JumpHint::Block);
 
                 if let Some(pt) = frame.pop() {
                     stack_top_check(interp, pt.value);
-                    r_info.push_labels.ordered_insert(pt.push_pc, PushLabel::BlockAddr);
+                    r_hint.push_hints.ordered_insert(pt.push_pc, PushHint::BlockAddr);
                 }
 
                 if let Some(pt) = frame.pop() {
-                    r_info.push_labels.ordered_insert(pt.push_pc, PushLabel::NumericVal);
+                    r_hint.push_hints.ordered_insert(pt.push_pc, PushHint::NumericVal);
                 }
             }
             _ => {
@@ -791,7 +792,7 @@ where
                 for _ in 0..opcode.inputs() {
                     // All poped items will be treated as numeric values.
                     if let Some(pt) = frame.pop() {
-                        r_info.push_labels.ordered_insert(pt.push_pc, PushLabel::NumericVal);
+                        r_hint.push_hints.ordered_insert(pt.push_pc, PushHint::NumericVal);
                     }
                 }
 
@@ -838,11 +839,11 @@ where
         // We will mark all pushed items as unknown if they are not analyzed so far.
         let r_addr = frame.runtime_address();
         for pt in frame.stack.iter().flatten() {
-            self.info
+            self.hint
                 .get_mut(&r_addr)
                 .expect("this should not happen")
-                .push_labels
-                .or_insert(pt.push_pc, PushLabel::Unknown);
+                .push_hints
+                .or_insert(pt.push_pc, PushHint::Unknown);
         }
 
         outcome
@@ -896,11 +897,11 @@ where
         // We will mark all pushed items as unknown if they are not analyzed so far.
         let r_addr = frame.runtime_address();
         for pt in frame.stack.iter().flatten() {
-            self.info
+            self.hint
                 .get_mut(&r_addr)
                 .expect("this should not happen")
-                .push_labels
-                .or_insert(pt.push_pc, PushLabel::Unknown);
+                .push_hints
+                .or_insert(pt.push_pc, PushHint::Unknown);
         }
 
         outcome

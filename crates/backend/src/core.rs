@@ -189,10 +189,10 @@ where
         inspector.refine_analysis_by_source_map(source_maps)?;
 
         #[cfg(debug_assertions)]
-        inspector.log_unknown_labels();
+        inspector.log_unknown_hints();
 
-        // we then try to construct the fine-grained call trace, which includes the call graph within 
-        // each contract call.
+        // we then try to construct the fine-grained call trace, which includes the call graph
+        // within each contract call.
         let push_jump_info = inspector.extract();
         let mut inspector = CallTraceInspector::new(&push_jump_info, &self.addresses);
         let mut evm = new_evm_with_inspector(&mut self.base_db, self.env.clone(), &mut inspector);
@@ -206,8 +206,8 @@ where
         let source_maps = Mutex::new(BTreeMap::new());
 
         self.deploy_artifacts.par_iter().try_for_each(|(addr, artifact)| -> Result<()> {
-            println!("\nanalyzing source map for {addr:#?}");
-            debug!("analyzing source map for {addr:#?}");
+            trace!("analyzing source map for {addr:#?}");
+
             let [constructor, deployed] = SourceMapAnalysis::analyze(artifact)?;
             debug_assert!(constructor.is_constructor());
             debug_assert!(deployed.is_deployed());
