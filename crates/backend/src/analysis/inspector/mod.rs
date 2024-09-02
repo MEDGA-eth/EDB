@@ -1,13 +1,13 @@
 mod call_trace;
 mod debug;
-mod push_jmp;
+mod push_jump;
 mod visited_address;
 
 use std::fmt::Display;
 
 pub use call_trace::{AnalyzedCallTrace, CallTraceInspector};
 pub use debug::DebugInspector;
-pub use push_jmp::PushJumpInspector;
+pub use push_jump::PushJumpInspector;
 pub use visited_address::VisitedAddrInspector;
 
 trait AssertionUnwrap<T> {

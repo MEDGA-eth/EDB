@@ -20,14 +20,16 @@ use revm::{
 };
 
 use crate::{
-    analysis::source_map::{RefinedSourceMap, SourceMapAnalysis},
+    analysis::{
+        inspector::{
+            AnalyzedCallTrace, CallTraceInspector, DebugInspector, PushJumpInspector,
+            VisitedAddrInspector,
+        },
+        source_map::{RefinedSourceMap, SourceMapAnalysis},
+    },
     artifact::{
         debug::{DebugArtifact, DebugNodeFlat},
         deploy::{DeployArtifact, DeployArtifactBuilder},
-    },
-    inspector::{
-        AnalyzedCallTrace, CallTraceInspector, DebugInspector, PushJumpInspector,
-        VisitedAddrInspector,
     },
     utils::{db, evm::new_evm_with_inspector},
     AnalyzedBytecode, RuntimeAddress,

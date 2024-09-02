@@ -8,8 +8,6 @@ extern crate tracing;
 pub mod analysis;
 pub mod artifact;
 mod core;
-mod handler;
-pub mod inspector;
 pub mod utils;
 
 pub use core::DebugBackend;

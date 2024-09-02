@@ -15,7 +15,7 @@ use revm_inspectors::tracing::types::CallKind;
 
 use crate::{AnalyzedBytecode, RuntimeAddress};
 
-use super::push_jmp::{JumpHint, PJHint};
+use super::push_jump::{JumpHint, PJHint};
 
 const VALIDATION_CALL_DEPTH: usize = 25;
 
