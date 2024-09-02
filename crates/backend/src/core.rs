@@ -25,7 +25,10 @@ use crate::{
         debug::{DebugArtifact, DebugNodeFlat},
         deploy::{DeployArtifact, DeployArtifactBuilder},
     },
-    inspector::{CallTraceInspector, DebugInspector, PushJumpInspector, VisitedAddrInspector},
+    inspector::{
+        AnalyzedCallTrace, CallTraceInspector, DebugInspector, PushJumpInspector,
+        VisitedAddrInspector,
+    },
     utils::{db, evm::new_evm_with_inspector},
     AnalyzedBytecode, RuntimeAddress,
 };
@@ -169,7 +172,18 @@ where
         self.collect_deploy_artifacts().await?;
 
         let source_maps = self.analyze_source_map()?;
-        self.analyze_call_trace(&source_maps)?;
+        let call_trace = self.analyze_call_trace(&source_maps)?;
+        call_trace.for_each(|func| {
+            println!("({}) {}", func.loc, func.addr);
+            println!("\tparent: {:?}", func.parent);
+            println!("\tchildren:");
+            for (child, callsite) in func.children.iter() {
+                println!("\t\t{child} {callsite:?}");
+            }
+            for trace in func.trace.iter() {
+                println!("\t{trace}");
+            }
+        });
 
         let debug_arena = self.collect_debug_trace()?;
 
@@ -179,7 +193,7 @@ where
     fn analyze_call_trace(
         &mut self,
         source_maps: &BTreeMap<RuntimeAddress, RefinedSourceMap>,
-    ) -> Result<()> {
+    ) -> Result<AnalyzedCallTrace> {
         // we first need to analyze the labels for both push and jump instructions
         let mut inspector = PushJumpInspector::new(&self.addresses);
         let mut evm = new_evm_with_inspector(&mut self.base_db, self.env.clone(), &mut inspector);
@@ -199,7 +213,7 @@ where
         evm.transact().map_err(|err| eyre!("failed to transact: {}", err))?;
         drop(evm);
 
-        Ok(())
+        Ok(inspector.extract())
     }
 
     fn analyze_source_map(&mut self) -> Result<BTreeMap<RuntimeAddress, RefinedSourceMap>> {
