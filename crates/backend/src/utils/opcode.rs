@@ -1,7 +1,7 @@
 use alloy_primitives::U256;
 use eyre::{bail, OptionExt, Result};
 use revm::interpreter::{
-    opcode::{PUSH0, PUSH1, PUSH32},
+    opcode::{DUP1, DUP16, POP, PUSH0, PUSH1, PUSH32, SWAP1, SWAP16},
     OpCode,
 };
 use rustc_hash::FxHashMap;
@@ -25,6 +25,14 @@ pub const fn is_memory_modifying_opcode(opcode: OpCode) -> bool {
             OpCode::CALLCODE |
             OpCode::DELEGATECALL |
             OpCode::STATICCALL
+    )
+}
+
+#[inline]
+pub const fn is_stack_operation_opcode(opcode: OpCode) -> bool {
+    matches!(
+        opcode.get(),
+        POP..=POP | PUSH0..=PUSH32 | DUP1..=DUP16 | SWAP1..=SWAP16
     )
 }
 

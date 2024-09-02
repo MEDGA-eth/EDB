@@ -141,6 +141,10 @@ impl FuncNode {
     pub fn is_leaf(&self) -> bool {
         self.children.is_empty()
     }
+
+    pub fn find_step(&self, step: usize) -> Option<&BlockNode> {
+        self.trace.iter().find(|block| block.contains_step(step))
+    }
 }
 
 #[derive(Default, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -192,6 +196,14 @@ impl BlockNode {
 
     pub fn next_to(&self, other: &Self) -> bool {
         self.next_block_ic() == other.start_ic
+    }
+
+    pub fn contains_step(&self, step: usize) -> bool {
+        self.start_step <= step && step < self.start_step + self.inst_n
+    }
+
+    pub fn contains_ic(&self, ic: usize) -> bool {
+        self.start_ic <= ic && ic < self.start_ic + self.inst_n
     }
 }
 

@@ -44,6 +44,10 @@ struct OnChainArgs {
     #[clap(long, short)]
     address: Address,
 
+    /// Refine the source labels.
+    #[clap(long)]
+    refine: bool,
+
     #[command(flatten)]
     pub cache: CacheOpts,
 
@@ -56,7 +60,7 @@ struct OnChainArgs {
 
 impl OnChainArgs {
     pub async fn disasm(self) -> Result<()> {
-        let Self { address, cache, etherscan, rpc } = self;
+        let Self { address, cache, etherscan, rpc, refine } = self;
 
         let cache_path = cache.cache_path();
         let chain = etherscan.chain();
@@ -92,7 +96,7 @@ impl OnChainArgs {
                 onchain_address: address,
             }
             .build()?;
-            disasm_artifact(&artifact, Some(code))?;
+            disasm_artifact(&artifact, Some(code), refine)?;
         } else {
             // If the contract is not verified, we can't fetch the source code.
             // We can still disassemble the bytecode.
@@ -107,6 +111,10 @@ impl OnChainArgs {
 struct LocalArgs {
     /// The name of the contract.
     name: String,
+
+    /// Refine the source labels.
+    #[clap(long)]
+    refine: bool,
 
     /// The path to the project. If not provided, the current directory is used.
     #[clap(long)]
@@ -128,7 +136,11 @@ impl DisasmArgs {
     }
 }
 
-fn disasm_artifact(artifact: &DeployArtifact, code: Option<AnalyzedBytecode>) -> Result<()> {
+fn disasm_artifact(
+    artifact: &DeployArtifact,
+    code: Option<AnalyzedBytecode>,
+    refine: bool,
+) -> Result<()> {
     // XXX (ZZ): For now, we only disassemble the deployed bytecode.
     let code = if let Some(code) = code {
         code
@@ -143,11 +155,14 @@ fn disasm_artifact(artifact: &DeployArtifact, code: Option<AnalyzedBytecode>) ->
         )
     };
 
-    let [_, deployed_source_map] = SourceMapAnalysis::analyze(artifact)?;
+    let [_, mut deployed_source_map] = SourceMapAnalysis::analyze(artifact)?;
     debug_assert!(deployed_source_map.is_deployed());
 
     let source_map = &deployed_source_map.source_map;
-    let labels = &deployed_source_map.labels;
+    let labels = &mut deployed_source_map.labels;
+    if refine {
+        labels.refine(&code)?;
+    }
 
     println!("{:5} ({:5}): {:<84} | {:<20} | Refined Label\n", "IC", "PC", "Opcode", "Source Map");
 

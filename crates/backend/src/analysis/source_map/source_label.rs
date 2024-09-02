@@ -1,14 +1,18 @@
 use std::{
     fmt::{self, Debug},
+    ops::{Deref, DerefMut},
     sync::Arc,
 };
 
 use eyre::{ensure, OptionExt, Result};
+use revm::interpreter::OpCode;
 
 use super::{debug_unit::UnitLocation, AnalysisStore};
 use crate::{
     analysis::source_map::{debug_unit::DebugUnit, CONSTRUCTOR_IDX, DEPLOYED_IDX},
     artifact::deploy::DeployArtifact,
+    utils::opcode::is_stack_operation_opcode,
+    AnalyzedBytecode,
 };
 
 /// Source Label are the information we extracted from the inaccurate source map.
@@ -77,7 +81,66 @@ impl SourceLabel {
     }
 }
 
-pub type SourceLabels = Vec<SourceLabel>;
+#[derive(Debug, Clone, Default)]
+pub struct SourceLabels(Vec<SourceLabel>);
+
+impl Deref for SourceLabels {
+    type Target = [SourceLabel];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for SourceLabels {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl From<Vec<SourceLabel>> for SourceLabels {
+    fn from(labels: Vec<SourceLabel>) -> Self {
+        Self(labels)
+    }
+}
+
+impl SourceLabels {
+    pub fn refine(&mut self, bytecode: &AnalyzedBytecode) -> Result<()> {
+        let mut reverse_map = std::collections::HashMap::new();
+        let code = &bytecode.code;
+        let ic_pc_map = &bytecode.ic_pc_map;
+
+        for (ic, label) in self.iter().enumerate().filter(|(.., l)| l.is_source()) {
+            let pc = ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {ic}"))?;
+            let opcode =
+                OpCode::new(code[pc]).ok_or_eyre(format!("invalid opcode: {}", code[pc]))?;
+            reverse_map.entry(label.clone()).or_insert_with(Vec::new).push((opcode, ic));
+        }
+        for (label, opcodes) in reverse_map {
+            if opcodes.iter().all(|(opcode, _)| is_stack_operation_opcode(*opcode)) {
+                // If all the opcodes are stack operations, then we do not need to refine the
+                // source label.
+                continue;
+            }
+
+            // We change the source label to a tag if the opcode is a stack operation.
+            for (opcode, ic) in opcodes {
+                match label {
+                    SourceLabel::PrimitiveStmt { ref stmt, .. }
+                        if is_stack_operation_opcode(opcode) =>
+                    {
+                        // If the opcode is a stack operation, then we change the source label to a
+                        // tag.
+                        self[ic] = SourceLabel::Tag { tag: stmt.clone() };
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct SourceLabelAnalysis {}
@@ -101,7 +164,14 @@ impl SourceLabelAnalysis {
         labels[CONSTRUCTOR_IDX] = constructor;
         labels[DEPLOYED_IDX] = deployed;
 
-        store.source_labels = Some(labels.try_into().expect("this cannot happen"));
+        store.source_labels = Some(
+            labels
+                .into_iter()
+                .map(SourceLabels::from)
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("this cannot happen"),
+        );
 
         Ok(())
     }
@@ -187,27 +257,6 @@ impl SourceLabelAnalysis {
             source_map.len() == source_labels.len(),
             "source map and source labels have different lengths"
         );
-
-        #[cfg(debug_assertions)]
-        {
-            let bytecode = store.bytecode()?.get(IDX).ok_or_eyre("no bytecode found")?;
-            let code = bytecode.bytes().ok_or_eyre("no code found")?.as_ref();
-            let ic_pc_map = crate::utils::opcode::IcPcMap::new(code);
-
-            // A debugging check to see if there are any labels that only have push opcodes.
-            let mut reverse_map = std::collections::HashMap::new();
-            for (ic, label) in source_labels.iter().enumerate().filter(|(.., l)| l.is_source()) {
-                let pc = ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {ic}"))?;
-                let opcode = revm::interpreter::OpCode::new(code[pc])
-                    .ok_or_eyre(format!("invalid opcode: {}", code[pc]))?;
-                reverse_map.entry(label.clone()).or_insert_with(Vec::new).push((opcode, pc, ic));
-            }
-            for (label, opcodes) in reverse_map {
-                if opcodes.iter().all(|(opcode, ..)| opcode.is_push()) {
-                    trace!("find a label with only push opcodes: {} ({:?})", label, opcodes);
-                }
-            }
-        }
 
         Ok(source_labels)
     }
