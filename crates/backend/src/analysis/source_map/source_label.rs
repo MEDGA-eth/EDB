@@ -10,9 +10,8 @@ use revm::interpreter::OpCode;
 use super::{debug_unit::UnitLocation, AnalysisStore};
 use crate::{
     analysis::source_map::{debug_unit::DebugUnit, CONSTRUCTOR_IDX, DEPLOYED_IDX},
-    artifact::deploy::DeployArtifact,
+    artifact::{deploy::DeployArtifact, onchain::AnalyzedBytecode},
     utils::opcode::is_stack_operation_opcode,
-    AnalyzedBytecode,
 };
 
 /// Source Label are the information we extracted from the inaccurate source map.
@@ -106,6 +105,8 @@ impl From<Vec<SourceLabel>> for SourceLabels {
 
 impl SourceLabels {
     pub fn refine(&mut self, bytecode: &AnalyzedBytecode) -> Result<()> {
+        let ignore_f = |opcode| is_stack_operation_opcode(opcode) && opcode.is_jump();
+
         let mut reverse_map = std::collections::HashMap::new();
         let code = &bytecode.code;
         let ic_pc_map = &bytecode.ic_pc_map;
@@ -117,20 +118,19 @@ impl SourceLabels {
             reverse_map.entry(label.clone()).or_insert_with(Vec::new).push((opcode, ic));
         }
         for (label, opcodes) in reverse_map {
-            if opcodes.iter().all(|(opcode, _)| is_stack_operation_opcode(*opcode)) {
-                // If all the opcodes are stack operations, then we do not need to refine the
+            if opcodes.iter().all(|(opcode, _)| ignore_f(*opcode)) {
+                // If all the opcodes are stack operations or jump opcode, then we cannot refine the
                 // source label.
+                debug!(label=?label, opcode=?opcodes, "cannot refine the source label");
                 continue;
             }
 
-            // We change the source label to a tag if the opcode is a stack operation.
+            // We change the source label to a tag if the opcode is a stack operation or jump
+            // opcode.
             for (opcode, ic) in opcodes {
                 match label {
-                    SourceLabel::PrimitiveStmt { ref stmt, .. }
-                        if is_stack_operation_opcode(opcode) =>
-                    {
-                        // If the opcode is a stack operation, then we change the source label to a
-                        // tag.
+                    SourceLabel::PrimitiveStmt { ref stmt, .. } if ignore_f(opcode) => {
+                        // We change the source label to a tag.
                         self[ic] = SourceLabel::Tag { tag: stmt.clone() };
                     }
                     _ => {}

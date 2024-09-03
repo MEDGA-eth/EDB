@@ -5,9 +5,11 @@ use alloy_provider::Provider;
 use clap::{Parser, Subcommand};
 use edb_backend::{
     analysis::source_map::SourceMapAnalysis,
-    artifact::deploy::{DeployArtifact, DeployArtifactBuilder},
+    artifact::{
+        deploy::{DeployArtifact, DeployArtifactBuilder},
+        onchain::AnalyzedBytecode,
+    },
     utils::opcode,
-    AnalyzedBytecode,
 };
 use edb_utils::{
     cache::{CachePath, DEFAULT_ETHERSCAN_CACHE_TTL},

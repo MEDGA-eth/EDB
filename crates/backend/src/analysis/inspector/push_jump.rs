@@ -18,8 +18,9 @@ use revm::{
 
 use crate::{
     analysis::source_map::{debug_unit::DebugUnit, source_label::SourceLabel, RefinedSourceMap},
+    artifact::onchain::AnalyzedBytecode,
     utils::opcode::get_push_value,
-    AnalyzedBytecode, RuntimeAddress,
+    RuntimeAddress,
 };
 
 use super::AssertionUnwrap;

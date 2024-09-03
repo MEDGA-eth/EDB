@@ -13,7 +13,7 @@ use revm::{
 };
 use revm_inspectors::tracing::types::CallKind;
 
-use crate::{AnalyzedBytecode, RuntimeAddress};
+use crate::{artifact::onchain::AnalyzedBytecode, RuntimeAddress};
 
 use super::push_jump::{JumpHint, PJHint};
 

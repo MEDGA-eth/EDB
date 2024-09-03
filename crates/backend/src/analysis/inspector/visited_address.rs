@@ -10,7 +10,7 @@ use revm::{
 };
 
 use super::AssertionUnwrap;
-use crate::{AnalyzedBytecode, RuntimeAddress};
+use crate::{artifact::onchain::AnalyzedBytecode, RuntimeAddress};
 
 #[derive(Debug)]
 pub struct VisitedAddrInspector<'a> {

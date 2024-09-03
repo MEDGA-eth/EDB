@@ -30,9 +30,10 @@ use crate::{
     artifact::{
         debug::{DebugArtifact, DebugNodeFlat},
         deploy::{DeployArtifact, DeployArtifactBuilder},
+        onchain::AnalyzedBytecode,
     },
     utils::{db, evm::new_evm_with_inspector},
-    AnalyzedBytecode, RuntimeAddress,
+    RuntimeAddress,
 };
 
 #[derive(Debug, Default)]
@@ -171,10 +172,12 @@ where
 
     /// Analyze the transaction and return the debug artifact.
     pub async fn analyze(mut self) -> Result<DebugArtifact> {
-        self.collect_deploy_artifacts().await?;
+        self.collect_artifacts().await?;
 
         let source_maps = self.analyze_source_map()?;
         let call_trace = self.analyze_call_trace(&source_maps)?;
+
+        // XXX (ZZ): remove this after debugging
         call_trace.for_each(|func| {
             println!("({}) {}", func.loc, func.addr);
             println!("\tparent: {:?}", func.parent);
@@ -224,20 +227,30 @@ where
         self.deploy_artifacts.par_iter().try_for_each(|(addr, artifact)| -> Result<()> {
             trace!("analyzing source map for {addr:#?}");
 
-            let [constructor, deployed] = SourceMapAnalysis::analyze(artifact)?;
+            let [mut constructor, mut deployed] = SourceMapAnalysis::analyze(artifact)?;
             debug_assert!(constructor.is_constructor());
             debug_assert!(deployed.is_deployed());
 
+            let constructor_addr = RuntimeAddress::constructor(*addr);
+            if let Some(bytecode) = self.addresses.get(&constructor_addr) {
+                constructor.labels.refine(bytecode)?;
+            }
+
+            let deployed_addr = RuntimeAddress::deployed(*addr);
+            if let Some(bytecode) = self.addresses.get(&deployed_addr) {
+                deployed.labels.refine(bytecode)?;
+            }
+
             let mut source_maps = source_maps.lock().expect("this should not happen");
-            source_maps.insert(RuntimeAddress::constructor(*addr), constructor);
-            source_maps.insert(RuntimeAddress::deployed(*addr), deployed);
+            source_maps.insert(constructor_addr, constructor);
+            source_maps.insert(deployed_addr, deployed);
             Ok(())
         })?;
 
         Ok(source_maps.into_inner()?)
     }
 
-    async fn collect_deploy_artifacts(&mut self) -> Result<()> {
+    async fn collect_artifacts(&mut self) -> Result<()> {
         // We need to commit the transaction first (to a newly cloned cache db) before we can
         // collect the deployment artifacts.
         //
@@ -248,6 +261,7 @@ where
 
         // Step 1. collect addresses of contracts that are visited during the transaction,
         // as well as the creation codes of contracts that are deployed during the transaction
+        // (i.e., on-chain artifacts).
         let mut inspector =
             VisitedAddrInspector::new(&mut self.addresses, &mut self.creation_scheme);
         let mut evm = new_evm_with_inspector(&mut db, self.env.clone(), &mut inspector);
