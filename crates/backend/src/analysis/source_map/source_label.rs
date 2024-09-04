@@ -16,7 +16,7 @@ use crate::{
 
 /// Source Label are the information we extracted from the inaccurate source map.
 /// It provides a more reliable way to associate the source code with the bytecode.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SourceLabel {
     PrimitiveStmt {
         stmt: DebugUnit,
@@ -121,7 +121,7 @@ impl SourceLabels {
             if opcodes.iter().all(|(opcode, _)| ignore_f(*opcode)) {
                 // If all the opcodes are stack operations or jump opcode, then we cannot refine the
                 // source label.
-                debug!(label=?label, opcode=?opcodes, "cannot refine the source label");
+                warn!(label=?label, opcode=?opcodes, "cannot refine the source label");
                 continue;
             }
 
@@ -133,7 +133,13 @@ impl SourceLabels {
                         // We change the source label to a tag.
                         self[ic] = SourceLabel::Tag { tag: stmt.clone() };
                     }
-                    _ => {}
+                    SourceLabel::InlineAssembly { ref block, .. } if ignore_f(opcode) => {
+                        // We change the source label to a tag.
+                        self[ic] = SourceLabel::Tag { tag: block.clone() };
+                    }
+                    _ => {
+                        debug_assert!(false, "unexpected non-source label: {label:?}");
+                    }
                 }
             }
         }

@@ -242,6 +242,11 @@ pub struct DebugUnits {
     units: BTreeMap<usize, BTreeMap<usize, DebugUnit>>,
     functions: BTreeMap<DebugUnit, DebugUnit>,
     contracts: BTreeMap<DebugUnit, DebugUnit>,
+
+    // The position of each statement/assembly block within its corresponding function.
+    // The key is the debugging unit of the statement/assembly block, and the value is its
+    // position within the function.
+    positions: BTreeMap<DebugUnit, usize>,
 }
 
 impl DebugUnits {
@@ -255,6 +260,10 @@ impl DebugUnits {
 
     pub fn contract(&self, unit: &DebugUnit) -> Option<&DebugUnit> {
         self.contracts.get(unit)
+    }
+
+    pub fn position(&self, unit: &DebugUnit) -> Option<usize> {
+        self.positions.get(unit).copied()
     }
 
     pub fn iter(&self) -> DebugUnitsIterator<'_> {
@@ -493,6 +502,8 @@ impl DebugUnitVisitor {
 
     #[inline]
     fn insert_execution_unit(&mut self, unit: DebugUnit) -> Result<()> {
+        debug_assert!(unit.is_execution_unit());
+
         let function = self.last_function.as_ref().ok_or_eyre("statement outside of function")?;
         self.functions.insert(unit.clone(), function.clone());
 
@@ -587,7 +598,38 @@ impl DebugUnitVisitor {
     /// Produce the PrimativeStmts.
     pub fn produce(self) -> Result<DebugUnits> {
         self.check_integrity()?;
-        Ok(DebugUnits { units: self.units, functions: self.functions, contracts: self.contracts })
+        let positions = self.calculate_positions()?;
+        Ok(DebugUnits {
+            units: self.units,
+            functions: self.functions,
+            contracts: self.contracts,
+            positions,
+        })
+    }
+
+    /// Calculate the position of each statement/assembly block within its corresponding function.
+    fn calculate_positions(&self) -> Result<BTreeMap<DebugUnit, usize>> {
+        // Group the statements by their corresponding function.
+        let mut function_to_units = BTreeMap::new();
+        for (unit, function) in &self.functions {
+            debug_assert!(unit.is_execution_unit());
+            function_to_units.entry(function).or_insert_with(Vec::new).push(unit);
+        }
+
+        // Source the statements by their start position.
+        for units in function_to_units.values_mut() {
+            units.sort_by_key(|unit| unit.start);
+        }
+
+        // Calculate the position of each statement within its corresponding function.
+        let mut positions = BTreeMap::new();
+        for units in function_to_units.into_values() {
+            for (index, unit) in units.into_iter().enumerate() {
+                positions.insert(unit.clone(), index);
+            }
+        }
+
+        Ok(positions)
     }
 
     /// Special handling for inline assembly for older versions of Solidity.

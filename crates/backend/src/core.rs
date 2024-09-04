@@ -175,20 +175,8 @@ where
         self.collect_artifacts().await?;
 
         let source_maps = self.analyze_source_map()?;
-        let call_trace = self.analyze_call_trace(&source_maps)?;
-
-        // XXX (ZZ): remove this after debugging
-        call_trace.for_each(|func| {
-            println!("({}) {}", func.loc, func.addr);
-            println!("\tparent: {:?}", func.parent);
-            println!("\tchildren:");
-            for (child, callsite) in func.children.iter() {
-                println!("\t\t{child} {callsite:?}");
-            }
-            for trace in func.trace.iter() {
-                println!("\t{trace}");
-            }
-        });
+        let mut call_trace = self.analyze_call_trace(&source_maps)?;
+        call_trace.calibrate_with_source(&source_maps);
 
         let debug_arena = self.collect_debug_trace()?;
 

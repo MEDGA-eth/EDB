@@ -194,7 +194,7 @@ mod tests {
             },
             etherscan: EtherscanOpts::default(),
             rpc: RpcOpts {
-                url: option_env!("EDB_RPC_URL")
+                url: option_env!("ETH_RPC_URL")
                     .map(|s| s.to_string())
                     .or(Some("https://rpc.mevblocker.io".to_string())),
                 jwt_secret: None,

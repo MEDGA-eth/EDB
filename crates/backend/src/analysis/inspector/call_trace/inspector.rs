@@ -1,6 +1,6 @@
 //! Inspector to construct the dynamic call graph.
 
-use std::{collections::BTreeMap, fmt::Display};
+use std::collections::BTreeMap;
 
 use alloy_primitives::U256;
 use revm::{
@@ -11,231 +11,19 @@ use revm::{
     },
     Database, EvmContext, Inspector,
 };
-use revm_inspectors::tracing::types::CallKind;
 
-use crate::{artifact::onchain::AnalyzedBytecode, RuntimeAddress};
+use crate::{
+    analysis::inspector::{
+        call_trace::{BlockNode, Callsite, FuncNode},
+        push_jump::{JumpHint, PJHint},
+    },
+    artifact::onchain::AnalyzedBytecode,
+    RuntimeAddress,
+};
 
-use super::push_jump::{JumpHint, PJHint};
+use super::{AnalyzedCallTrace, Edge};
 
 const VALIDATION_CALL_DEPTH: usize = 25;
-
-#[derive(Default, Debug)]
-pub struct AnalyzedCallTrace {
-    /// Whether the call trace is polished.
-    /// - If not polished, the call trace may contain incorrect caller-callee relationships, but
-    ///   the call trace strictly follows the rule of a child node must return to its parent node
-    ///   (especially  for tail calls).
-    /// - If polished, the call trace is refined by the source map, and the caller-callee
-    ///   relationships are largely corrected. However, given the possibility of tail calls, the
-    ///   call trace may not strictly follow the rule of a child node must return to its parent
-    ///   node.
-    polished: bool,
-
-    /// The nodes in the call trace.
-    nodes: Vec<FuncNode>,
-}
-
-impl AnalyzedCallTrace {
-    pub fn is_polished(&self) -> bool {
-        self.polished
-    }
-
-    pub fn prune(&mut self) {
-        if self.nodes.is_empty() {
-            return;
-        }
-
-        debug_assert!(!self.nodes[0].is_discarded() && self.nodes[0].is_root());
-        self.assign_depth(0, Depth::default());
-
-        // for node in self.nodes.iter_mut().filter(|node| node.is_valid()) {
-        //     node.simplify_trace();
-        // }
-    }
-
-    pub fn assign_depth(&mut self, node_id: usize, depth: Depth) {
-        let node = &mut self.nodes[node_id];
-        node.depth = Some(depth);
-
-        for (child_id, callsite) in node.children.clone().into_iter() {
-            let new_depth = Depth::new_from_parent(&depth, callsite.edge);
-            self.assign_depth(child_id, new_depth);
-        }
-    }
-
-    pub fn for_each<F>(&self, mut f: F)
-    where
-        F: FnMut(&FuncNode),
-    {
-        for node in self.nodes.iter() {
-            if node.is_valid() {
-                f(node);
-            }
-        }
-    }
-}
-
-#[derive(Default, Debug, Clone, Copy)]
-pub struct Depth {
-    pub message: usize,
-    pub intra_contract: usize,
-}
-
-impl Depth {
-    pub fn new_msg(inter_depth: usize) -> Self {
-        Self { message: inter_depth, intra_contract: 0 }
-    }
-
-    pub fn new_from_parent(parent: &Self, edge: Edge) -> Self {
-        match edge {
-            Edge::MessageCall(_) => Self::new_msg(parent.message + 1),
-            Edge::IntraContract => {
-                Self { message: parent.message, intra_contract: parent.intra_contract + 1 }
-            }
-        }
-    }
-}
-
-#[derive(Default, Debug)]
-pub struct FuncNode {
-    /// Whether the node is discarded.
-    pub discard: bool,
-
-    /// Location in the whole graph.
-    pub loc: usize,
-    /// Parent node index in the graph.
-    pub parent: Option<(usize, Callsite)>,
-    /// Children node indexes in the graph.
-    pub children: Vec<(usize, Callsite)>,
-    /// Location in the parent node (i.e., which child is this node).
-    pub child_loc: usize,
-
-    /// Call trace within the function.
-    pub trace: Vec<BlockNode>,
-
-    /// Return status of message call.
-    pub ret: Option<InstructionResult>,
-
-    /// The address of the code. Note that this is the address of the *code*, not necessarily the
-    /// address of the storage.
-    pub addr: RuntimeAddress,
-
-    /// The fine-grained depth of the call. We post-calculate the depth of the call graph after the
-    /// construction.
-    pub depth: Option<Depth>,
-}
-
-impl FuncNode {
-    pub fn is_discarded(&self) -> bool {
-        self.discard
-    }
-
-    pub fn is_valid(&self) -> bool {
-        !self.discard && self.depth.is_some()
-    }
-
-    pub fn is_root(&self) -> bool {
-        self.parent.is_none()
-    }
-
-    pub fn is_leaf(&self) -> bool {
-        self.children.is_empty()
-    }
-
-    pub fn find_step(&self, step: usize) -> Option<&BlockNode> {
-        self.trace.iter().find(|block| block.contains_step(step))
-    }
-}
-
-#[derive(Default, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct BlockNode {
-    /// The first step (over the entire execution) of the block.
-    pub start_step: usize,
-
-    /// The first instruction count (over the contract) of the block.
-    pub start_ic: usize,
-
-    /// The number of instructions in the block.
-    pub inst_n: usize,
-
-    /// If the block ends with a call, then the node index of the callee.
-    pub call_to: Option<usize>,
-}
-
-impl Display for BlockNode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "[{}..{}] ({}..{})",
-            self.start_ic,
-            self.start_ic + self.inst_n - 1,
-            self.start_step,
-            self.start_step + self.inst_n - 1
-        )?;
-        if let Some(call_to) = self.call_to {
-            write!(f, " -call-> {call_to}")
-        } else {
-            Ok(())
-        }
-    }
-}
-
-impl BlockNode {
-    pub fn new(start_ic: usize, end_ic: usize, end_step: usize) -> Self {
-        Self {
-            start_step: end_step - (end_ic - start_ic),
-            start_ic,
-            inst_n: end_ic - start_ic + 1,
-            ..Default::default()
-        }
-    }
-
-    pub fn next_block_ic(&self) -> usize {
-        self.start_ic + self.inst_n
-    }
-
-    pub fn next_to(&self, other: &Self) -> bool {
-        self.next_block_ic() == other.start_ic
-    }
-
-    pub fn contains_step(&self, step: usize) -> bool {
-        self.start_step <= step && step < self.start_step + self.inst_n
-    }
-
-    pub fn contains_ic(&self, ic: usize) -> bool {
-        self.start_ic <= ic && ic < self.start_ic + self.inst_n
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Callsite {
-    pub ic: usize,
-    pub edge: Edge,
-}
-
-impl Callsite {
-    pub fn new(ic: usize, edge: Edge) -> Self {
-        Self { ic, edge }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum Edge {
-    /// The edge is a message call.
-    MessageCall(CallKind),
-    /// The edge is an intra-contract call.
-    IntraContract,
-}
-
-impl Edge {
-    pub fn is_message_call(&self) -> bool {
-        matches!(self, Self::MessageCall(_))
-    }
-
-    pub fn is_intra_contract(&self) -> bool {
-        matches!(self, Self::IntraContract)
-    }
-}
 
 #[derive(Debug)]
 pub struct CallTraceInspector<'a, DB> {
@@ -269,7 +57,7 @@ where
     DB: Database,
 {
     pub fn extract(mut self) -> AnalyzedCallTrace {
-        self.call_trace.prune();
+        self.call_trace.apply_lazy_updates();
         self.call_trace
     }
 
@@ -352,7 +140,7 @@ where
             let node = FuncNode {
                 loc,
                 parent: Some((parent_id, Callsite::new(self.cur_ic, edge))),
-                child_loc: parent.children.len(),
+                child_index: parent.children.len(),
                 addr,
                 ..Default::default()
             };
@@ -485,7 +273,7 @@ where
             // Remove the current node from the parent.
             parent.children.pop();
             cur_node.parent = None;
-            cur_node.child_loc = 0;
+            cur_node.child_index = 0;
 
             // Discard the current node.
             cur_node.discard = true;
@@ -507,7 +295,7 @@ where
 
                 debug_assert!(parent.addr == child.addr);
                 child.parent = Some((parent_id, *callsite));
-                child.child_loc = loc;
+                child.child_index = loc;
             }
 
             // Update the current node and continue to the parent.
