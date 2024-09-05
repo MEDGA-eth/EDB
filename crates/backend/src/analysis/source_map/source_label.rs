@@ -78,6 +78,20 @@ impl SourceLabel {
     pub fn is_tag(&self) -> bool {
         matches!(self, Self::Tag { .. })
     }
+
+    pub fn function(&self) -> Option<&DebugUnit> {
+        match self {
+            Self::PrimitiveStmt { func, .. } | Self::InlineAssembly { func, .. } => Some(func),
+            _ => None,
+        }
+    }
+
+    pub fn contract(&self) -> Option<&DebugUnit> {
+        match self {
+            Self::PrimitiveStmt { cntr, .. } | Self::InlineAssembly { cntr, .. } => Some(cntr),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default)]
@@ -105,7 +119,7 @@ impl From<Vec<SourceLabel>> for SourceLabels {
 
 impl SourceLabels {
     pub fn refine(&mut self, bytecode: &AnalyzedBytecode) -> Result<()> {
-        let ignore_f = |opcode| is_stack_operation_opcode(opcode) && opcode.is_jump();
+        let ignore_f = |opcode| is_stack_operation_opcode(opcode) || opcode.is_jump();
 
         let mut reverse_map = std::collections::HashMap::new();
         let code = &bytecode.code;
@@ -121,7 +135,9 @@ impl SourceLabels {
             if opcodes.iter().all(|(opcode, _)| ignore_f(*opcode)) {
                 // If all the opcodes are stack operations or jump opcode, then we cannot refine the
                 // source label.
-                warn!(label=?label, opcode=?opcodes, "cannot refine the source label");
+                let label = format!("{label}");
+                let opcodes = opcodes.iter().map(|(op, ic)| (ic, op.as_str())).collect::<Vec<_>>();
+                debug!(label=label, opcode=?opcodes, "cannot refine the source label");
                 continue;
             }
 
@@ -137,9 +153,7 @@ impl SourceLabels {
                         // We change the source label to a tag.
                         self[ic] = SourceLabel::Tag { tag: block.clone() };
                     }
-                    _ => {
-                        debug_assert!(false, "unexpected non-source label: {label:?}");
-                    }
+                    _ => {}
                 }
             }
         }

@@ -94,7 +94,12 @@ where
         // Update the current node.
         debug_assert!(cur_node.ret.is_none());
         cur_node.ret = ret;
-        cur_node.trace.push(BlockNode::new(self.cur_block_start, self.cur_ic, self.cur_step));
+        cur_node.trace.push(BlockNode::new(
+            cur_node.addr,
+            self.cur_block_start,
+            self.cur_ic,
+            self.cur_step,
+        ));
 
         if cur_node.parent.is_none() {
             // We are at the root node.
@@ -153,7 +158,8 @@ where
             parent.children.push((loc, Callsite::new(self.cur_ic, edge)));
 
             // Update the parent node's trace.
-            let mut block = BlockNode::new(self.cur_block_start, self.cur_ic, self.cur_step);
+            let mut block =
+                BlockNode::new(parent.addr, self.cur_block_start, self.cur_ic, self.cur_step);
             block.call_to = Some(loc);
             parent.trace.push(block);
 
@@ -338,6 +344,7 @@ where
                 let cur_node = &mut self.call_trace.nodes
                     [self.cur_node.expect("get_current_node_mut without entering")];
                 cur_node.trace.push(BlockNode::new(
+                    cur_node.addr,
                     self.cur_block_start,
                     self.cur_ic,
                     self.cur_step,
@@ -352,7 +359,12 @@ where
 
             let cur_node = &mut self.call_trace.nodes
                 [self.cur_node.expect("get_current_node_mut without entering")];
-            cur_node.trace.push(BlockNode::new(self.cur_block_start, self.cur_ic, self.cur_step));
+            cur_node.trace.push(BlockNode::new(
+                cur_node.addr,
+                self.cur_block_start,
+                self.cur_ic,
+                self.cur_step,
+            ));
 
             self.cur_block_start = if cond.is_zero() {
                 // The jump is not taken.

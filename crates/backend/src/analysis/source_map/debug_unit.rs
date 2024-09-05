@@ -187,6 +187,13 @@ impl DebugUnit {
         }
     }
 
+    pub fn is_modifier(&self) -> Option<bool> {
+        match self {
+            Self::Function(_, is_modifier) => Some(*is_modifier),
+            _ => None,
+        }
+    }
+
     pub fn is_execution_unit(&self) -> bool {
         match self {
             Self::Primitive(_) | Self::InlineAssembly(_, _) => true,

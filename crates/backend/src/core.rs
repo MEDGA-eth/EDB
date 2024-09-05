@@ -176,7 +176,7 @@ where
 
         let source_maps = self.analyze_source_map()?;
         let mut call_trace = self.analyze_call_trace(&source_maps)?;
-        call_trace.calibrate_with_source(&source_maps);
+        call_trace.calibrate_with_source(&source_maps)?;
 
         let debug_arena = self.collect_debug_trace()?;
 

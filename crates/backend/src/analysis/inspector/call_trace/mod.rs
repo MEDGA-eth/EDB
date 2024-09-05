@@ -172,8 +172,36 @@ pub enum CalibrationPoint {
     Merged(Vec<SourceLabel>),
 }
 
+impl CalibrationPoint {
+    pub fn is_singleton(&self) -> bool {
+        matches!(self, Self::Singleton(_))
+    }
+
+    pub fn is_merged(&self) -> bool {
+        matches!(self, Self::Merged(_))
+    }
+
+    pub fn as_singleton(&self) -> Option<&SourceLabel> {
+        match self {
+            Self::Singleton(label) => Some(label),
+            _ => None,
+        }
+    }
+
+    pub fn as_merged(&self) -> Option<&Vec<SourceLabel>> {
+        match self {
+            Self::Merged(labels) => Some(labels),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Default, Debug, PartialEq, Eq, Clone)]
 pub struct BlockNode {
+    /// The address of the code. Note that this is the address of the *code*, not necessarily the
+    /// address of the storage.
+    pub addr: RuntimeAddress,
+
     /// The first step (over the entire execution) of the block.
     pub start_step: usize,
 
@@ -191,6 +219,8 @@ pub struct BlockNode {
 
     /// Calibrated Function
     pub calib_func: Option<DebugUnit>,
+    /// Calibrated Modifiers
+    pub calib_modifiers: Vec<DebugUnit>,
 }
 
 impl Display for BlockNode {
@@ -212,8 +242,9 @@ impl Display for BlockNode {
 }
 
 impl BlockNode {
-    pub fn new(start_ic: usize, end_ic: usize, end_step: usize) -> Self {
+    pub fn new(addr: RuntimeAddress, start_ic: usize, end_ic: usize, end_step: usize) -> Self {
         Self {
+            addr,
             start_step: end_step - (end_ic - start_ic),
             start_ic,
             inst_n: end_ic - start_ic + 1,
@@ -226,7 +257,7 @@ impl BlockNode {
     }
 
     pub fn next_to(&self, other: &Self) -> bool {
-        self.next_block_ic() == other.start_ic
+        self.addr == other.addr && self.next_block_ic() == other.start_ic
     }
 
     pub fn contains_step(&self, step: usize) -> bool {
