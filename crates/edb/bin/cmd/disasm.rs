@@ -25,6 +25,14 @@ use crate::opts::{CacheOpts, EtherscanOpts, RpcOpts};
 
 #[derive(Clone, Debug, Parser)]
 pub struct DisasmArgs {
+    /// Refine the source labels.
+    #[clap(long)]
+    refine: bool,
+
+    /// Dedisassembly the constructor instead of the deployed bytecode.
+    #[clap(long)]
+    constructor: bool,
+
     #[command(subcommand)]
     mode: DisasmMode,
 }
@@ -46,10 +54,6 @@ struct OnChainArgs {
     #[clap(long, short)]
     address: Address,
 
-    /// Refine the source labels.
-    #[clap(long)]
-    refine: bool,
-
     #[command(flatten)]
     pub cache: CacheOpts,
 
@@ -61,8 +65,8 @@ struct OnChainArgs {
 }
 
 impl OnChainArgs {
-    pub async fn disasm(self) -> Result<()> {
-        let Self { address, cache, etherscan, rpc, refine } = self;
+    pub async fn disasm(self, refine: bool, constructor: bool) -> Result<()> {
+        let Self { address, cache, etherscan, rpc } = self;
 
         let cache_path = cache.cache_path();
         let chain = etherscan.chain();
@@ -81,9 +85,9 @@ impl OnChainArgs {
         };
 
         // Step 3: fetch the contract bytecode.
-        let bytecode = provider.get_code_at(address).await?;
-        ensure!(!bytecode.is_empty(), "empty bytecode");
-        let code = AnalyzedBytecode::new(&bytecode);
+        let deployed_bytecode = provider.get_code_at(address).await?;
+        ensure!(!deployed_bytecode.is_empty(), "empty bytecode");
+        let deployed_code = AnalyzedBytecode::new(&deployed_bytecode);
 
         // Step 4: fetch the source code if available.
         let compiler = OnchainCompiler::new(cache_path.compiler_chain_cache_dir(chain))?;
@@ -94,15 +98,21 @@ impl OnChainArgs {
                 input_sources: sources,
                 compilation_output: compiler_output,
                 explorer_meta: metadata,
-                onchain_bytecode: Bytecode::new_raw(bytecode),
+                onchain_bytecode: Bytecode::new_raw(deployed_bytecode),
                 onchain_address: address,
             }
             .build()?;
-            disasm_artifact(&artifact, Some(code), refine)?;
+            disasm_artifact(
+                &artifact,
+                // We do not fetch the constructor bytecode from etherscan.
+                if constructor { None } else { Some(deployed_code) },
+                refine,
+                constructor,
+            )?;
         } else {
             // If the contract is not verified, we can't fetch the source code.
             // We can still disassemble the bytecode.
-            disasm_bytecode(&code)?;
+            disasm_bytecode(&deployed_code)?;
         }
 
         Ok(())
@@ -114,17 +124,13 @@ struct LocalArgs {
     /// The name of the contract.
     name: String,
 
-    /// Refine the source labels.
-    #[clap(long)]
-    refine: bool,
-
     /// The path to the project. If not provided, the current directory is used.
     #[clap(long)]
     path: Option<PathBuf>,
 }
 
 impl LocalArgs {
-    pub async fn disasm(self) -> Result<()> {
+    pub async fn disasm(self, _refine: bool, _constructor: bool) -> Result<()> {
         unimplemented!("Dump debug info from local project");
     }
 }
@@ -132,20 +138,29 @@ impl LocalArgs {
 impl DisasmArgs {
     pub async fn run(self) -> Result<()> {
         match self.mode {
-            DisasmMode::OnChain(args) => args.disasm().await,
-            DisasmMode::Local(args) => args.disasm().await,
+            DisasmMode::OnChain(args) => args.disasm(self.refine, self.constructor).await,
+            DisasmMode::Local(args) => args.disasm(self.refine, self.constructor).await,
         }
     }
 }
 
 fn disasm_artifact(
     artifact: &DeployArtifact,
-    code: Option<AnalyzedBytecode>,
+    onchain_code: Option<AnalyzedBytecode>,
     refine: bool,
+    constructor: bool,
 ) -> Result<()> {
-    // XXX (ZZ): For now, we only disassemble the deployed bytecode.
-    let code = if let Some(code) = code {
+    let code = if let Some(code) = onchain_code {
         code
+    } else if constructor {
+        AnalyzedBytecode::new(
+            artifact
+                .constructor_bytecode()
+                .ok_or_eyre("invalid compiled bytecode")?
+                .bytes()
+                .ok_or_eyre("cannot convert compiled bytecode into bytes")?
+                .as_ref(),
+        )
     } else {
         AnalyzedBytecode::new(
             artifact
@@ -157,16 +172,21 @@ fn disasm_artifact(
         )
     };
 
-    let [_, mut deployed_source_map] = SourceMapAnalysis::analyze(artifact)?;
+    let [mut constructor_source_map, mut deployed_source_map] =
+        SourceMapAnalysis::analyze(artifact)?;
+    debug_assert!(constructor_source_map.is_constructor());
     debug_assert!(deployed_source_map.is_deployed());
 
-    let source_map = &deployed_source_map.source_map;
-    let labels = &mut deployed_source_map.labels;
+    let analyze_source_map =
+        if constructor { &mut constructor_source_map } else { &mut deployed_source_map };
+
+    let source_map = &analyze_source_map.source_map;
+    let labels = &mut analyze_source_map.labels;
     if refine {
         labels.refine(&code)?;
     }
 
-    println!("{:5} ({:5}): {:<84} | {:<20} | Refined Label\n", "IC", "PC", "Opcode", "Source Map");
+    println!("{:5} ({:5}): {:<85} | {:<20} | Refined Label\n", "IC", "PC", "Opcode", "Source Map");
 
     for (ic, (src, label)) in source_map.iter().zip(labels.iter()).enumerate() {
         let pc = code.ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {ic}"))?;
@@ -183,14 +203,14 @@ fn disasm_artifact(
             format!("{opcode}")
         };
 
-        println!("{:05} ({:05}): {:<84} | {:<20} | {}", ic, pc, opcode_str, src.to_string(), label);
+        println!("{:05} ({:05}): {:<85} | {:<20} | {}", ic, pc, opcode_str, src.to_string(), label);
     }
 
     Ok(())
 }
 
 fn disasm_bytecode(code: &AnalyzedBytecode) -> Result<()> {
-    println!("{:5} ({:5}): {:<84}\n", "IC", "PC", "Opcode",);
+    println!("{:5} ({:5}): {:<85}\n", "IC", "PC", "Opcode",);
 
     for (pc, value) in code.code.iter().enumerate() {
         let Some(ic) = code.pc_ic_map.get(pc) else {
@@ -205,7 +225,7 @@ fn disasm_bytecode(code: &AnalyzedBytecode) -> Result<()> {
             format!("{opcode}")
         };
 
-        println!("{ic:05} ({pc:05}): {opcode_str:<84}");
+        println!("{ic:05} ({pc:05}): {opcode_str:<85}");
     }
 
     Ok(())

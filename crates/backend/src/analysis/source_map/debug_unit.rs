@@ -11,7 +11,7 @@ use foundry_compilers::artifacts::{
     ast::SourceLocation,
     yul::{YulExpression, YulStatement},
     ContractDefinition, ExpressionOrVariableDeclarationStatement, FunctionDefinition,
-    InlineAssembly, ModifierDefinition, Statement,
+    InlineAssembly, ModifierDefinition, StateMutability, Statement,
 };
 use solang_parser::{helpers::CodeLocation, lexer, pt};
 
@@ -117,6 +117,31 @@ impl TryFrom<&SourceLocation> for UnitLocation {
     }
 }
 
+/// Metadata for Function Unit.
+#[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd, Hash, Copy)]
+pub struct FunctionMeta {
+    pub is_modifier: bool,
+    pub is_pure: bool,
+}
+
+impl FunctionMeta {
+    pub fn new(is_modifier: bool, is_pure: bool) -> Self {
+        Self { is_modifier, is_pure }
+    }
+}
+
+impl From<&FunctionDefinition> for FunctionMeta {
+    fn from(func: &FunctionDefinition) -> Self {
+        Self::new(false, func.state_mutability == Some(StateMutability::Pure))
+    }
+}
+
+impl From<&ModifierDefinition> for FunctionMeta {
+    fn from(_modifier: &ModifierDefinition) -> Self {
+        Self::new(true, false)
+    }
+}
+
 /// Different kind of debugging units.
 /// A debugging unit can be either an execution unit (singleton primitive or block-level inline
 /// assembly) or a non-execution unit (function or contract). The execution units are the basic
@@ -131,7 +156,7 @@ pub enum DebugUnit {
     InlineAssembly(UnitLocation, Vec<UnitLocation>),
 
     /// A function unit is a tag for a function definition (non-execution unit).
-    Function(UnitLocation, bool),
+    Function(UnitLocation, FunctionMeta),
 
     /// A contract unit is a tag for a contract definition (non-execution unit).
     Contract(UnitLocation),
@@ -144,7 +169,7 @@ impl Deref for DebugUnit {
         match self {
             Self::Primitive(loc) |
             Self::InlineAssembly(loc, _) |
-            Self::Function(loc, _) |
+            Self::Function(loc, ..) |
             Self::Contract(loc) => loc,
         }
     }
@@ -155,7 +180,7 @@ impl DerefMut for DebugUnit {
         match self {
             Self::Primitive(loc) |
             Self::InlineAssembly(loc, _) |
-            Self::Function(loc, _) |
+            Self::Function(loc, ..) |
             Self::Contract(loc) => loc,
         }
     }
@@ -166,7 +191,7 @@ impl DebugUnit {
         match self {
             Self::Primitive(loc) |
             Self::InlineAssembly(loc, _) |
-            Self::Function(loc, _) |
+            Self::Function(loc, ..) |
             Self::Contract(loc) => loc,
         }
     }
@@ -175,7 +200,7 @@ impl DebugUnit {
         match self {
             Self::Primitive(loc) |
             Self::InlineAssembly(loc, _) |
-            Self::Function(loc, _) |
+            Self::Function(loc, ..) |
             Self::Contract(loc) => loc,
         }
     }
@@ -187,9 +212,9 @@ impl DebugUnit {
         }
     }
 
-    pub fn is_modifier(&self) -> Option<bool> {
+    pub fn get_function_meta(&self) -> Option<&FunctionMeta> {
         match self {
-            Self::Function(_, is_modifier) => Some(*is_modifier),
+            Self::Function(_, meta) => Some(meta),
             _ => None,
         }
     }
@@ -197,13 +222,13 @@ impl DebugUnit {
     pub fn is_execution_unit(&self) -> bool {
         match self {
             Self::Primitive(_) | Self::InlineAssembly(_, _) => true,
-            Self::Function(_, _) | Self::Contract(_) => false,
+            Self::Function(..) | Self::Contract(_) => false,
         }
     }
 
     pub fn iter(&self) -> DebugUnitIterator<'_> {
         match self {
-            Self::Primitive(loc) | Self::Function(loc, _) | Self::Contract(loc) => {
+            Self::Primitive(loc) | Self::Function(loc, ..) | Self::Contract(loc) => {
                 DebugUnitIterator { unit: vec![loc], index: 0 }
             }
             Self::InlineAssembly(_, stmts) => {
@@ -359,11 +384,11 @@ impl Visitor for DebugUnitVisitor {
     }
 
     fn visit_function_definition(&mut self, definition: &FunctionDefinition) -> Result<()> {
-        self.update_function(&definition.src, false)
+        self.update_function(&definition.src, definition.into())
     }
 
     fn visit_modifier_definition(&mut self, definition: &ModifierDefinition) -> Result<()> {
-        self.update_function(&definition.src, true)
+        self.update_function(&definition.src, definition.into())
     }
 
     fn post_visit_statement(&mut self, statement: &Statement) -> Result<()> {
@@ -557,13 +582,13 @@ impl DebugUnitVisitor {
         Ok(())
     }
 
-    fn update_function(&mut self, src: &SourceLocation, is_modifier: bool) -> Result<()> {
+    fn update_function(&mut self, src: &SourceLocation, meta: FunctionMeta) -> Result<()> {
         let src = self.get_unit_location(src)?;
         trace!("find a function unit: {}", src);
 
-        self.last_function = Some(DebugUnit::Function(src.clone(), is_modifier));
+        self.last_function = Some(DebugUnit::Function(src.clone(), meta));
 
-        self.insert_debug_unit(DebugUnit::Function(src, is_modifier))
+        self.insert_debug_unit(DebugUnit::Function(src, meta))
     }
 
     fn update_contract(&mut self, src: &SourceLocation) -> Result<()> {

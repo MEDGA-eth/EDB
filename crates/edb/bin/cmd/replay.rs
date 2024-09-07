@@ -262,6 +262,14 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     #[serial]
+    async fn test_replay_e2e_tx5() {
+        run_e2e_test("0x2c7d074e9d26ff1ab906c60fd014ed9dfb8103cfb64b5c9d49cfe732295a7e5b")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial]
     async fn test_replay_e2e_constract_with_library() {
         run_e2e_test("0x9404771a145b4df4a6694a9896509d263448f5f27c2fd55ec8c47f37c9468b76")
             .await
@@ -280,6 +288,30 @@ mod tests {
     #[serial]
     async fn test_replay_coinbase_consistency() {
         run_e2e_test("0xc445aa7724e2b8b96a3e3b0c4d921a9329c12a9b2dda00368bb5f7b5da0b3e96")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial]
+    async fn test_replay_penpie_hack_tx1() {
+        run_e2e_test("0xca87f257280e19378dc1890a478514195f068857affacde0b92c851b897dff9e")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial]
+    async fn test_replay_penpie_hack_tx2() {
+        run_e2e_test("0x56e09abb35ff12271fdb38ff8a23e4d4a7396844426a94c4d3af2e8b7a0a2813")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial]
+    async fn test_replay_penpie_hack_tx3() {
+        run_e2e_test("0x663b55a1ee992603f7636ef23ff5cf19d3b261ab81494d06e218c86482df5342")
             .await
             .unwrap();
     }

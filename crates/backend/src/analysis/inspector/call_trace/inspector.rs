@@ -316,9 +316,11 @@ where
     DB: Database,
     DB::Error: std::error::Error,
 {
-    fn step(&mut self, interp: &mut Interpreter, _context: &mut EvmContext<DB>) {
+    fn step_end(&mut self, _interp: &mut Interpreter, _context: &mut EvmContext<DB>) {
         self.cur_step += 1;
+    }
 
+    fn step(&mut self, interp: &mut Interpreter, _context: &mut EvmContext<DB>) {
         let pc = interp.program_counter();
         let ic = self.get_current_bytecode().pc_ic_map.get(pc).expect("invalid pc");
         let op = interp.current_opcode();

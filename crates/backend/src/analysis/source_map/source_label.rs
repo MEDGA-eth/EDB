@@ -79,6 +79,8 @@ impl SourceLabel {
         matches!(self, Self::Tag { .. })
     }
 
+    /// Get the function associated with the source label. Note that only the source label that
+    /// represents a statement or an inline assembly block has a function associated with it.
     pub fn function(&self) -> Option<&DebugUnit> {
         match self {
             Self::PrimitiveStmt { func, .. } | Self::InlineAssembly { func, .. } => Some(func),
@@ -86,9 +88,37 @@ impl SourceLabel {
         }
     }
 
+    /// Get the contract associated with the source label. Note that only the source label that
+    /// represents a statement or an inline assembly block has a contract associated with it.
     pub fn contract(&self) -> Option<&DebugUnit> {
         match self {
             Self::PrimitiveStmt { cntr, .. } | Self::InlineAssembly { cntr, .. } => Some(cntr),
+            _ => None,
+        }
+    }
+
+    /// Get the function tag associated with the source label. Note that all the source and
+    /// non-source labels could potentially have a function tag.
+    pub fn function_tag(&self) -> Option<&DebugUnit> {
+        match self {
+            Self::PrimitiveStmt { func, .. } | Self::InlineAssembly { func, .. } => Some(func),
+            Self::Tag { tag } if matches!(tag, DebugUnit::Function(..)) => Some(tag),
+            Self::Others { scope, .. } if matches!(scope, Some(DebugUnit::Function(..))) => {
+                scope.as_ref()
+            }
+            _ => None,
+        }
+    }
+
+    /// Get the contract tag associated with the source label. Note that all the source and
+    /// non-source labels could potentially have a contract tag.
+    pub fn contract_tag(&self) -> Option<&DebugUnit> {
+        match self {
+            Self::PrimitiveStmt { cntr, .. } | Self::InlineAssembly { cntr, .. } => Some(cntr),
+            Self::Tag { tag } if matches!(tag, DebugUnit::Contract(..)) => Some(tag),
+            Self::Others { scope, .. } if matches!(scope, Some(DebugUnit::Contract(..))) => {
+                scope.as_ref()
+            }
             _ => None,
         }
     }
@@ -241,7 +271,7 @@ impl SourceLabelAnalysis {
                                 cntr: contract.clone(),
                             };
                     }
-                    DebugUnit::Function(_, _) | DebugUnit::Contract(_) => {
+                    DebugUnit::Function(..) | DebugUnit::Contract(_) => {
                         *source_labels.last_mut().expect("this cannot happen") =
                             SourceLabel::Others {
                                 scope: Some(unit.clone()),

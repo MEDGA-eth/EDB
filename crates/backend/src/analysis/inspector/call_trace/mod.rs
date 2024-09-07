@@ -214,13 +214,15 @@ pub struct BlockNode {
     /// If the block ends with a call, then the node index of the callee.
     pub call_to: Option<usize>,
 
+    // Calibration information.
     /// Calibration points (towards the source map).
     pub calib: BTreeMap<usize, CalibrationPoint>,
-
     /// Calibrated Function
     pub calib_func: Option<DebugUnit>,
     /// Calibrated Modifiers
     pub calib_modifiers: Vec<DebugUnit>,
+    /// Calibrated Inlined Functions
+    pub calib_inlined: Vec<DebugUnit>,
 }
 
 impl Display for BlockNode {
