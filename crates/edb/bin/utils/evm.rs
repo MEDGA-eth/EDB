@@ -6,7 +6,7 @@ use alloy_primitives::{TxKind, U256};
 use alloy_provider::{network::AnyNetwork, Provider};
 use alloy_rpc_types::{BlockNumberOrTag, Transaction};
 use alloy_transport::{Transport, TransportError};
-use anvil::Hardfork;
+use anvil::EthereumHardfork;
 use eyre::{eyre, OptionExt, Result};
 use foundry_common::constants::NON_ARCHIVE_NODE_WARNING;
 use foundry_evm::{
@@ -29,7 +29,7 @@ pub async fn setup_block_env<
         // but only if we're forking mainnet
         let chain_id = provider.get_chain_id().await?;
         if NamedChain::Mainnet == chain_id {
-            let hardfork: Hardfork = fork_block_number.into();
+            let hardfork: EthereumHardfork = fork_block_number.into();
             env.handler_cfg.spec_id = hardfork.into();
         }
 
@@ -103,7 +103,7 @@ latest block number: {latest_block}"
     env.tx.chain_id = chain_id.into();
 
     // apply changes such as difficulty -> prevrandao and chain specifics for current chain id
-    apply_chain_and_block_specific_env_changes(&mut env, &block);
+    apply_chain_and_block_specific_env_changes::<AnyNetwork>(&mut env, &block);
 
     Ok(env)
 }
@@ -150,7 +150,7 @@ async fn find_latest_fork_block<
     // leeway
     for _ in 0..2 {
         if let Some(block) = provider.get_block(num.into(), false.into()).await? {
-            if block.header.hash.is_some() {
+            if !block.header.hash.is_zero() {
                 break;
             }
         }
@@ -234,17 +234,17 @@ pub fn fill_tx_env(env: &mut Env, tx: &Transaction) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::Hardfork;
+    use super::EthereumHardfork;
 
     #[test]
     fn test_hardfork_blocks() {
-        let hf: Hardfork = 12_965_000u64.into();
-        assert_eq!(hf, Hardfork::London);
+        let hf: EthereumHardfork = 12_965_000u64.into();
+        assert_eq!(hf, EthereumHardfork::London);
 
-        let hf: Hardfork = 4370000u64.into();
-        assert_eq!(hf, Hardfork::Byzantium);
+        let hf: EthereumHardfork = 4370000u64.into();
+        assert_eq!(hf, EthereumHardfork::Byzantium);
 
-        let hf: Hardfork = 12244000u64.into();
-        assert_eq!(hf, Hardfork::Berlin);
+        let hf: EthereumHardfork = 12244000u64.into();
+        assert_eq!(hf, EthereumHardfork::Berlin);
     }
 }

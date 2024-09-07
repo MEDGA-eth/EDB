@@ -4,7 +4,7 @@ use alloy_chains::Chain;
 use alloy_network::Network;
 use alloy_primitives::TxHash;
 use alloy_provider::{Provider, RootProvider};
-use alloy_rpc_types::{Block, BlockId, BlockNumberOrTag, BlockTransactionsKind};
+use alloy_rpc_types::{BlockId, BlockNumberOrTag, BlockTransactionsKind};
 use alloy_transport::{Transport, TransportError, TransportResult};
 use async_trait::async_trait;
 use eyre::Result;
@@ -24,7 +24,7 @@ where
     // Cache for the provider
     receipt_cache: Option<EDBCache<Receipt<N>>>,
     tx_cache: Option<EDBCache<Transaction<N>>>,
-    block_cache: Option<EDBCache<Option<Block>>>,
+    block_cache: Option<EDBCache<Option<N::BlockResponse>>>,
 }
 
 impl<P, N> Deref for CachedProvider<P, N>
@@ -119,7 +119,7 @@ where
         &self,
         number: BlockId,
         kind: BlockTransactionsKind,
-    ) -> TransportResult<Option<Block>> {
+    ) -> TransportResult<Option<N::BlockResponse>> {
         // We only cache canonical blocks with number or hash
         let block_str = match number {
             BlockId::Number(BlockNumberOrTag::Number(n)) => n.to_string(),

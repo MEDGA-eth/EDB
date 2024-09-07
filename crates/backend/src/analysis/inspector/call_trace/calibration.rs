@@ -59,7 +59,7 @@ impl AnalyzedCallTrace {
                     new_trace.push(block)
                 } else {
                     // Otherwise, we need to split the block into multiple blocks.
-                    new_trace.extend(block.split_by_calibrated_funcs(source_map, funcs)?);
+                    // new_trace.extend(block.split_by_calibrated_funcs(source_map, funcs)?);
                 }
             }
             func.trace = new_trace;

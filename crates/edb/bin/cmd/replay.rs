@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use alloy_primitives::TxHash;
 use alloy_provider::Provider;
-use alloy_rpc_types::{BlockTransactions, BlockTransactionsKind};
+use alloy_rpc_types::{serde_helpers::WithOtherFields, BlockTransactionsKind};
 use clap::Parser;
 use edb_backend::DebugBackend;
 use edb_frontend::DebugFrontend;
@@ -97,11 +97,11 @@ impl ReplayArgs {
             .ok_or_eyre("transaction not found")?;
         let tx_block_number: u64 =
             tx.block_number.ok_or_eyre("transaction may still be pending")?;
-        let block = provider
+        let mut block = provider
             .get_block(tx_block_number.into(), BlockTransactionsKind::Full)
             .await?
             .ok_or_eyre("block not found")?;
-        let BlockTransactions::Full(txs_in_block) = block.transactions else {
+        if !block.transactions.is_full() {
             return Err(eyre::eyre!("block transactions not found"));
         };
         trace!(tx_block_number=?tx_block_number, "transaction block number");
@@ -120,9 +120,10 @@ impl ReplayArgs {
         // prepare txs
         let mut txs = vec![];
         if !quick {
-            txs.extend(txs_in_block.into_iter().take_while(|tx| &tx.hash != tx_hash));
+            let block_transactions = std::mem::take(&mut block.transactions);
+            txs.extend(block_transactions.into_transactions().take_while(|tx| &tx.hash != tx_hash));
         };
-        txs.push(tx.inner.clone());
+        txs.push(WithOtherFields::new(tx.inner.clone()));
 
         let pb = init_progress!(txs, "Setting up the replay environment");
         pb.set_position(0);
