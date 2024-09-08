@@ -4,7 +4,7 @@ use alloy_primitives::Address;
 use alloy_provider::Provider;
 use clap::{Parser, Subcommand};
 use edb_backend::{
-    analysis::source_map::SourceMapAnalysis,
+    analysis::source_map::{debug_unit::DebugUnit, source_label::SourceLabel, SourceMapAnalysis},
     artifact::{
         deploy::{DeployArtifact, DeployArtifactBuilder},
         onchain::AnalyzedBytecode,
@@ -186,9 +186,12 @@ fn disasm_artifact(
         labels.refine(&code)?;
     }
 
-    println!("{:5} ({:5}): {:<85} | {:<20} | Refined Label\n", "IC", "PC", "Opcode", "Source Map");
+    println!(
+        "{:5} ({:5}): {:<85} | {:<72} | Comments\n",
+        "IC", "PC", "Opcode", "Refined Label"
+    );
 
-    for (ic, (src, label)) in source_map.iter().zip(labels.iter()).enumerate() {
+    for (ic, (_, label)) in source_map.iter().zip(labels.iter()).enumerate() {
         let pc = code.ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {ic}"))?;
         let opcode =
             OpCode::new(code.code[pc]).ok_or_eyre(format!("invalid opcode: {}", code.code[pc]))?;
@@ -203,7 +206,27 @@ fn disasm_artifact(
             format!("{opcode}")
         };
 
-        println!("{:05} ({:05}): {:<85} | {:<20} | {}", ic, pc, opcode_str, src.to_string(), label);
+        let comments = match label {
+            SourceLabel::PrimitiveStmt { stmt: DebugUnit::Primitive(_, meta), .. } => {
+                meta.to_string()
+            }
+            SourceLabel::Tag { tag, .. } => match tag {
+                DebugUnit::Function(_, meta) => meta.to_string(),
+                DebugUnit::Contract(_, meta) => meta.to_string(),
+                DebugUnit::Primitive(_, meta) => meta.to_string(),
+                _ => String::new(),
+            },
+            _ => String::new(),
+        };
+
+        println!(
+            "{:05} ({:05}): {:<85} | {:<72} | {}",
+            ic,
+            pc,
+            opcode_str,
+            label.to_string(),
+            comments
+        );
     }
 
     Ok(())

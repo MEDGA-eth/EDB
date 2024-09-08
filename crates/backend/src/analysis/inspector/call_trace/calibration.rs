@@ -1,14 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use eyre::{bail, eyre, OptionExt, Result};
-use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
+use eyre::{bail, OptionExt, Result};
 
 use crate::{
-    analysis::source_map::{debug_unit::DebugUnit, RefinedSourceMap},
+    analysis::source_map::{debug_unit::DebugUnit, integrity::IntergrityLevel, RefinedSourceMap},
     RuntimeAddress,
 };
 
 use super::{AnalyzedCallTrace, BlockNode, CalibrationPoint};
+
+#[cfg(feature = "paralize_analysis")]
+use rayon::prelude::*;
 
 impl AnalyzedCallTrace {
     pub fn is_calibrated(&self) -> bool {
@@ -23,6 +25,8 @@ impl AnalyzedCallTrace {
         &mut self,
         source_map: &BTreeMap<RuntimeAddress, RefinedSourceMap>,
     ) -> Result<()> {
+        return Ok(());
+
         // We first project the source labels into the call trace.
         self.project_source_labels(source_map)?;
 
@@ -39,13 +43,18 @@ impl AnalyzedCallTrace {
         source_map: &BTreeMap<RuntimeAddress, RefinedSourceMap>,
     ) -> Result<()> {
         // This can be done in parallel.
-        self.nodes.iter_mut().filter(|func| !func.is_discarded()).try_for_each(|func| {
+        #[cfg(feature = "paralize_analysis")]
+        let iter = self.nodes.par_iter_mut();
+        #[cfg(not(feature = "paralize_analysis"))]
+        let iter = self.nodes.iter_mut();
+
+        iter.filter(|func| !func.is_discarded()).try_for_each(|func| {
             let source_map = match source_map.get(&func.addr) {
                 Some(source_map) => source_map,
                 None => return Ok(()),
             };
 
-            if source_map.is_corrupted {
+            if source_map.intergrity_level == IntergrityLevel::Corrupted {
                 // We do not need to calibrate the function if the source map is corrupted.
                 return Ok(());
             }
@@ -59,7 +68,7 @@ impl AnalyzedCallTrace {
                     new_trace.push(block)
                 } else {
                     // Otherwise, we need to split the block into multiple blocks.
-                    // new_trace.extend(block.split_by_calibrated_funcs(source_map, funcs)?);
+                    new_trace.extend(block.split_by_calibrated_funcs(source_map, funcs)?);
                 }
             }
             func.trace = new_trace;
@@ -78,7 +87,7 @@ impl BlockNode {
     }
 
     fn split_by_calibrated_funcs(
-        mut self,
+        &mut self,
         source_map: &RefinedSourceMap,
         funcs: Vec<DebugUnit>,
     ) -> Result<Vec<Self>> {
@@ -95,62 +104,141 @@ impl BlockNode {
                 // inlining). In this case, we need to split the block into two. For
                 // example, address: 0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad,
                 // block: ic[1317..1337].
-                let [func1, func2] =
-                    funcs.try_into().map_err(|_| eyre!("more than two functions"))?;
-                debug!(addr=?self.addr, block=format!("{self}"), func1=format!("{func1}"), func2=format!("{func2}"), "splitting the block");
+                trace!(addr=?self.addr, block=format!("{self}"), func1=format!("{}", funcs[0]), func2=format!("{}", funcs[1]), "splitting the block");
 
+                // We first find the potential "call" instruction.
+                let mut call_ic = None;
+                let mut ret_ic = None;
+                let mut func1 = None;
+                let mut func2 = None;
                 for ic in self.start_ic..self.start_ic + self.inst_n {
                     let Some(c_label) = source_map.labels.get(ic) else {
                         break;
                     };
 
-                    if c_label.function() != Some(&func2) {
-                        continue;
+                    if func1.is_none() {
+                        if c_label
+                            .function()
+                            .map(|f| {
+                                !f.get_function_meta()
+                                    .expect("this has to be a function unit")
+                                    .is_modifier
+                            })
+                            .unwrap_or(false)
+                        {
+                            // The iteration goes to the first function.
+                            func1 = c_label.function();
+                        }
+                    } else if call_ic.is_none() {
+                        if c_label
+                            .function()
+                            .map(|f| {
+                                !f.get_function_meta()
+                                    .expect("this has to be a function unit")
+                                    .is_modifier
+                            })
+                            .unwrap_or(false) &&
+                            c_label.function() != func1
+                        {
+                            // The iteration goes to the second function.
+                            func2 = c_label.function();
+                            call_ic = Some(ic);
+                        }
+                    } else if c_label
+                        .function()
+                        .map(|f| {
+                            !f.get_function_meta()
+                                .expect("this has to be a function unit")
+                                .is_modifier
+                        })
+                        .unwrap_or(false) &&
+                        c_label.function() == func1
+                    {
+                        // The iteration goes back to the first function.
+                        ret_ic = Some(ic);
+                        break;
                     }
-                    debug!(addr=?self.addr, block=format!("{self}"), ic, "found the statement associated with the second function");
-
-                    // Update instruction count.
-                    let mut block2 = self.clone();
-                    block2.start_ic = ic;
-                    block2.inst_n = self.start_ic + self.inst_n - ic;
-                    self.inst_n -= block2.inst_n;
-
-                    // Update call-to information.
-                    // At this point, we simply put a PLACEHOLDER for the first block's call-to
-                    // information. The accurate call-to information will be updated in the next
-                    // step when we re-construct the call trace.
-                    self.call_to = Some(usize::MAX);
-
-                    // Update the calibration point information.
-                    self.clear_calibrations();
-                    self.label_source(source_map)?;
-                    debug_assert!(
-                        self.calib_func == Some(func1),
-                        "the first function is not calibrated correctly"
-                    );
-
-                    block2.clear_calibrations();
-                    block2.label_source(source_map)?;
-                    debug_assert!(
-                        block2.calib_func == Some(func2),
-                        "the second function is not calibrated correctly"
-                    );
-
-                    return Ok(vec![self, block2]);
                 }
 
-                bail!("statement associated with the second function is not found");
+                let func1 = func1.ok_or_eyre("the first function is not found")?;
+                let func2 = func2.ok_or_eyre("the second function is not found")?;
+                trace!(addr=?self.addr, block=format!("{self}"), func1=format!("{}", func1), func2=format!("{}", func2), "ordered functions");
+
+                // We use a placeholder to represent the return instruction count if it is not
+                // found.
+                trace!(addr=?self.addr, block=format!("{self}"), call_ic=call_ic, ret_ic=ret_ic, "calibration points");
+                let ret_ic = ret_ic.unwrap_or(self.start_ic + self.inst_n);
+                let call_ic = call_ic.ok_or_eyre("\"call\" instruction is not found")?;
+
+                // Clear the calibration points.
+                self.clear_calibrations();
+
+                // We then try to split the block into three blocks.
+                let mut block1 = self.clone();
+                let mut block2 = self.clone();
+                let mut block3 = self.clone();
+
+                // Update the instruction count (start and inst_n)
+                block1.inst_n = call_ic - block1.start_ic;
+                block2.start_ic = call_ic;
+                block2.inst_n = ret_ic - call_ic;
+                block3.start_ic = ret_ic;
+                block3.inst_n = self.start_ic + self.inst_n - ret_ic;
+
+                // Update the calibration point information for the first two blocks.
+                block1.label_source(source_map)?;
+                debug_assert!(
+                    block1.calib_func.as_ref() == Some(func1),
+                    "the first function is not calibrated correctly"
+                );
+                block2.label_source(source_map)?;
+                debug_assert!(
+                    block2.calib_func.as_ref() == Some(func2),
+                    "the second function is not calibrated correctly"
+                );
+
+                // Update call-to information.
+                // At this point, we simply put a PLACEHOLDER for the first block's call-to
+                // information. The accurate call-to information will be updated in the next
+                // step when we re-construct the call trace.
+                block1.call_to = Some(usize::MAX);
+
+                if block3.inst_n > 0 {
+                    // We need to update the call-to information for the third block.
+                    block3.label_source(source_map)?;
+                    debug_assert!(
+                        block3.calib_func.as_ref() == Some(func1),
+                        "the third function is not calibrated correctly"
+                    );
+
+                    // Update the call-to information for the second block.
+                    block2.call_to = Some(usize::MAX);
+
+                    Ok(vec![block1, block2, block3])
+                } else {
+                    // If the third block is empty, we do not need to create it.
+                    Ok(vec![block1, block2])
+                }
             }
             _ => {
-                if cfg!(debug_assertions) {
-                    debug!(addr=?self.addr, block=format!("{self}"), "calibration points are not from the same function");
-                    for p in self.calib.values() {
-                        if let CalibrationPoint::Singleton(label) = p {
-                            debug!(label = format!("{label}"), "calibration point");
+                if source_map.intergrity_level == IntergrityLevel::OverOptimized {
+                    // TODO (ZZ): We may need to handle this case in the future.
+                    error!(addr=?self.addr, block=format!("{self}"), "the source map is over-optimized so that the calibration points are not reliable");
+
+                    // Clear the calibration points.
+                    self.clear_calibrations();
+                    Ok(vec![self.clone()])
+                } else {
+                    if cfg!(debug_assertions) {
+                        trace!(addr=?self.addr, block=format!("{self}"), "calibration points are not from the same function");
+                        for p in self.calib.values() {
+                            if let CalibrationPoint::Singleton(label) = p {
+                                trace!(label = format!("{label}"), "calibration point");
+                            }
                         }
                     }
+                    bail!("the calibration points are not from the same function");
                 }
-                bail!("the calibration points are not from the same function");
             }
         }
     }
@@ -198,7 +286,7 @@ impl BlockNode {
 
         let info = funcs.into_iter().fold(CalculationFunctionInfo::default(), |mut info, func| {
             let meta = func.get_function_meta().expect("this has to be a function unit");
-            match (meta.is_modifier, meta.is_pure) {
+            match (meta.is_modifier, meta.is_pure()) {
                 (false, false) => info.normal.push(func.clone()),
                 (false, true) => info.pure.push(func.clone()),
                 (true, false) => info.modifiers.push(func.clone()),

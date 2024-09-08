@@ -37,6 +37,11 @@ pub const fn is_stack_operation_opcode(opcode: OpCode) -> bool {
 }
 
 #[inline]
+pub const fn is_jump_related_opcode(opcode: OpCode) -> bool {
+    matches!(opcode, OpCode::JUMP | OpCode::JUMPI | OpCode::JUMPDEST)
+}
+
+#[inline]
 pub fn get_push_value(code: &[u8], pc: usize) -> Result<U256> {
     let push_size = (code[pc] - PUSH0) as usize;
 

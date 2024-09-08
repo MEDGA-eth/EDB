@@ -11,8 +11,11 @@ use super::{debug_unit::UnitLocation, AnalysisStore};
 use crate::{
     analysis::source_map::{debug_unit::DebugUnit, CONSTRUCTOR_IDX, DEPLOYED_IDX},
     artifact::{deploy::DeployArtifact, onchain::AnalyzedBytecode},
-    utils::opcode::is_stack_operation_opcode,
+    utils::opcode::{is_jump_related_opcode, is_stack_operation_opcode},
 };
+
+const IGNORE_FUNC: fn(OpCode) -> bool =
+    |opcode| is_stack_operation_opcode(opcode) || is_jump_related_opcode(opcode);
 
 /// Source Label are the information we extracted from the inaccurate source map.
 /// It provides a more reliable way to associate the source code with the bytecode.
@@ -48,7 +51,7 @@ impl fmt::Display for SourceLabel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::PrimitiveStmt { stmt, .. } => {
-                write!(f, "SourceStatment({})", stmt.loc())
+                write!(f, "SourceStatement({})", stmt.loc())
             }
             Self::InlineAssembly { stmt, block, .. } => {
                 if let Some(stmt) = stmt {
@@ -149,8 +152,6 @@ impl From<Vec<SourceLabel>> for SourceLabels {
 
 impl SourceLabels {
     pub fn refine(&mut self, bytecode: &AnalyzedBytecode) -> Result<()> {
-        let ignore_f = |opcode| is_stack_operation_opcode(opcode) || opcode.is_jump();
-
         let mut reverse_map = std::collections::HashMap::new();
         let code = &bytecode.code;
         let ic_pc_map = &bytecode.ic_pc_map;
@@ -162,12 +163,12 @@ impl SourceLabels {
             reverse_map.entry(label.clone()).or_insert_with(Vec::new).push((opcode, ic));
         }
         for (label, opcodes) in reverse_map {
-            if opcodes.iter().all(|(opcode, _)| ignore_f(*opcode)) {
+            if opcodes.iter().all(|(opcode, _)| IGNORE_FUNC(*opcode)) {
                 // If all the opcodes are stack operations or jump opcode, then we cannot refine the
                 // source label.
                 let label = format!("{label}");
                 let opcodes = opcodes.iter().map(|(op, ic)| (ic, op.as_str())).collect::<Vec<_>>();
-                debug!(label=label, opcode=?opcodes, "cannot refine the source label");
+                trace!(label=label, opcode=?opcodes, "cannot refine the source label");
                 continue;
             }
 
@@ -175,11 +176,11 @@ impl SourceLabels {
             // opcode.
             for (opcode, ic) in opcodes {
                 match label {
-                    SourceLabel::PrimitiveStmt { ref stmt, .. } if ignore_f(opcode) => {
+                    SourceLabel::PrimitiveStmt { ref stmt, .. } if IGNORE_FUNC(opcode) => {
                         // We change the source label to a tag.
                         self[ic] = SourceLabel::Tag { tag: stmt.clone() };
                     }
-                    SourceLabel::InlineAssembly { ref block, .. } if ignore_f(opcode) => {
+                    SourceLabel::InlineAssembly { ref block, .. } if IGNORE_FUNC(opcode) => {
                         // We change the source label to a tag.
                         self[ic] = SourceLabel::Tag { tag: block.clone() };
                     }
@@ -261,7 +262,7 @@ impl SourceLabelAnalysis {
 
             if unit.contains(src.offset() as usize, src.length() as usize) {
                 match &unit {
-                    DebugUnit::Primitive(_) => {
+                    DebugUnit::Primitive(..) => {
                         let function = units.function(unit).ok_or_eyre("no function found")?;
                         let contract = units.contract(unit).ok_or_eyre("no contract found")?;
                         *source_labels.last_mut().expect("this cannot happen") =
@@ -271,7 +272,7 @@ impl SourceLabelAnalysis {
                                 cntr: contract.clone(),
                             };
                     }
-                    DebugUnit::Function(..) | DebugUnit::Contract(_) => {
+                    DebugUnit::Function(..) | DebugUnit::Contract(..) => {
                         *source_labels.last_mut().expect("this cannot happen") =
                             SourceLabel::Others {
                                 scope: Some(unit.clone()),

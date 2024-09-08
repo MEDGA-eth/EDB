@@ -7,7 +7,7 @@ use std::sync::Arc;
 use debug_unit::{DebugUnitAnlaysis, DebugUnits};
 use eyre::{OptionExt, Result};
 use foundry_compilers::artifacts::{sourcemap::SourceElement, Bytecode};
-use integrity::IntegrityAnalsysis;
+use integrity::{IntegrityAnalsysis, IntergrityLevel};
 
 use crate::artifact::deploy::DeployArtifact;
 use source_label::{SourceLabelAnalysis, SourceLabels};
@@ -29,7 +29,7 @@ pub struct RefinedSourceMap {
     pub source_map: Vec<SourceElement>,
 
     /// Whether the source map is corrupted.
-    pub is_corrupted: bool,
+    pub intergrity_level: IntergrityLevel,
 }
 
 impl RefinedSourceMap {
@@ -58,7 +58,7 @@ pub struct AnalysisStore<'a> {
     source_labels: Option<[SourceLabels; 2]>,
 
     /// Whether the source map is corrupted.
-    is_corrupted: Option<[bool; 2]>,
+    intergrity_levels: Option<[IntergrityLevel; 2]>,
 }
 
 macro_rules! store_getter {
@@ -98,8 +98,8 @@ impl<'a> AnalysisStore<'a> {
 
         let [c_labels, d_labels] = self.source_labels.ok_or_eyre("no source labels found")?;
         let [c_map, d_map] = self.source_map.ok_or_eyre("no source map found")?;
-        let [c_is_corrupted, d_is_corrupted] =
-            self.is_corrupted.ok_or_eyre("no corruption information found")?;
+        let [c_intergrity_level, d_intergrity_level] =
+            self.intergrity_levels.ok_or_eyre("no corruption information found")?;
 
         Ok([
             RefinedSourceMap {
@@ -107,14 +107,14 @@ impl<'a> AnalysisStore<'a> {
                 debug_units: units.clone(),
                 labels: c_labels,
                 source_map: c_map,
-                is_corrupted: c_is_corrupted,
+                intergrity_level: c_intergrity_level,
             },
             RefinedSourceMap {
                 type_id: DEPLOYED_IDX,
                 debug_units: units,
                 labels: d_labels,
                 source_map: d_map,
-                is_corrupted: d_is_corrupted,
+                intergrity_level: d_intergrity_level,
             },
         ])
     }
@@ -128,14 +128,14 @@ impl SourceMapAnalysis {
     pub fn analyze(artifact: &DeployArtifact) -> Result<[RefinedSourceMap; 2]> {
         let mut store = AnalysisStore::init(artifact)?;
 
-        // Step 0. analyze the integrity of the source map.
-        IntegrityAnalsysis::analyze(artifact, &mut store)?;
-
         // Step 1. collect primitive debugging units.
         DebugUnitAnlaysis::analyze(artifact, &mut store)?;
 
         // Step 2. analyze the source labels.
         SourceLabelAnalysis::analyze(artifact, &mut store)?;
+
+        // Step 3. analyze the integrity of the source map.
+        IntegrityAnalsysis::analyze(artifact, &mut store)?;
 
         store.produce()
     }

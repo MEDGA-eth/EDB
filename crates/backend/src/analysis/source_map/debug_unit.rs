@@ -1,6 +1,7 @@
 use std::{
+    cmp::Ordering,
     collections::BTreeMap,
-    fmt::{self, Debug},
+    fmt::{self, Debug, Display},
     hash::{Hash, Hasher},
     ops::{Deref, DerefMut},
     sync::Arc,
@@ -10,8 +11,9 @@ use eyre::{bail, ensure, eyre, OptionExt, Result};
 use foundry_compilers::artifacts::{
     ast::SourceLocation,
     yul::{YulExpression, YulStatement},
-    ContractDefinition, ExpressionOrVariableDeclarationStatement, FunctionDefinition,
-    InlineAssembly, ModifierDefinition, StateMutability, Statement,
+    ContractDefinition, ContractKind, Expression, ExpressionOrVariableDeclarationStatement,
+    FunctionCall, FunctionCallKind, FunctionDefinition, InlineAssembly, ModifierDefinition,
+    StateMutability, Statement, TypeName,
 };
 use solang_parser::{helpers::CodeLocation, lexer, pt};
 
@@ -56,6 +58,10 @@ impl UnitLocation {
 
     pub fn matches(&self, start: usize, length: usize) -> bool {
         self.start == start && self.length == length
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.code.as_str()[self.start..self.start + self.length]
     }
 }
 
@@ -118,29 +124,154 @@ impl TryFrom<&SourceLocation> for UnitLocation {
 }
 
 /// Metadata for Function Unit.
-#[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd, Hash, Copy)]
+#[derive(Clone, Debug, Default)]
 pub struct FunctionMeta {
     pub is_modifier: bool,
-    pub is_pure: bool,
-}
-
-impl FunctionMeta {
-    pub fn new(is_modifier: bool, is_pure: bool) -> Self {
-        Self { is_modifier, is_pure }
-    }
+    pub name: String,
+    pub state_mutability: Option<StateMutability>,
 }
 
 impl From<&FunctionDefinition> for FunctionMeta {
     fn from(func: &FunctionDefinition) -> Self {
-        Self::new(false, func.state_mutability == Some(StateMutability::Pure))
+        Self {
+            is_modifier: false,
+            name: func.name.clone(),
+            state_mutability: func.state_mutability.clone(),
+        }
     }
 }
 
 impl From<&ModifierDefinition> for FunctionMeta {
-    fn from(_modifier: &ModifierDefinition) -> Self {
-        Self::new(true, false)
+    fn from(modifier: &ModifierDefinition) -> Self {
+        Self { is_modifier: true, name: modifier.name.clone(), state_mutability: None }
     }
 }
+
+impl FunctionMeta {
+    pub fn is_pure(&self) -> bool {
+        matches!(self.state_mutability, Some(StateMutability::Pure))
+    }
+}
+
+impl Display for FunctionMeta {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_modifier {
+            write!(f, "modifier {}", self.name)
+        } else {
+            write!(
+                f,
+                "function {}(..) {}",
+                self.name,
+                serde_json::to_string(&self.state_mutability).expect("this should never fail")
+            )
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ContractMeta {
+    pub name: String,
+    pub kind: ContractKind,
+}
+
+impl From<&ContractDefinition> for ContractMeta {
+    fn from(contract: &ContractDefinition) -> Self {
+        Self { name: contract.name.clone(), kind: contract.kind.clone() }
+    }
+}
+
+impl Display for ContractMeta {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} {}",
+            serde_json::to_string(&self.kind).expect("this should never fail"),
+            self.name,
+        )
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct StatementMeta {
+    pub inner_func_call: Vec<FunctionCallMeta>,
+}
+
+impl Display for StatementMeta {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.inner_func_call.is_empty() {
+            write!(f, "no function call")
+        } else {
+            // Print all the function calls in the statement, separated by comma.
+            write!(
+                f,
+                "function calls: {}",
+                self.inner_func_call
+                    .iter()
+                    .map(|meta| meta.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        }
+    }
+}
+
+// To avoid extensive memory usage, all metadata should be stored in Arc.
+#[derive(Clone, Debug)]
+pub struct FunctionCallMeta {
+    is_constructor: bool,
+
+    // The entire function call expression.
+    pub expr: String,
+
+    // The expression part of the function name.
+    pub name: String,
+}
+
+impl Display for FunctionCallMeta {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_constructor {
+            write!(f, "new {}", self.name)
+        } else {
+            write!(f, "{}", self.name)
+        }
+    }
+}
+
+// Define the macro for implementing PartialEq, Eq, PartialOrd, Ord, and Hash for the given types.
+// The implementation is just a placeholder and should only used for those types that are not
+// supposed to be compared (e.g., Metadata).
+macro_rules! derive_empty_traits {
+    ($($t:ty),+) => {
+        $(
+            impl PartialEq for $t {
+                fn eq(&self, _: &Self) -> bool {
+                    true
+                }
+            }
+
+            impl Eq for $t {}
+
+            impl PartialOrd for $t {
+                fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+                    Some(self.cmp(other))
+                }
+            }
+
+            impl Ord for $t {
+                fn cmp(&self, _: &Self) -> Ordering {
+                    Ordering::Equal
+                }
+            }
+
+            impl Hash for $t {
+                fn hash<H: Hasher>(&self, _: &mut H) {
+                }
+            }
+        )+
+    };
+}
+
+derive_empty_traits!(FunctionMeta, ContractMeta, StatementMeta, FunctionCallMeta);
 
 /// Different kind of debugging units.
 /// A debugging unit can be either an execution unit (singleton primitive or block-level inline
@@ -150,16 +281,16 @@ impl From<&ModifierDefinition> for FunctionMeta {
 #[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd, Hash)]
 pub enum DebugUnit {
     /// A primitive unit is a single statement or expression (execution unit)
-    Primitive(UnitLocation),
+    Primitive(UnitLocation, Arc<StatementMeta>),
 
     /// Inline assembly block
     InlineAssembly(UnitLocation, Vec<UnitLocation>),
 
     /// A function unit is a tag for a function definition (non-execution unit).
-    Function(UnitLocation, FunctionMeta),
+    Function(UnitLocation, Arc<FunctionMeta>),
 
     /// A contract unit is a tag for a contract definition (non-execution unit).
-    Contract(UnitLocation),
+    Contract(UnitLocation, Arc<ContractMeta>),
 }
 
 impl Deref for DebugUnit {
@@ -167,10 +298,10 @@ impl Deref for DebugUnit {
 
     fn deref(&self) -> &Self::Target {
         match self {
-            Self::Primitive(loc) |
+            Self::Primitive(loc, ..) |
             Self::InlineAssembly(loc, _) |
             Self::Function(loc, ..) |
-            Self::Contract(loc) => loc,
+            Self::Contract(loc, ..) => loc,
         }
     }
 }
@@ -178,10 +309,10 @@ impl Deref for DebugUnit {
 impl DerefMut for DebugUnit {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match self {
-            Self::Primitive(loc) |
+            Self::Primitive(loc, ..) |
             Self::InlineAssembly(loc, _) |
             Self::Function(loc, ..) |
-            Self::Contract(loc) => loc,
+            Self::Contract(loc, ..) => loc,
         }
     }
 }
@@ -189,19 +320,19 @@ impl DerefMut for DebugUnit {
 impl DebugUnit {
     pub fn loc(&self) -> &UnitLocation {
         match self {
-            Self::Primitive(loc) |
+            Self::Primitive(loc, ..) |
             Self::InlineAssembly(loc, _) |
             Self::Function(loc, ..) |
-            Self::Contract(loc) => loc,
+            Self::Contract(loc, ..) => loc,
         }
     }
 
     pub fn loc_mut(&mut self) -> &mut UnitLocation {
         match self {
-            Self::Primitive(loc) |
+            Self::Primitive(loc, ..) |
             Self::InlineAssembly(loc, _) |
             Self::Function(loc, ..) |
-            Self::Contract(loc) => loc,
+            Self::Contract(loc, ..) => loc,
         }
     }
 
@@ -221,14 +352,14 @@ impl DebugUnit {
 
     pub fn is_execution_unit(&self) -> bool {
         match self {
-            Self::Primitive(_) | Self::InlineAssembly(_, _) => true,
-            Self::Function(..) | Self::Contract(_) => false,
+            Self::Primitive(..) | Self::InlineAssembly(_, _) => true,
+            Self::Function(..) | Self::Contract(..) => false,
         }
     }
 
     pub fn iter(&self) -> DebugUnitIterator<'_> {
         match self {
-            Self::Primitive(loc) | Self::Function(loc, ..) | Self::Contract(loc) => {
+            Self::Primitive(loc, ..) | Self::Function(loc, ..) | Self::Contract(loc, ..) => {
                 DebugUnitIterator { unit: vec![loc], index: 0 }
             }
             Self::InlineAssembly(_, stmts) => {
@@ -380,7 +511,7 @@ impl DebugUnitVisitor {
 
 impl Visitor for DebugUnitVisitor {
     fn visit_contract_definition(&mut self, definition: &ContractDefinition) -> Result<()> {
-        self.update_contract(&definition.src)
+        self.update_contract(&definition.src, definition.into())
     }
 
     fn visit_function_definition(&mut self, definition: &FunctionDefinition) -> Result<()> {
@@ -389,14 +520,6 @@ impl Visitor for DebugUnitVisitor {
 
     fn visit_modifier_definition(&mut self, definition: &ModifierDefinition) -> Result<()> {
         self.update_function(&definition.src, definition.into())
-    }
-
-    fn post_visit_statement(&mut self, statement: &Statement) -> Result<()> {
-        if matches!(statement, Statement::InlineAssembly(_)) {
-            self.update_inline_assembly()
-        } else {
-            Ok(())
-        }
     }
 
     fn visit_statement(&mut self, statement: &Statement) -> Result<()> {
@@ -431,43 +554,47 @@ impl Visitor for DebugUnitVisitor {
             // For if statements, the condition is also a primative statement.
             // Note that other part, e.g., init, post, body, will be visited by the visitor
             // later.
-            Statement::IfStatement(stmt) => {
-                self.update_primitive(get_source_location_for_expression(&stmt.condition))?
-            }
+            Statement::IfStatement(stmt) => self.update_primitive(
+                get_source_location_for_expression(&stmt.condition),
+                Some(&stmt.condition),
+            )?,
             // For do-whiles, the condition is a primative statement.
-            Statement::DoWhileStatement(stmt) => {
-                self.update_primitive(get_source_location_for_expression(&stmt.condition))?
-            }
+            Statement::DoWhileStatement(stmt) => self.update_primitive(
+                get_source_location_for_expression(&stmt.condition),
+                Some(&stmt.condition),
+            )?,
             // For while statements, the condition is also a primative statement.
             // Note that other part, e.g., body, will be visited by the visitor later.
-            Statement::WhileStatement(stmt) => {
-                self.update_primitive(get_source_location_for_expression(&stmt.condition))?
-            }
+            Statement::WhileStatement(stmt) => self.update_primitive(
+                get_source_location_for_expression(&stmt.condition),
+                Some(&stmt.condition),
+            )?,
             // For for statements, the condition, the initial expression, and the loop expression
             // are also primative statements. Note that other part, e.g., body, will be
             // visited by the visitor later.
             Statement::ForStatement(stmt) => {
                 if let Some(cond) = &stmt.condition {
-                    self.update_primitive(get_source_location_for_expression(cond))?;
+                    self.update_primitive(get_source_location_for_expression(cond), Some(cond))?;
                 }
                 if let Some(init) = &stmt.initialization_expression {
                     match init {
                         ExpressionOrVariableDeclarationStatement::ExpressionStatement(stmt) => {
-                            self.update_primitive(&stmt.src)?
+                            self.update_primitive(&stmt.src, Some(stmt.as_ref()))?
                         }
                         ExpressionOrVariableDeclarationStatement::VariableDeclarationStatement(
                             stmt,
-                        ) => self.update_primitive(&stmt.src)?,
+                        ) => self.update_primitive(&stmt.src, Some(stmt.as_ref()))?,
                     }
                 }
                 if let Some(loop_expr) = &stmt.loop_expression {
-                    self.update_primitive(&loop_expr.src)?;
+                    self.update_primitive(&loop_expr.src, Some(loop_expr))?;
                 }
             }
             // For try statement, we wil handle the external function call as a primative statement.
             // The catch and finally block will be visited by the visitor later.
             Statement::TryStatement(stmt) => self.update_primitive(
                 get_source_location_for_expression(&stmt.external_call.expression),
+                Some(&stmt.external_call.expression),
             )?,
             // We will provide more fine-grained information for inline assembly if the Yul block is
             // presented.
@@ -501,17 +628,35 @@ impl Visitor for DebugUnitVisitor {
                     self.visit_inline_assembly_old(stmt)?;
                 }
             }
-            Statement::VariableDeclarationStatement(stmt) => self.update_primitive(&stmt.src)?,
-            Statement::Break(stmt) => self.update_primitive(&stmt.src)?,
-            Statement::Continue(stmt) => self.update_primitive(&stmt.src)?,
-            Statement::EmitStatement(stmt) => self.update_primitive(&stmt.src)?,
-            Statement::ExpressionStatement(stmt) => self.update_primitive(&stmt.src)?,
-            Statement::PlaceholderStatement(stmt) => self.update_primitive(&stmt.src)?,
-            Statement::Return(stmt) => self.update_primitive(&stmt.src)?,
-            Statement::RevertStatement(stmt) => self.update_primitive(&stmt.src)?,
+            Statement::VariableDeclarationStatement(stmt) => {
+                self.update_primitive(&stmt.src, Some(stmt.as_ref()))?
+            }
+            Statement::Break(stmt) => self.update_primitive::<Statement>(&stmt.src, None)?,
+            Statement::Continue(stmt) => self.update_primitive::<Statement>(&stmt.src, None)?,
+            Statement::EmitStatement(stmt) => {
+                self.update_primitive(&stmt.src, Some(stmt.as_ref()))?
+            }
+            Statement::ExpressionStatement(stmt) => {
+                self.update_primitive(&stmt.src, Some(stmt.as_ref()))?
+            }
+            Statement::PlaceholderStatement(stmt) => {
+                self.update_primitive::<Statement>(&stmt.src, None)?
+            }
+            Statement::Return(stmt) => self.update_primitive(&stmt.src, Some(stmt.as_ref()))?,
+            Statement::RevertStatement(stmt) => {
+                self.update_primitive(&stmt.src, Some(stmt.as_ref()))?
+            }
         }
 
         Ok(())
+    }
+
+    fn post_visit_statement(&mut self, statement: &Statement) -> Result<()> {
+        if matches!(statement, Statement::InlineAssembly(_)) {
+            self.update_inline_assembly()
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -560,12 +705,24 @@ impl DebugUnitVisitor {
         self.insert_execution_unit(asm_unit)
     }
 
-    fn update_primitive(&mut self, src: &SourceLocation) -> Result<()> {
+    fn update_primitive<T>(&mut self, src: &SourceLocation, node: Option<&T>) -> Result<()>
+    where
+        T: Walk,
+    {
         ensure!(self.last_inline_assembly.is_none(), "we are in inline assembly block");
 
         let src = self.get_unit_location(src)?;
-        trace!("find a primative debug unit: {}", src);
-        self.insert_execution_unit(DebugUnit::Primitive(src))
+        trace!("find a primative debug unit: {}", src.as_str());
+
+        let meta = if let Some(node) = node {
+            let mut visitor = StatementVisitor::new(self);
+            node.walk(&mut visitor)?;
+            visitor.produce()
+        } else {
+            StatementMeta::default()
+        };
+
+        self.insert_execution_unit(DebugUnit::Primitive(src, Arc::new(meta)))
     }
 
     fn update_yul_primitive(&mut self, src: &SourceLocation) -> Result<()> {
@@ -586,18 +743,20 @@ impl DebugUnitVisitor {
         let src = self.get_unit_location(src)?;
         trace!("find a function unit: {}", src);
 
-        self.last_function = Some(DebugUnit::Function(src.clone(), meta));
+        let meta = Arc::new(meta);
+        self.last_function = Some(DebugUnit::Function(src.clone(), meta.clone()));
 
         self.insert_debug_unit(DebugUnit::Function(src, meta))
     }
 
-    fn update_contract(&mut self, src: &SourceLocation) -> Result<()> {
+    fn update_contract(&mut self, src: &SourceLocation, meta: ContractMeta) -> Result<()> {
         let src = self.get_unit_location(src)?;
         trace!("find a contract unit: {}", src);
 
-        self.last_contract = Some(DebugUnit::Contract(src.clone()));
+        let meta = Arc::new(meta);
+        self.last_contract = Some(DebugUnit::Contract(src.clone(), meta.clone()));
 
-        self.insert_debug_unit(DebugUnit::Contract(src))
+        self.insert_debug_unit(DebugUnit::Contract(src, meta))
     }
 
     /// Check whether there is any overlapping primitive debugging unit.
@@ -995,4 +1154,122 @@ where
     }
 
     Ok(())
+}
+
+#[derive(Clone, Debug)]
+struct StatementVisitor<'a> {
+    func_calls: Vec<FunctionCallMeta>,
+    debug_unit_visitor: &'a DebugUnitVisitor,
+}
+
+impl<'a> Visitor for StatementVisitor<'a> {
+    fn visit_statement(&mut self, _statement: &Statement) -> Result<()> {
+        ensure!(self.func_calls.is_empty(), "statement debug units should not nested");
+
+        Ok(())
+    }
+
+    fn visit_function_call(&mut self, function_call: &FunctionCall) -> Result<()> {
+        if function_call.kind != FunctionCallKind::FunctionCall {
+            return Ok(());
+        }
+
+        if let Some(meta) = self.collect_function_call(&function_call.expression)? {
+            self.func_calls.push(meta);
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> StatementVisitor<'a> {
+    pub fn new(debug_unit_visitor: &'a DebugUnitVisitor) -> Self {
+        Self { func_calls: Vec::new(), debug_unit_visitor }
+    }
+
+    pub fn produce(self) -> StatementMeta {
+        StatementMeta { inner_func_call: self.func_calls }
+    }
+
+    fn collect_function_call(
+        &mut self,
+        call_expr: &Expression,
+    ) -> Result<Option<FunctionCallMeta>> {
+        let unit = self
+            .debug_unit_visitor
+            .get_unit_location(get_source_location_for_expression(call_expr))?;
+        let unit_s = unit.as_str();
+
+        // We will ignore the function call to the ABI or the new operator, since they are not
+        // actual function calls.
+        if unit_s.starts_with("abi.") {
+            return Ok(None);
+        }
+
+        match call_expr {
+            Expression::Identifier(ref ident) => Ok(Some(FunctionCallMeta {
+                is_constructor: false,
+                name: ident.name.clone(),
+                expr: unit.as_str().to_string(),
+            })),
+            Expression::MemberAccess(ref member) => Ok(Some(FunctionCallMeta {
+                is_constructor: false,
+                name: member.member_name.clone(),
+                expr: unit.as_str().to_string(),
+            })),
+            Expression::FunctionCallOptions(ref opts) => {
+                if let Some(mut meta) = self.collect_function_call(&opts.expression)? {
+                    meta.expr = unit.as_str().to_string();
+                    Ok(Some(meta))
+                } else {
+                    Ok(None)
+                }
+            }
+            Expression::FunctionCall(ref call) => {
+                // It is possible for `stakingRouter.deposit.value(depositsValue)(...)`
+                match &call.expression {
+                    Expression::MemberAccess(ref member) => {
+                        self.collect_function_call(&member.expression)
+                    }
+                    _ => {
+                        bail!("invalid Expression::FunctionCall {unit_s} {:?}", call.expression);
+                    }
+                }
+            }
+            Expression::NewExpression(ref new) => match &new.type_name {
+                TypeName::UserDefinedTypeName(ref user) => {
+                    let type_str = user.type_descriptions.type_string.as_ref().ok_or_eyre(
+                        format!("invalid Expression::NewExpression {unit_s} {:?}", new.type_name),
+                    )?;
+                    if let Some(contract_str) = type_str.strip_prefix("contract ") {
+                        Ok(Some(FunctionCallMeta {
+                            is_constructor: true,
+                            name: contract_str.to_string(),
+                            expr: unit.as_str().to_string(),
+                        }))
+                    } else {
+                        bail!("invalid Expression::NewExpression {unit_s} {:?}", new.type_name);
+                    }
+                }
+                _ => Ok(None),
+            },
+            Expression::TupleExpression(ref tuple) => {
+                // e.g., ProxyAdmin adminInstance = (new ProxyAdmin){salt: adminSalt}()
+                match &tuple.components[..] {
+                    [Some(Expression::NewExpression(_))] => self.collect_function_call(
+                        tuple.components[0].as_ref().expect("this should not happen"),
+                    ),
+                    _ => {
+                        bail!(
+                            "invalid Expression::TupleExpression {unit_s} {:?}",
+                            tuple.components
+                        );
+                    }
+                }
+            }
+            _ => {
+                bail!("invalid function call expression type {unit_s} {:?}", call_expr);
+            }
+        }
+    }
 }

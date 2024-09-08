@@ -12,12 +12,14 @@ use edb_utils::{
 use eyre::{eyre, Result};
 use foundry_block_explorers::Client;
 use foundry_compilers::artifacts::Severity;
-use rayon::prelude::*;
 use revm::{
     db::CacheDB,
     primitives::{CreateScheme, EnvWithHandlerCfg},
     DatabaseRef,
 };
+
+#[cfg(feature = "paralize_analysis")]
+use rayon::prelude::*;
 
 use crate::{
     analysis::{
@@ -212,7 +214,12 @@ where
     fn analyze_source_map(&mut self) -> Result<BTreeMap<RuntimeAddress, RefinedSourceMap>> {
         let source_maps = Mutex::new(BTreeMap::new());
 
-        self.deploy_artifacts.par_iter().try_for_each(|(addr, artifact)| -> Result<()> {
+        #[cfg(feature = "paralize_analysis")]
+        let iter = self.deploy_artifacts.par_iter();
+        #[cfg(not(feature = "paralize_analysis"))]
+        let mut iter = self.deploy_artifacts.iter();
+
+        iter.try_for_each(|(addr, artifact)| -> Result<()> {
             trace!("analyzing source map for {addr:#?}");
 
             let [mut constructor, mut deployed] = SourceMapAnalysis::analyze(artifact)?;

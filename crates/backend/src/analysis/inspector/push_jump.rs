@@ -7,7 +7,6 @@ use std::{
 
 use alloy_primitives::{Address, U256};
 use eyre::{bail, OptionExt, Result};
-use rayon::prelude::*;
 use revm::{
     interpreter::{
         opcode::{DUP1, DUP16, JUMP, JUMPDEST, JUMPI, POP, PUSH0, PUSH32, SWAP1, SWAP16},
@@ -16,8 +15,14 @@ use revm::{
     Database, EvmContext, Inspector,
 };
 
+#[cfg(feature = "paralize_analysis")]
+use rayon::prelude::*;
+
 use crate::{
-    analysis::source_map::{debug_unit::DebugUnit, source_label::SourceLabel, RefinedSourceMap},
+    analysis::source_map::{
+        debug_unit::DebugUnit, integrity::IntergrityLevel, source_label::SourceLabel,
+        RefinedSourceMap,
+    },
     artifact::onchain::AnalyzedBytecode,
     utils::opcode::get_push_value,
     RuntimeAddress,
@@ -456,7 +461,7 @@ impl<'a> HintWrapper<'a> {
     }
 
     fn refine_by_source_map(&mut self, source_map: &RefinedSourceMap) -> Result<()> {
-        if source_map.is_corrupted {
+        if source_map.intergrity_level == IntergrityLevel::Corrupted {
             // If the source map is corrupted, we will skip the refinement.
             return Ok(());
         }
@@ -569,7 +574,12 @@ impl<'a> PushJumpInspector<'a> {
     /// perform the post-analysis after the execution.
     /// We mainly leverage heuristics to determine the label of each push and jump instruction.
     pub fn posterior_analysis(&mut self) -> Result<()> {
-        self.hint.par_iter_mut().try_for_each(|(_, r_hint)| {
+        #[cfg(feature = "paralize_analysis")]
+        let iter = self.hint.par_iter_mut();
+        #[cfg(not(feature = "paralize_analysis"))]
+        let mut iter = self.hint.iter_mut();
+
+        iter.try_for_each(|(_, r_hint)| {
             r_hint.heuristic_analysis()?;
             Ok(())
         })
@@ -581,7 +591,12 @@ impl<'a> PushJumpInspector<'a> {
         &mut self,
         source_map: &BTreeMap<RuntimeAddress, RefinedSourceMap>,
     ) -> Result<()> {
-        self.hint.par_iter_mut().try_for_each(|(r_addr, r_hint)| {
+        #[cfg(feature = "paralize_analysis")]
+        let iter = self.hint.par_iter_mut();
+        #[cfg(not(feature = "paralize_analysis"))]
+        let mut iter = self.hint.iter_mut();
+
+        iter.try_for_each(|(r_addr, r_hint)| {
             let Some(source_map) = source_map.get(r_addr) else {
                 // This contract does not have a source map (i.e., not verified). We will skip the
                 // refinement.
