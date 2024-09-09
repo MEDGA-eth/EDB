@@ -181,17 +181,17 @@ fn disasm_artifact(
         if constructor { &mut constructor_source_map } else { &mut deployed_source_map };
 
     let source_map = &analyze_source_map.source_map;
+    let debug_units = &analyze_source_map.debug_units;
     let labels = &mut analyze_source_map.labels;
     if refine {
         labels.refine(&code)?;
     }
 
-    println!(
-        "{:5} ({:5}): {:<85} | {:<72} | Comments\n",
-        "IC", "PC", "Opcode", "Refined Label"
-    );
+    println!("{:5} ({:5}): {:<85} | {:<20} | Refined Label", "IC", "PC", "Opcode", "Source Map");
+    println!("{:<100} | Comments", "");
+    println!("{}", "-".repeat(220));
 
-    for (ic, (_, label)) in source_map.iter().zip(labels.iter()).enumerate() {
+    for (ic, (src, label)) in source_map.iter().zip(labels.iter()).enumerate() {
         let pc = code.ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {ic}"))?;
         let opcode =
             OpCode::new(code.code[pc]).ok_or_eyre(format!("invalid opcode: {}", code.code[pc]))?;
@@ -207,26 +207,52 @@ fn disasm_artifact(
         };
 
         let comments = match label {
-            SourceLabel::PrimitiveStmt { stmt: DebugUnit::Primitive(_, meta), .. } => {
-                meta.to_string()
+            SourceLabel::PrimitiveStmt {
+                stmt: DebugUnit::Primitive(_, s_meta),
+                func: DebugUnit::Function(_, f_meta),
+                cntr: DebugUnit::Contract(_, c_meta),
+            } => {
+                format!("{} - {} - {}", c_meta.to_string(), f_meta.to_string(), s_meta.to_string())
             }
             SourceLabel::Tag { tag, .. } => match tag {
-                DebugUnit::Function(_, meta) => meta.to_string(),
+                DebugUnit::Function(_, f_meta) => {
+                    let cntr =
+                        debug_units.contract(tag).expect("function has to belong to a contract");
+                    let c_meta = cntr.get_contract_meta().expect("contract has to have meta data");
+                    format!("{} - {}", c_meta.to_string(), f_meta.to_string())
+                }
                 DebugUnit::Contract(_, meta) => meta.to_string(),
-                DebugUnit::Primitive(_, meta) => meta.to_string(),
+                DebugUnit::Primitive(_, s_meta) => {
+                    let func =
+                        debug_units.function(tag).expect("primitive has to belong to a function");
+                    let f_meta = func.get_function_meta().expect("function has to have meta data");
+
+                    let cntr =
+                        debug_units.contract(tag).expect("function has to belong to a contract");
+                    let c_meta = cntr.get_contract_meta().expect("contract has to have meta data");
+
+                    format!(
+                        "{} - {} - {}",
+                        c_meta.to_string(),
+                        f_meta.to_string(),
+                        s_meta.to_string()
+                    )
+                }
                 _ => String::new(),
             },
             _ => String::new(),
         };
 
         println!(
-            "{:05} ({:05}): {:<85} | {:<72} | {}",
+            "{:05} ({:05}): {:<85} | {:<20} | {}",
             ic,
             pc,
             opcode_str,
+            src.to_string(),
             label.to_string(),
-            comments
         );
+        println!("{:<100} | {}", "", comments);
+        println!("{}", "-".repeat(220));
     }
 
     Ok(())

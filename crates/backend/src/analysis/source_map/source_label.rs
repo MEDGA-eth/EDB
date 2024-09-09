@@ -64,7 +64,7 @@ impl fmt::Display for SourceLabel {
                 write!(f, "Tag({})", tag.loc())
             }
             Self::Others { scope, loc } => match (scope, loc) {
-                (Some(scope), Some(loc)) => write!(f, "Located({}, {})", loc, scope.loc()),
+                (Some(scope), Some(_)) => write!(f, "Located({})", scope),
                 (Some(_), None) => write!(f, "Invalid"),
                 (None, Some(loc)) => write!(f, "Unlocated({loc})"),
                 (None, None) => write!(f, "Others"),
@@ -82,6 +82,25 @@ impl SourceLabel {
         matches!(self, Self::Tag { .. })
     }
 
+    /// Get the statement associated with the source label. Note that only the source label that
+    /// represents a statement (not the inline assembly) has a statement associated with it.
+    pub fn statement(&self) -> Option<&DebugUnit> {
+        match self {
+            Self::PrimitiveStmt { stmt, .. } => Some(stmt),
+            _ => None,
+        }
+    }
+
+    /// Get the inline assembly block associated with the source label. Note that only the source
+    /// label that represents an inline assembly block has an inline assembly block associated with
+    /// it.
+    pub fn inline_assembly_block(&self) -> Option<&DebugUnit> {
+        match self {
+            Self::InlineAssembly { block, .. } => Some(block),
+            _ => None,
+        }
+    }
+
     /// Get the function associated with the source label. Note that only the source label that
     /// represents a statement or an inline assembly block has a function associated with it.
     pub fn function(&self) -> Option<&DebugUnit> {
@@ -96,6 +115,16 @@ impl SourceLabel {
     pub fn contract(&self) -> Option<&DebugUnit> {
         match self {
             Self::PrimitiveStmt { cntr, .. } | Self::InlineAssembly { cntr, .. } => Some(cntr),
+            _ => None,
+        }
+    }
+
+    /// Get the statement tag associated with the source label. Note that inlined assembly block
+    /// does not have a statement tag.
+    pub fn statement_tag(&self) -> Option<&DebugUnit> {
+        match self {
+            Self::PrimitiveStmt { stmt, .. } => Some(stmt),
+            Self::Tag { tag } if matches!(tag, DebugUnit::Primitive(..)) => Some(tag),
             _ => None,
         }
     }
@@ -156,20 +185,29 @@ impl SourceLabels {
         let code = &bytecode.code;
         let ic_pc_map = &bytecode.ic_pc_map;
 
+        // Calculate the reverse map.
         for (ic, label) in self.iter().enumerate().filter(|(.., l)| l.is_source()) {
             let pc = ic_pc_map.get(ic).ok_or_eyre(format!("no pc found at {ic}"))?;
             let opcode =
                 OpCode::new(code[pc]).ok_or_eyre(format!("invalid opcode: {}", code[pc]))?;
             reverse_map.entry(label.clone()).or_insert_with(Vec::new).push((opcode, ic));
         }
-        for (label, opcodes) in reverse_map {
+
+        for (label, mut opcodes) in reverse_map.into_iter() {
+            // If all the opcodes are stack operations or jump opcode, then we cannot refine the
+            // source label.
             if opcodes.iter().all(|(opcode, _)| IGNORE_FUNC(*opcode)) {
-                // If all the opcodes are stack operations or jump opcode, then we cannot refine the
-                // source label.
                 let label = format!("{label}");
-                let opcodes = opcodes.iter().map(|(op, ic)| (ic, op.as_str())).collect::<Vec<_>>();
-                trace!(label=label, opcode=?opcodes, "cannot refine the source label");
-                continue;
+                let opcode_vec =
+                    opcodes.iter().map(|(op, ic)| (ic, op.as_str())).collect::<Vec<_>>();
+                trace!(label=label, opcode=?opcode_vec, "cannot refine the source label");
+
+                // JUMP, JUMPI, and JUMPDEST will still be ignored.
+                opcodes.retain(|(opcode, _)| {
+                    *opcode == OpCode::JUMP ||
+                        *opcode == OpCode::JUMPI ||
+                        *opcode == OpCode::JUMPDEST
+                });
             }
 
             // We change the source label to a tag if the opcode is a stack operation or jump

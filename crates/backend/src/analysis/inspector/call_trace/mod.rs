@@ -164,6 +164,21 @@ impl FuncNode {
     }
 }
 
+impl Display for FuncNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // We first print the address, and the its trace (in one line and seperated by comma).
+        write!(f, "{:?}", self.addr)?;
+        if !self.trace.is_empty() {
+            write!(
+                f,
+                " -trace-> {}",
+                self.trace.iter().map(|b| format!("{b}")).collect::<Vec<_>>().join(", ")
+            )?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum CalibrationPoint {
     /// The calibration point is a statement or an inline assembly block.
@@ -217,12 +232,15 @@ pub struct BlockNode {
     // Calibration information.
     /// Calibration points (towards the source map).
     pub calib: BTreeMap<usize, CalibrationPoint>,
-    /// Calibrated Function
+    // XXX (ZZ): calib_func may be useless.
+    /// Calibrated Function (i.e., after considering the inlined function as part of its parent,
+    /// which function will be treated as "the parent"). This information could be
+    /// path-sensitive.
     pub calib_func: Option<DebugUnit>,
-    /// Calibrated Modifiers
-    pub calib_modifiers: Vec<DebugUnit>,
-    /// Calibrated Inlined Functions
-    pub calib_inlined: Vec<DebugUnit>,
+    /// Contained Functions (e.g., including those inlined functions).
+    pub contained_funcs: Vec<DebugUnit>,
+    /// Contained Modifiers
+    pub contained_modifiers: Vec<DebugUnit>,
 }
 
 impl Display for BlockNode {

@@ -13,7 +13,7 @@ use super::{source_label::SourceLabels, AnalysisStore, CONSTRUCTOR_IDX, DEPLOYED
 
 pub struct IntegrityAnalsysis {}
 
-const SOURCE_RATIO_THRESHOLD: f64 = 0.5;
+const SOURCE_RATIO_THRESHOLD: f64 = 0.4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum IntergrityLevel {
@@ -39,18 +39,14 @@ impl IntegrityAnalsysis {
         let bytecodes = store.bytecode.as_ref().ok_or_eyre("no bytecode found")?;
         let addr = artifact.onchain_address;
 
-        let mut is_corrupted = [IntergrityLevel::Normal; 2];
+        let mut integrity_levels = [IntergrityLevel::Normal; 2];
 
-        is_corrupted[CONSTRUCTOR_IDX] =
+        integrity_levels[CONSTRUCTOR_IDX] =
             Self::check::<CONSTRUCTOR_IDX>(addr, source_maps, labels, bytecodes)?;
-        is_corrupted[DEPLOYED_IDX] =
+        integrity_levels[DEPLOYED_IDX] =
             Self::check::<DEPLOYED_IDX>(addr, source_maps, labels, bytecodes)?;
 
-        if is_corrupted.iter().any(|&x| x != IntergrityLevel::Normal) {
-            warn!(addr=?addr, constructor=?is_corrupted[CONSTRUCTOR_IDX], deployed=?is_corrupted[DEPLOYED_IDX], "source map is abnormal");
-        }
-
-        store.intergrity_levels = Some(is_corrupted);
+        store.intergrity_levels = Some(integrity_levels);
 
         Ok(())
     }
@@ -75,6 +71,7 @@ impl IntegrityAnalsysis {
                 let pc = ic_pc_map.get(ic).ok_or_eyre("invalid instruction counter")?;
                 let opcode = *bytecode.get(pc).ok_or_eyre("invalid program counter")?;
                 if opcode != JUMP && opcode != JUMPI {
+                    warn!(addr=?addr, ic, pc, opcode, "source map is corrupted");
                     return Ok(IntergrityLevel::Corrupted);
                 }
             }
@@ -84,6 +81,7 @@ impl IntegrityAnalsysis {
         // It could happen when the code is compiled `via_ir` with a high optimization round.
         let source_stmts = label.iter().filter(|l| l.is_source()).count();
         if (source_stmts as f64 / source_map.len() as f64) < SOURCE_RATIO_THRESHOLD {
+            warn!(addr=?addr, ratio=(source_stmts as f64 / source_map.len() as f64), "source map is over-optimized");
             return Ok(IntergrityLevel::OverOptimized);
         }
 

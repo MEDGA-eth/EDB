@@ -13,7 +13,7 @@ use foundry_compilers::artifacts::{
     yul::{YulExpression, YulStatement},
     ContractDefinition, ContractKind, Expression, ExpressionOrVariableDeclarationStatement,
     FunctionCall, FunctionCallKind, FunctionDefinition, InlineAssembly, ModifierDefinition,
-    StateMutability, Statement, TypeName,
+    ParameterList, StateMutability, Statement, TypeName,
 };
 use solang_parser::{helpers::CodeLocation, lexer, pt};
 
@@ -124,26 +124,39 @@ impl TryFrom<&SourceLocation> for UnitLocation {
 }
 
 /// Metadata for Function Unit.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct FunctionMeta {
     pub is_modifier: bool,
+    pub is_virtual: bool,
     pub name: String,
     pub state_mutability: Option<StateMutability>,
+    pub parameters: ParameterList,
+    pub return_parameters: Option<ParameterList>,
 }
 
 impl From<&FunctionDefinition> for FunctionMeta {
     fn from(func: &FunctionDefinition) -> Self {
         Self {
             is_modifier: false,
+            is_virtual: func.is_virtual,
             name: func.name.clone(),
             state_mutability: func.state_mutability.clone(),
+            parameters: func.parameters.clone(),
+            return_parameters: Some(func.return_parameters.clone()),
         }
     }
 }
 
 impl From<&ModifierDefinition> for FunctionMeta {
     fn from(modifier: &ModifierDefinition) -> Self {
-        Self { is_modifier: true, name: modifier.name.clone(), state_mutability: None }
+        Self {
+            is_modifier: true,
+            is_virtual: false,
+            name: modifier.name.clone(),
+            state_mutability: None,
+            parameters: modifier.parameters.clone(),
+            return_parameters: None,
+        }
     }
 }
 
@@ -158,12 +171,18 @@ impl Display for FunctionMeta {
         if self.is_modifier {
             write!(f, "modifier {}", self.name)
         } else {
-            write!(
-                f,
-                "function {}(..) {}",
-                self.name,
-                serde_json::to_string(&self.state_mutability).expect("this should never fail")
-            )
+            let mutability = match &self.state_mutability {
+                Some(StateMutability::Pure) => "pure",
+                Some(StateMutability::View) => "view",
+                Some(StateMutability::Nonpayable) => "nonpayable",
+                Some(StateMutability::Payable) => "payable",
+                None => "",
+            };
+            if self.is_virtual {
+                write!(f, "function {}(..) {} virtual", self.name, mutability)
+            } else {
+                write!(f, "function {}(..) {}", self.name, mutability)
+            }
         }
     }
 }
@@ -182,12 +201,13 @@ impl From<&ContractDefinition> for ContractMeta {
 
 impl Display for ContractMeta {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} {}",
-            serde_json::to_string(&self.kind).expect("this should never fail"),
-            self.name,
-        )
+        let kind = match self.kind {
+            ContractKind::Contract => "contract",
+            ContractKind::Library => "library",
+            ContractKind::Interface => "interface",
+        };
+
+        write!(f, "{} {}", kind, self.name,)
     }
 }
 
@@ -218,13 +238,16 @@ impl Display for StatementMeta {
 // To avoid extensive memory usage, all metadata should be stored in Arc.
 #[derive(Clone, Debug)]
 pub struct FunctionCallMeta {
-    is_constructor: bool,
+    pub is_constructor: bool,
 
     // The entire function call expression.
     pub expr: String,
 
     // The expression part of the function name.
     pub name: String,
+
+    // The number of arguments in the function call.
+    pub arg_n: usize,
 }
 
 impl Display for FunctionCallMeta {
@@ -346,6 +369,28 @@ impl DebugUnit {
     pub fn get_function_meta(&self) -> Option<&FunctionMeta> {
         match self {
             Self::Function(_, meta) => Some(meta),
+            _ => None,
+        }
+    }
+
+    pub fn get_contract_meta(&self) -> Option<&ContractMeta> {
+        match self {
+            Self::Contract(_, meta) => Some(meta),
+            _ => None,
+        }
+    }
+
+    pub fn get_statement_meta(&self) -> Option<&StatementMeta> {
+        match self {
+            Self::Primitive(_, meta) => Some(meta),
+            _ => None,
+        }
+    }
+
+    pub fn get_name(&self) -> Option<&str> {
+        match self {
+            Self::Function(_, meta) => Some(meta.name.as_str()),
+            Self::Contract(_, meta) => Some(meta.name.as_str()),
             _ => None,
         }
     }
@@ -634,7 +679,8 @@ impl Visitor for DebugUnitVisitor {
             Statement::Break(stmt) => self.update_primitive::<Statement>(&stmt.src, None)?,
             Statement::Continue(stmt) => self.update_primitive::<Statement>(&stmt.src, None)?,
             Statement::EmitStatement(stmt) => {
-                self.update_primitive(&stmt.src, Some(stmt.as_ref()))?
+                // There is no function call allowed in emit statement.
+                self.update_primitive::<Statement>(&stmt.src, None)?
             }
             Statement::ExpressionStatement(stmt) => {
                 self.update_primitive(&stmt.src, Some(stmt.as_ref()))?
@@ -644,7 +690,8 @@ impl Visitor for DebugUnitVisitor {
             }
             Statement::Return(stmt) => self.update_primitive(&stmt.src, Some(stmt.as_ref()))?,
             Statement::RevertStatement(stmt) => {
-                self.update_primitive(&stmt.src, Some(stmt.as_ref()))?
+                // There is no function call allowed in revert statement.
+                self.update_primitive::<Statement>(&stmt.src, None)?
             }
         }
 
@@ -685,6 +732,7 @@ impl DebugUnitVisitor {
         self.functions.insert(unit.clone(), function.clone());
 
         let contract = self.last_contract.as_ref().ok_or_eyre("statement outside of contract")?;
+        self.contracts.insert(function.clone(), contract.clone());
         self.contracts.insert(unit.clone(), contract.clone());
 
         self.insert_debug_unit(unit)
@@ -1174,7 +1222,9 @@ impl<'a> Visitor for StatementVisitor<'a> {
             return Ok(());
         }
 
-        if let Some(meta) = self.collect_function_call(&function_call.expression)? {
+        if let Some(mut meta) = self.collect_function_call(&function_call.expression)? {
+            trace!(arg_n = function_call.arguments.len(), "find a function call: {meta}");
+            meta.arg_n = function_call.arguments.len();
             self.func_calls.push(meta);
         }
 
@@ -1207,15 +1257,23 @@ impl<'a> StatementVisitor<'a> {
         }
 
         match call_expr {
-            Expression::Identifier(ref ident) => Ok(Some(FunctionCallMeta {
-                is_constructor: false,
-                name: ident.name.clone(),
-                expr: unit.as_str().to_string(),
-            })),
+            Expression::Identifier(ref ident) => {
+                if ident.name.as_str() == "require" || ident.name.as_str() == "keccak256" {
+                    Ok(None)
+                } else {
+                    Ok(Some(FunctionCallMeta {
+                        is_constructor: false,
+                        name: ident.name.clone(),
+                        expr: unit.as_str().to_string(),
+                        arg_n: 0, // Placeholder for the number of arguments.
+                    }))
+                }
+            }
             Expression::MemberAccess(ref member) => Ok(Some(FunctionCallMeta {
                 is_constructor: false,
                 name: member.member_name.clone(),
                 expr: unit.as_str().to_string(),
+                arg_n: 0, // Placeholder for the number of arguments.
             })),
             Expression::FunctionCallOptions(ref opts) => {
                 if let Some(mut meta) = self.collect_function_call(&opts.expression)? {
@@ -1246,6 +1304,7 @@ impl<'a> StatementVisitor<'a> {
                             is_constructor: true,
                             name: contract_str.to_string(),
                             expr: unit.as_str().to_string(),
+                            arg_n: 0, // Placeholder for the number of arguments.
                         }))
                     } else {
                         bail!("invalid Expression::NewExpression {unit_s} {:?}", new.type_name);
