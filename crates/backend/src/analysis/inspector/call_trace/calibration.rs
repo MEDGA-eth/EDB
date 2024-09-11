@@ -1,10 +1,15 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    fmt::Debug,
+};
 
 use eyre::{bail, ensure, OptionExt, Result};
 
 use crate::{
     analysis::source_map::{
-        debug_unit::DebugUnit, integrity::IntergrityLevel, source_label::SourceLabel,
+        debug_unit::{DebugUnit, FunctionMeta},
+        integrity::IntergrityLevel,
+        source_label::SourceLabel,
         RefinedSourceMap,
     },
     RuntimeAddress,
@@ -14,6 +19,23 @@ use super::{AnalyzedCallTrace, BlockNode, CalibrationPoint, FuncNode};
 
 #[cfg(feature = "paralize_analysis")]
 use rayon::prelude::*;
+
+fn get_associated_function<'a>(
+    source_map: &'a RefinedSourceMap,
+    label: &'a SourceLabel,
+) -> Option<(&'a DebugUnit, &'a FunctionMeta)> {
+    let func = label
+        .statement_tag()
+        .and_then(|stmt| source_map.debug_units.function(stmt))
+        .or(label.function_tag())?;
+    let meta = func.get_function_meta()?;
+    if meta.is_modifier {
+        // We do not take modifiers into account.
+        None
+    } else {
+        Some((func, meta))
+    }
+}
 
 impl AnalyzedCallTrace {
     pub fn is_calibrated(&self) -> bool {
@@ -68,13 +90,29 @@ impl AnalyzedCallTrace {
             iter.try_for_each(|block| block.label_source(source_map))?;
 
             func.construct_source_call_trace(source_map)?;
-            func.reorganize_blocks()
+
+            Ok(())
         })
     }
 }
 
 impl FuncNode {
+    // XXX (ZZ): since it is very hard to get type information from the AST, we make a strong
+    // assumption when constructing the source-level call trace. Specifically, we assume that,
+    // within a message call (i.e., do not take any inter-contract call into account), the only
+    // valid case of having two functions with the same name is that one directly calls the other
+    // (e.g., `super._beforeTransferFrom`). This is a very strong assumption (and seems to be held
+    // in most cases), but it is the best we can do for now.
     fn construct_source_call_trace(&mut self, source_map: &RefinedSourceMap) -> Result<()> {
+        let (nodes, edges) = self.collect_source_nodes_and_edges(source_map)?;
+
+        Ok(())
+    }
+
+    fn collect_source_nodes_and_edges<'a>(
+        &mut self,
+        source_map: &'a RefinedSourceMap,
+    ) -> Result<(BTreeSet<&'a DebugUnit>, BTreeSet<(&'a DebugUnit, &'a DebugUnit)>)> {
         let func_sig = |name: &str, n: usize| format!("{}::{}", name, n);
 
         // Step 0. Collect all labels to avoid duplicated functions.
@@ -89,77 +127,69 @@ impl FuncNode {
             }
         }
 
-        // Step 1. Collect related functions as nodes.
-        let mut func_nodes: HashMap<String, DebugUnit> = HashMap::new();
-        for label in &labels {
-            // We need first collect all covere functions.
-            let Some(func) = label.function_tag() else {
-                continue;
-            };
+        // Step 1. Collect all intra-contract functions, and assign them with a default function
+        // signature.
+        let mut func_nodes = labels
+            .iter()
+            .filter_map(|label| get_associated_function(source_map, label))
+            .map(|(func, meta)| {
+                let sig = func_sig(&meta.name, meta.parameters.parameters.len());
+                (func, sig)
+            })
+            .collect::<BTreeMap<_, _>>();
+        trace!(addr=?self.addr, func_n=func_nodes.len(), funcs=?func_nodes.keys().map(|f| format!("{}", *f)).collect::<Vec<_>>(), "source-level functions found: {self}");
 
-            let meta = func.get_function_meta().expect("this has to be a function unit");
-            if meta.is_modifier {
-                continue;
-            }
-
-            // TODO (ZZ): This is still an estimated signature. We need to refine it in the future
-            // (e.g., considering the parameter types and the contract).
-            let sig = func_sig(&meta.name, meta.parameters.parameters.len());
-            debug!(addr=?self.addr, sig=?sig, "source-level function found: {self}");
-
-            if let Some(old_func) = func_nodes.get(&sig) {
-                if old_func != func {
-                    // At this point, it means that we found two functions with the same name
-                    // within *a single contract*. Note that, at this point, external functions
-                    // (in other contracts) are not included, since we are analyzing a single
-                    // function node. The only valid case is that one of
-                    // the functions is a virtual function and could be overridden by another.
-                    let old_meta =
-                        old_func.get_function_meta().expect("this has to be a function unit");
-                    let new_meta =
-                        func.get_function_meta().expect("this has to be a function unit");
-                    match (old_meta.is_virtual, new_meta.is_virtual) {
-                        (false, false) => {
-                            bail!("two different functions with the same name: {self} {sig} {old_meta}")
-                        }
-                        (true, true) => {
-                            bail!("two different virtual functions with the same name: {self} {sig} {old_meta}")
-                        }
-                        (false, true) => {
-                            // We do not need to inject the virtual function here.
-                            continue;
-                        }
-                        (true, false) => {
-                            // We need to replace the old function with the new one.
-                            // This will be done in the next step.
-                        }
-                    }
-                }
-            }
-
-            func_nodes.insert(sig, func.clone());
-        }
-        debug!(addr=?self.addr, func_n=func_nodes.len(), funcs=?func_nodes.keys(), "source-level functions found: {self}");
-
-        // Step 2. Collect callsites as edges.
-        let mut call_edges: Vec<(String, String)> = Vec::new();
+        // Step 2. Fix the function signature conflicts.
         for label in &labels {
             let Some(stmt) = label.statement_tag() else {
                 continue;
             };
 
-            let func = source_map
-                .debug_units
-                .function(stmt)
-                .ok_or_eyre("statement has to be in a function")?;
+            let Some((func, caller_meta)) = get_associated_function(source_map, label) else {
+                continue
+            };
             debug_assert!(matches!(func, DebugUnit::Function(_, _)));
+            debug_assert!(func_nodes.contains_key(&func));
 
-            let caller_meta = func.get_function_meta().expect("this has to be a function unit");
+            // Get the caller function signature.
             let caller_sig = func_sig(&caller_meta.name, caller_meta.parameters.parameters.len());
-            debug!(addr=?self.addr, caller_sig=?caller_sig, "source-level caller found: {self}");
 
+            // Check whether there is a function signature conflict.
             let statement_meta =
                 stmt.get_statement_meta().expect("this has to be a statement unit");
+            if statement_meta
+                .inner_func_call
+                .iter()
+                .any(|meta| !meta.is_constructor && func_sig(&meta.name, meta.arg_n) == caller_sig)
+            {
+                // We will always enforce the update without any check.
+                let caller_sig = format!("{}::caller", caller_sig);
+                func_nodes.insert(func, caller_sig);
+            }
+        }
+        // Check that every function has a unique signature.
+        trace!(addr=?self.addr, func_n=func_nodes.len(), funcs=?func_nodes.values().collect::<Vec<_>>(), "source-level functions found: {self}");
+        let reverse_func_nodes = func_nodes.iter().map(|(f, s)| (s, f)).collect::<HashMap<_, _>>();
+        ensure!(reverse_func_nodes.len() == func_nodes.len(), "function signature conflict");
+
+        // Step 3. Collect functions and callsites as nodes and edges, respectively. We will also
+        // try to handle function signature conflicts.
+        let mut call_edges = BTreeSet::new();
+        for label in &labels {
+            let Some(stmt) = label.statement_tag() else {
+                continue;
+            };
+
+            let Some((func, _)) = get_associated_function(source_map, label) else { continue };
+            debug_assert!(matches!(func, DebugUnit::Function(_, _)));
+            debug_assert!(func_nodes.contains_key(func));
+
+            // Check whether there is a function signature conflict.
+            let caller_sig = func_nodes.get(func).expect("this has to be valid");
+            let statement_meta =
+                stmt.get_statement_meta().expect("this has to be a statement unit");
+
+            // Collect edges
             for callee_meta in &statement_meta.inner_func_call {
                 if callee_meta.is_constructor {
                     // External message call (e.g., constructor) will not be included.
@@ -167,25 +197,31 @@ impl FuncNode {
                 }
 
                 let callee_sig = func_sig(&callee_meta.name, callee_meta.arg_n);
-                debug!(addr=?self.addr, caller_sig=?caller_sig, callee_sig=?callee_sig, "source-level callsite found: {self}");
-                if func_nodes.contains_key(&callee_sig) {
-                    call_edges.push((caller_sig.clone(), callee_sig));
-                }
+                trace!(addr=?self.addr, caller_sig=caller_sig, callee_sig=callee_sig, "source-level callsite");
+                let callee_func = if caller_sig.starts_with(&callee_sig) {
+                    // This is the conflict case.
+                    trace!("function signature conflict");
+                    reverse_func_nodes.get(&callee_sig)
+                } else {
+                    // XXX (ZZ): here we assume that only the *caller* (in confliction) can be
+                    // called by other functions. We hence first try with `::caler` postfix.
+                    trace!("normal case");
+                    reverse_func_nodes
+                        .get(&format!("{}::caller", callee_sig))
+                        .and(reverse_func_nodes.get(&callee_sig))
+                };
+                let Some(callee_func) = callee_func else {
+                    // It is an inter-contract call.
+                    trace!("callee function not found");
+                    continue;
+                };
+
+                call_edges.insert((func, **callee_func));
             }
         }
-        debug!(addr=?self.addr, edge_n=call_edges.len(), "source-level callsites found: {self}");
+        trace!(addr=?self.addr, func_n=func_nodes.len(), edge_n=call_edges.len(), "source-level callsites found: {self}");
 
-        Ok(())
-    }
-
-    fn reorganize_blocks(&mut self) -> Result<()> {
-        // // We first merge the blocks that are fused together during compilation.
-        // let first_block = self.trace.first().ok_or_eyre("empty trace")?;
-        // if first_block.calib_func.is_none() && first_block.contained_funcs.len() > 0 {
-        //     bail!("no calibration function found for the first block: {} {}", first_block.addr,
-        // first_block); }
-
-        Ok(())
+        Ok((func_nodes.into_keys().collect(), call_edges))
     }
 }
 

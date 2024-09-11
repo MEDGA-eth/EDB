@@ -126,6 +126,7 @@ pub struct SourceMapAnalysis {}
 impl SourceMapAnalysis {
     /// Analyze the source map of a compilation artifact.
     pub fn analyze(artifact: &DeployArtifact) -> Result<[RefinedSourceMap; 2]> {
+        debug!(addr=?artifact.onchain_address, "analyzing source map");
         let mut store = AnalysisStore::init(artifact)?;
 
         // Step 1. collect primitive debugging units.

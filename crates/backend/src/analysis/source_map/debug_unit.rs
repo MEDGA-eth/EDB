@@ -1269,12 +1269,17 @@ impl<'a> StatementVisitor<'a> {
                     }))
                 }
             }
-            Expression::MemberAccess(ref member) => Ok(Some(FunctionCallMeta {
-                is_constructor: false,
-                name: member.member_name.clone(),
-                expr: unit.as_str().to_string(),
-                arg_n: 0, // Placeholder for the number of arguments.
-            })),
+            Expression::MemberAccess(ref member) => {
+                if unit_s.starts_with("super") {
+                    debug!("WTF {:?} {}", member.expression, unit_s);
+                }
+                Ok(Some(FunctionCallMeta {
+                    is_constructor: false,
+                    name: member.member_name.clone(),
+                    expr: unit.as_str().to_string(),
+                    arg_n: 0, // Placeholder for the number of arguments.
+                }))
+            }
             Expression::FunctionCallOptions(ref opts) => {
                 if let Some(mut meta) = self.collect_function_call(&opts.expression)? {
                     meta.expr = unit.as_str().to_string();
