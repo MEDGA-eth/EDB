@@ -4,7 +4,10 @@ use alloy_primitives::Address;
 use alloy_provider::Provider;
 use clap::{Parser, Subcommand};
 use edb_backend::{
-    analysis::source_map::{debug_unit::DebugUnit, source_label::SourceLabel, SourceMapAnalysis},
+    analysis::{
+        call_graph::CallGraphAnalysis,
+        source_map::{debug_unit::DebugUnit, source_label::SourceLabel, SourceMapAnalysis},
+    },
     artifact::{
         deploy::{DeployArtifact, DeployArtifactBuilder},
         onchain::AnalyzedBytecode,
@@ -172,8 +175,10 @@ fn disasm_artifact(
         )
     };
 
+    let mut cg_analyzer = CallGraphAnalysis::default();
     let [mut constructor_source_map, mut deployed_source_map] =
-        SourceMapAnalysis::analyze(artifact)?;
+        SourceMapAnalysis::analyze(artifact, Some(&mut cg_analyzer))?; // co-analysis
+    let call_graph = cg_analyzer.produce();
     debug_assert!(constructor_source_map.is_constructor());
     debug_assert!(deployed_source_map.is_deployed());
 
@@ -207,35 +212,39 @@ fn disasm_artifact(
         };
 
         let comments = match label {
-            SourceLabel::PrimitiveStmt {
-                stmt: DebugUnit::Primitive(_, s_meta),
-                func: DebugUnit::Function(_, f_meta),
-                cntr: DebugUnit::Contract(_, c_meta),
-            } => {
-                format!("{} - {} - {}", c_meta.to_string(), f_meta.to_string(), s_meta.to_string())
+            SourceLabel::PrimitiveStmt { stmt, func, cntr } => {
+                let c_info = call_graph.get_contract_info(cntr).expect("contract info");
+                let f_info = call_graph.get_function_info(func).expect("function info");
+                let s_info = call_graph.get_statement_info(stmt).expect("stmt info");
+                format!("{} - {} - {}", c_info.to_string(), f_info.to_string(), s_info.to_string())
             }
             SourceLabel::Tag { tag, .. } => match tag {
-                DebugUnit::Function(_, f_meta) => {
+                DebugUnit::Function(_) => {
                     let cntr =
                         debug_units.contract(tag).expect("function has to belong to a contract");
-                    let c_meta = cntr.get_contract_meta().expect("contract has to have meta data");
-                    format!("{} - {}", c_meta.to_string(), f_meta.to_string())
+                    let c_info = call_graph.get_contract_info(cntr).expect("contract info");
+                    let f_info = call_graph.get_function_info(tag).expect("function info");
+                    format!("{} - {}", c_info.to_string(), f_info.to_string())
                 }
-                DebugUnit::Contract(_, meta) => meta.to_string(),
-                DebugUnit::Primitive(_, s_meta) => {
+                DebugUnit::Contract(_) => {
+                    call_graph.get_contract_info(tag).expect("contract info").to_string()
+                }
+                DebugUnit::Primitive(_) => {
+                    let s_info = call_graph.get_statement_info(tag).expect("stmt info");
+
                     let func =
                         debug_units.function(tag).expect("primitive has to belong to a function");
-                    let f_meta = func.get_function_meta().expect("function has to have meta data");
+                    let f_info = call_graph.get_function_info(func).expect("function info");
 
                     let cntr =
                         debug_units.contract(tag).expect("function has to belong to a contract");
-                    let c_meta = cntr.get_contract_meta().expect("contract has to have meta data");
+                    let c_info = call_graph.get_contract_info(cntr).expect("contract info");
 
                     format!(
                         "{} - {} - {}",
-                        c_meta.to_string(),
-                        f_meta.to_string(),
-                        s_meta.to_string()
+                        c_info.to_string(),
+                        f_info.to_string(),
+                        s_info.to_string()
                     )
                 }
                 _ => String::new(),

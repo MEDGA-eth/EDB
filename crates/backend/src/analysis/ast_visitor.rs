@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use eyre::Result;
 use foundry_compilers::artifacts::*;
 use paste::paste;
@@ -351,7 +353,7 @@ pub trait Visitor {
     }
 }
 
-pub trait Walk {
+pub trait Walk: Any {
     fn walk(&self, visitor: &mut dyn Visitor) -> Result<()>;
 }
 

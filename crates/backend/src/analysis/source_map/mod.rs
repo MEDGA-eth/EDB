@@ -12,6 +12,8 @@ use integrity::{IntegrityAnalsysis, IntergrityLevel};
 use crate::artifact::deploy::DeployArtifact;
 use source_label::{SourceLabelAnalysis, SourceLabels};
 
+use super::call_graph::CallGraphAnalysis;
+
 const CONSTRUCTOR_IDX: usize = 0;
 const DEPLOYED_IDX: usize = 1;
 
@@ -125,12 +127,15 @@ pub struct SourceMapAnalysis {}
 
 impl SourceMapAnalysis {
     /// Analyze the source map of a compilation artifact.
-    pub fn analyze(artifact: &DeployArtifact) -> Result<[RefinedSourceMap; 2]> {
+    pub fn analyze(
+        artifact: &DeployArtifact,
+        cg_analyzer: Option<&mut CallGraphAnalysis>,
+    ) -> Result<[RefinedSourceMap; 2]> {
         debug!(addr=?artifact.onchain_address, "analyzing source map");
         let mut store = AnalysisStore::init(artifact)?;
 
         // Step 1. collect primitive debugging units.
-        DebugUnitAnlaysis::analyze(artifact, &mut store)?;
+        DebugUnitAnlaysis::analyze(artifact, &mut store, cg_analyzer)?;
 
         // Step 2. analyze the source labels.
         SourceLabelAnalysis::analyze(artifact, &mut store)?;
@@ -164,7 +169,8 @@ mod tests {
         let artifact: DeployArtifact =
             cache.load_cache(addr.to_string()).ok_or_eyre("missing cached artifact")?;
 
-        SourceMapAnalysis::analyze(&artifact)
+        let mut cg_analyzer = CallGraphAnalysis::default();
+        SourceMapAnalysis::analyze(&artifact, Some(&mut cg_analyzer))
     }
 
     #[tokio::test(flavor = "multi_thread")]

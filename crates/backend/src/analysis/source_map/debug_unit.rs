@@ -18,7 +18,10 @@ use foundry_compilers::artifacts::{
 use solang_parser::{helpers::CodeLocation, lexer, pt};
 
 use crate::{
-    analysis::ast_visitor::{Visitor, Walk},
+    analysis::{
+        ast_visitor::{Visitor, Walk},
+        call_graph::CallGraphAnalysis,
+    },
     artifact::deploy::DeployArtifact,
     utils::ast::get_source_location_for_expression,
 };
@@ -123,179 +126,6 @@ impl TryFrom<&SourceLocation> for UnitLocation {
     }
 }
 
-/// Metadata for Function Unit.
-#[derive(Clone, Debug)]
-pub struct FunctionMeta {
-    pub is_modifier: bool,
-    pub is_virtual: bool,
-    pub name: String,
-    pub state_mutability: Option<StateMutability>,
-    pub parameters: ParameterList,
-    pub return_parameters: Option<ParameterList>,
-}
-
-impl From<&FunctionDefinition> for FunctionMeta {
-    fn from(func: &FunctionDefinition) -> Self {
-        Self {
-            is_modifier: false,
-            is_virtual: func.is_virtual,
-            name: func.name.clone(),
-            state_mutability: func.state_mutability.clone(),
-            parameters: func.parameters.clone(),
-            return_parameters: Some(func.return_parameters.clone()),
-        }
-    }
-}
-
-impl From<&ModifierDefinition> for FunctionMeta {
-    fn from(modifier: &ModifierDefinition) -> Self {
-        Self {
-            is_modifier: true,
-            is_virtual: false,
-            name: modifier.name.clone(),
-            state_mutability: None,
-            parameters: modifier.parameters.clone(),
-            return_parameters: None,
-        }
-    }
-}
-
-impl FunctionMeta {
-    pub fn is_pure(&self) -> bool {
-        matches!(self.state_mutability, Some(StateMutability::Pure))
-    }
-}
-
-impl Display for FunctionMeta {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.is_modifier {
-            write!(f, "modifier {}", self.name)
-        } else {
-            let mutability = match &self.state_mutability {
-                Some(StateMutability::Pure) => "pure",
-                Some(StateMutability::View) => "view",
-                Some(StateMutability::Nonpayable) => "nonpayable",
-                Some(StateMutability::Payable) => "payable",
-                None => "",
-            };
-            if self.is_virtual {
-                write!(f, "function {}(..) {} virtual", self.name, mutability)
-            } else {
-                write!(f, "function {}(..) {}", self.name, mutability)
-            }
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct ContractMeta {
-    pub name: String,
-    pub kind: ContractKind,
-}
-
-impl From<&ContractDefinition> for ContractMeta {
-    fn from(contract: &ContractDefinition) -> Self {
-        Self { name: contract.name.clone(), kind: contract.kind.clone() }
-    }
-}
-
-impl Display for ContractMeta {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let kind = match self.kind {
-            ContractKind::Contract => "contract",
-            ContractKind::Library => "library",
-            ContractKind::Interface => "interface",
-        };
-
-        write!(f, "{} {}", kind, self.name,)
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct StatementMeta {
-    pub inner_func_call: Vec<FunctionCallMeta>,
-}
-
-impl Display for StatementMeta {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.inner_func_call.is_empty() {
-            write!(f, "no function call")
-        } else {
-            // Print all the function calls in the statement, separated by comma.
-            write!(
-                f,
-                "function calls: {}",
-                self.inner_func_call
-                    .iter()
-                    .map(|meta| meta.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        }
-    }
-}
-
-// To avoid extensive memory usage, all metadata should be stored in Arc.
-#[derive(Clone, Debug)]
-pub struct FunctionCallMeta {
-    pub is_constructor: bool,
-
-    // The entire function call expression.
-    pub expr: String,
-
-    // The expression part of the function name.
-    pub name: String,
-
-    // The number of arguments in the function call.
-    pub arg_n: usize,
-}
-
-impl Display for FunctionCallMeta {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.is_constructor {
-            write!(f, "new {}", self.name)
-        } else {
-            write!(f, "{}", self.name)
-        }
-    }
-}
-
-// Define the macro for implementing PartialEq, Eq, PartialOrd, Ord, and Hash for the given types.
-// The implementation is just a placeholder and should only used for those types that are not
-// supposed to be compared (e.g., Metadata).
-macro_rules! derive_empty_traits {
-    ($($t:ty),+) => {
-        $(
-            impl PartialEq for $t {
-                fn eq(&self, _: &Self) -> bool {
-                    true
-                }
-            }
-
-            impl Eq for $t {}
-
-            impl PartialOrd for $t {
-                fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-                    Some(self.cmp(other))
-                }
-            }
-
-            impl Ord for $t {
-                fn cmp(&self, _: &Self) -> Ordering {
-                    Ordering::Equal
-                }
-            }
-
-            impl Hash for $t {
-                fn hash<H: Hasher>(&self, _: &mut H) {
-                }
-            }
-        )+
-    };
-}
-
-derive_empty_traits!(FunctionMeta, ContractMeta, StatementMeta, FunctionCallMeta);
-
 /// Different kind of debugging units.
 /// A debugging unit can be either an execution unit (singleton primitive or block-level inline
 /// assembly) or a non-execution unit (function or contract). The execution units are the basic
@@ -304,16 +134,16 @@ derive_empty_traits!(FunctionMeta, ContractMeta, StatementMeta, FunctionCallMeta
 #[derive(Clone, Debug, PartialEq, Ord, Eq, PartialOrd, Hash)]
 pub enum DebugUnit {
     /// A primitive unit is a single statement or expression (execution unit)
-    Primitive(UnitLocation, Arc<StatementMeta>),
+    Primitive(UnitLocation),
 
     /// Inline assembly block
     InlineAssembly(UnitLocation, Vec<UnitLocation>),
 
     /// A function unit is a tag for a function definition (non-execution unit).
-    Function(UnitLocation, Arc<FunctionMeta>),
+    Function(UnitLocation),
 
     /// A contract unit is a tag for a contract definition (non-execution unit).
-    Contract(UnitLocation, Arc<ContractMeta>),
+    Contract(UnitLocation),
 }
 
 impl Deref for DebugUnit {
@@ -362,35 +192,6 @@ impl DebugUnit {
     pub fn get_asm_stmts(&self) -> Option<&Vec<UnitLocation>> {
         match self {
             Self::InlineAssembly(_, stmts) => Some(stmts),
-            _ => None,
-        }
-    }
-
-    pub fn get_function_meta(&self) -> Option<&FunctionMeta> {
-        match self {
-            Self::Function(_, meta) => Some(meta),
-            _ => None,
-        }
-    }
-
-    pub fn get_contract_meta(&self) -> Option<&ContractMeta> {
-        match self {
-            Self::Contract(_, meta) => Some(meta),
-            _ => None,
-        }
-    }
-
-    pub fn get_statement_meta(&self) -> Option<&StatementMeta> {
-        match self {
-            Self::Primitive(_, meta) => Some(meta),
-            _ => None,
-        }
-    }
-
-    pub fn get_name(&self) -> Option<&str> {
-        match self {
-            Self::Function(_, meta) => Some(meta.name.as_str()),
-            Self::Contract(_, meta) => Some(meta.name.as_str()),
             _ => None,
         }
     }
@@ -530,8 +331,8 @@ impl<'a> Iterator for DebugUnitsIterator<'a> {
 /// non-execution units (e.g., function and contract definitions).
 ///
 /// Note that, at this stage, no hyper units are collected.
-#[derive(Clone, Debug, Default)]
-pub struct DebugUnitVisitor {
+#[derive(Debug, Default)]
+pub struct DebugUnitVisitor<'a> {
     units: BTreeMap<usize, BTreeMap<usize, DebugUnit>>,
     sources: BTreeMap<usize, Arc<String>>,
 
@@ -542,11 +343,13 @@ pub struct DebugUnitVisitor {
 
     contracts: BTreeMap<DebugUnit, DebugUnit>,
     last_contract: Option<DebugUnit>,
+
+    cg_analyzer: Option<&'a mut CallGraphAnalysis>,
 }
 
-impl DebugUnitVisitor {
-    pub fn new() -> Self {
-        Self::default()
+impl<'a> DebugUnitVisitor<'a> {
+    pub fn new(cg_analyzer: Option<&'a mut CallGraphAnalysis>) -> Self {
+        Self { cg_analyzer, ..Default::default() }
     }
 
     pub fn register(&mut self, index: usize, code: Arc<String>) {
@@ -554,17 +357,17 @@ impl DebugUnitVisitor {
     }
 }
 
-impl Visitor for DebugUnitVisitor {
+impl<'a> Visitor for DebugUnitVisitor<'a> {
     fn visit_contract_definition(&mut self, definition: &ContractDefinition) -> Result<()> {
-        self.update_contract(&definition.src, definition.into())
+        self.update_contract(&definition.src, definition)
     }
 
     fn visit_function_definition(&mut self, definition: &FunctionDefinition) -> Result<()> {
-        self.update_function(&definition.src, definition.into())
+        self.update_function(&definition.src, definition)
     }
 
     fn visit_modifier_definition(&mut self, definition: &ModifierDefinition) -> Result<()> {
-        self.update_function(&definition.src, definition.into())
+        self.update_function(&definition.src, definition)
     }
 
     fn visit_statement(&mut self, statement: &Statement) -> Result<()> {
@@ -676,22 +479,20 @@ impl Visitor for DebugUnitVisitor {
             Statement::VariableDeclarationStatement(stmt) => {
                 self.update_primitive(&stmt.src, Some(stmt.as_ref()))?
             }
-            Statement::Break(stmt) => self.update_primitive::<Statement>(&stmt.src, None)?,
-            Statement::Continue(stmt) => self.update_primitive::<Statement>(&stmt.src, None)?,
+            Statement::Break(stmt) => self.update_primitive(&stmt.src, None)?,
+            Statement::Continue(stmt) => self.update_primitive(&stmt.src, None)?,
             Statement::EmitStatement(stmt) => {
                 // There is no function call allowed in emit statement.
-                self.update_primitive::<Statement>(&stmt.src, None)?
+                self.update_primitive(&stmt.src, None)?
             }
             Statement::ExpressionStatement(stmt) => {
                 self.update_primitive(&stmt.src, Some(stmt.as_ref()))?
             }
-            Statement::PlaceholderStatement(stmt) => {
-                self.update_primitive::<Statement>(&stmt.src, None)?
-            }
+            Statement::PlaceholderStatement(stmt) => self.update_primitive(&stmt.src, None)?,
             Statement::Return(stmt) => self.update_primitive(&stmt.src, Some(stmt.as_ref()))?,
             Statement::RevertStatement(stmt) => {
                 // There is no function call allowed in revert statement.
-                self.update_primitive::<Statement>(&stmt.src, None)?
+                self.update_primitive(&stmt.src, None)?
             }
         }
 
@@ -699,15 +500,22 @@ impl Visitor for DebugUnitVisitor {
     }
 
     fn post_visit_statement(&mut self, statement: &Statement) -> Result<()> {
-        if matches!(statement, Statement::InlineAssembly(_)) {
-            self.update_inline_assembly()
-        } else {
-            Ok(())
+        match statement {
+            Statement::InlineAssembly(block) => self.update_inline_assembly(block.as_ref()),
+            _ => Ok(()),
         }
     }
 }
 
-impl DebugUnitVisitor {
+impl<'a> DebugUnitVisitor<'a> {
+    #[inline]
+    fn cg_analyzer(&mut self) -> Result<&mut CallGraphAnalysis> {
+        self.cg_analyzer
+            .as_mut()
+            .map(|a| &mut **a)
+            .ok_or_eyre("the call graph analyzer is not set and hence co-analysis is disabled")
+    }
+
     #[inline]
     fn get_unit_location(&self, src: &SourceLocation) -> Result<UnitLocation> {
         let mut src = UnitLocation::try_from(src)?;
@@ -738,7 +546,7 @@ impl DebugUnitVisitor {
         self.insert_debug_unit(unit)
     }
 
-    fn update_inline_assembly(&mut self) -> Result<()> {
+    fn update_inline_assembly(&mut self, def: &InlineAssembly) -> Result<()> {
         ensure!(self.last_inline_assembly.is_some(), "we are not in inline assembly block");
         let mut asm_unit =
             self.last_inline_assembly.take().ok_or_eyre("no inline assembly found")?;
@@ -750,27 +558,28 @@ impl DebugUnitVisitor {
         stmt.sort();
 
         trace!("wrap up an inline assembly block: {}", asm_unit.loc());
+
+        if let Ok(cg_analyzer) = self.cg_analyzer() {
+            cg_analyzer.register_inline_assembly(asm_unit.clone(), def);
+        }
+
         self.insert_execution_unit(asm_unit)
     }
 
-    fn update_primitive<T>(&mut self, src: &SourceLocation, node: Option<&T>) -> Result<()>
-    where
-        T: Walk,
-    {
+    fn update_primitive(&mut self, src: &SourceLocation, node: Option<&dyn Walk>) -> Result<()> {
         ensure!(self.last_inline_assembly.is_none(), "we are in inline assembly block");
 
         let src = self.get_unit_location(src)?;
         trace!("find a primative debug unit: {}", src.as_str());
 
-        let meta = if let Some(node) = node {
-            let mut visitor = StatementVisitor::new(self);
-            node.walk(&mut visitor)?;
-            visitor.produce()
-        } else {
-            StatementMeta::default()
-        };
+        let unit = DebugUnit::Primitive(src);
+        if let Some(node) = node {
+            if let Ok(cg_analyzer) = self.cg_analyzer() {
+                cg_analyzer.register_primitive_statement(unit.clone(), node);
+            }
+        }
 
-        self.insert_execution_unit(DebugUnit::Primitive(src, Arc::new(meta)))
+        self.insert_execution_unit(unit)
     }
 
     fn update_yul_primitive(&mut self, src: &SourceLocation) -> Result<()> {
@@ -787,24 +596,32 @@ impl DebugUnitVisitor {
         Ok(())
     }
 
-    fn update_function(&mut self, src: &SourceLocation, meta: FunctionMeta) -> Result<()> {
+    fn update_function(&mut self, src: &SourceLocation, def: &dyn Walk) -> Result<()> {
         let src = self.get_unit_location(src)?;
         trace!("find a function unit: {}", src);
 
-        let meta = Arc::new(meta);
-        self.last_function = Some(DebugUnit::Function(src.clone(), meta.clone()));
+        let unit = DebugUnit::Function(src);
+        self.last_function = Some(unit.clone());
 
-        self.insert_debug_unit(DebugUnit::Function(src, meta))
+        if let Ok(cg_analyzer) = self.cg_analyzer() {
+            cg_analyzer.register_function(unit.clone(), def);
+        }
+
+        self.insert_debug_unit(unit)
     }
 
-    fn update_contract(&mut self, src: &SourceLocation, meta: ContractMeta) -> Result<()> {
+    fn update_contract(&mut self, src: &SourceLocation, def: &ContractDefinition) -> Result<()> {
         let src = self.get_unit_location(src)?;
         trace!("find a contract unit: {}", src);
 
-        let meta = Arc::new(meta);
-        self.last_contract = Some(DebugUnit::Contract(src.clone(), meta.clone()));
+        let unit = DebugUnit::Contract(src);
+        self.last_contract = Some(unit.clone());
 
-        self.insert_debug_unit(DebugUnit::Contract(src, meta))
+        if let Ok(cg_analyzer) = self.cg_analyzer() {
+            cg_analyzer.register_contract(unit.clone(), def);
+        }
+
+        self.insert_debug_unit(unit)
     }
 
     /// Check whether there is any overlapping primitive debugging unit.
@@ -1166,8 +983,12 @@ impl DebugUnitVisitor {
 pub struct DebugUnitAnlaysis {}
 
 impl DebugUnitAnlaysis {
-    pub fn analyze(artifact: &DeployArtifact, store: &mut AnalysisStore<'_>) -> Result<()> {
-        let mut visitor = DebugUnitVisitor::new();
+    pub fn analyze(
+        artifact: &DeployArtifact,
+        store: &mut AnalysisStore<'_>,
+        cg_analyzer: Option<&mut CallGraphAnalysis>,
+    ) -> Result<()> {
+        let mut visitor = DebugUnitVisitor::new(cg_analyzer);
         for (id, source) in artifact.sources.iter() {
             visitor.register(*id as usize, Arc::clone(&source.code));
             source.ast.walk(&mut visitor)?;
@@ -1202,138 +1023,4 @@ where
     }
 
     Ok(())
-}
-
-#[derive(Clone, Debug)]
-struct StatementVisitor<'a> {
-    func_calls: Vec<FunctionCallMeta>,
-    debug_unit_visitor: &'a DebugUnitVisitor,
-}
-
-impl<'a> Visitor for StatementVisitor<'a> {
-    fn visit_statement(&mut self, _statement: &Statement) -> Result<()> {
-        ensure!(self.func_calls.is_empty(), "statement debug units should not nested");
-
-        Ok(())
-    }
-
-    fn visit_function_call(&mut self, function_call: &FunctionCall) -> Result<()> {
-        if function_call.kind != FunctionCallKind::FunctionCall {
-            return Ok(());
-        }
-
-        if let Some(mut meta) = self.collect_function_call(&function_call.expression)? {
-            trace!(arg_n = function_call.arguments.len(), "find a function call: {meta}");
-            meta.arg_n = function_call.arguments.len();
-            self.func_calls.push(meta);
-        }
-
-        Ok(())
-    }
-}
-
-impl<'a> StatementVisitor<'a> {
-    pub fn new(debug_unit_visitor: &'a DebugUnitVisitor) -> Self {
-        Self { func_calls: Vec::new(), debug_unit_visitor }
-    }
-
-    pub fn produce(self) -> StatementMeta {
-        StatementMeta { inner_func_call: self.func_calls }
-    }
-
-    fn collect_function_call(
-        &mut self,
-        call_expr: &Expression,
-    ) -> Result<Option<FunctionCallMeta>> {
-        let unit = self
-            .debug_unit_visitor
-            .get_unit_location(get_source_location_for_expression(call_expr))?;
-        let unit_s = unit.as_str();
-
-        // We will ignore the function call to the ABI or the new operator, since they are not
-        // actual function calls.
-        if unit_s.starts_with("abi.") {
-            return Ok(None);
-        }
-
-        match call_expr {
-            Expression::Identifier(ref ident) => {
-                if ident.name.as_str() == "require" || ident.name.as_str() == "keccak256" {
-                    Ok(None)
-                } else {
-                    Ok(Some(FunctionCallMeta {
-                        is_constructor: false,
-                        name: ident.name.clone(),
-                        expr: unit.as_str().to_string(),
-                        arg_n: 0, // Placeholder for the number of arguments.
-                    }))
-                }
-            }
-            Expression::MemberAccess(ref member) => {
-                if unit_s.starts_with("super") {
-                    debug!("WTF {:?} {}", member.expression, unit_s);
-                }
-                Ok(Some(FunctionCallMeta {
-                    is_constructor: false,
-                    name: member.member_name.clone(),
-                    expr: unit.as_str().to_string(),
-                    arg_n: 0, // Placeholder for the number of arguments.
-                }))
-            }
-            Expression::FunctionCallOptions(ref opts) => {
-                if let Some(mut meta) = self.collect_function_call(&opts.expression)? {
-                    meta.expr = unit.as_str().to_string();
-                    Ok(Some(meta))
-                } else {
-                    Ok(None)
-                }
-            }
-            Expression::FunctionCall(ref call) => {
-                // It is possible for `stakingRouter.deposit.value(depositsValue)(...)`
-                match &call.expression {
-                    Expression::MemberAccess(ref member) => {
-                        self.collect_function_call(&member.expression)
-                    }
-                    _ => {
-                        bail!("invalid Expression::FunctionCall {unit_s} {:?}", call.expression);
-                    }
-                }
-            }
-            Expression::NewExpression(ref new) => match &new.type_name {
-                TypeName::UserDefinedTypeName(ref user) => {
-                    let type_str = user.type_descriptions.type_string.as_ref().ok_or_eyre(
-                        format!("invalid Expression::NewExpression {unit_s} {:?}", new.type_name),
-                    )?;
-                    if let Some(contract_str) = type_str.strip_prefix("contract ") {
-                        Ok(Some(FunctionCallMeta {
-                            is_constructor: true,
-                            name: contract_str.to_string(),
-                            expr: unit.as_str().to_string(),
-                            arg_n: 0, // Placeholder for the number of arguments.
-                        }))
-                    } else {
-                        bail!("invalid Expression::NewExpression {unit_s} {:?}", new.type_name);
-                    }
-                }
-                _ => Ok(None),
-            },
-            Expression::TupleExpression(ref tuple) => {
-                // e.g., ProxyAdmin adminInstance = (new ProxyAdmin){salt: adminSalt}()
-                match &tuple.components[..] {
-                    [Some(Expression::NewExpression(_))] => self.collect_function_call(
-                        tuple.components[0].as_ref().expect("this should not happen"),
-                    ),
-                    _ => {
-                        bail!(
-                            "invalid Expression::TupleExpression {unit_s} {:?}",
-                            tuple.components
-                        );
-                    }
-                }
-            }
-            _ => {
-                bail!("invalid function call expression type {unit_s} {:?}", call_expr);
-            }
-        }
-    }
 }

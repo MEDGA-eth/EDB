@@ -23,6 +23,7 @@ use rayon::prelude::*;
 
 use crate::{
     analysis::{
+        call_graph::CallGraphAnalysis,
         inspector::{
             AnalyzedCallTrace, CallTraceInspector, DebugInspector, PushJumpInspector,
             VisitedAddrInspector,
@@ -222,7 +223,9 @@ where
         iter.try_for_each(|(addr, artifact)| -> Result<()> {
             trace!("analyzing source map for {addr:#?}");
 
-            let [mut constructor, mut deployed] = SourceMapAnalysis::analyze(artifact)?;
+            let mut cg_analyzer = CallGraphAnalysis::default(); // Co-analyze for call graph
+            let [mut constructor, mut deployed] =
+                SourceMapAnalysis::analyze(artifact, Some(&mut cg_analyzer))?;
             debug_assert!(constructor.is_constructor());
             debug_assert!(deployed.is_deployed());
 
