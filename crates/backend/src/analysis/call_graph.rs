@@ -1,8 +1,11 @@
 use std::{
+    any::Any,
     collections::BTreeMap,
     fmt::{self, Display},
+    ops::{Deref, DerefMut},
 };
 
+use eyre::{bail, Result};
 use foundry_compilers::artifacts::{
     ContractDefinition, ContractKind, FunctionDefinition, InlineAssembly, ModifierDefinition,
     ParameterList, StateMutability,
@@ -14,77 +17,91 @@ use super::{ast_visitor::Walk, source_map::debug_unit::DebugUnit};
 
 /// Metadata for Function Unit.
 #[derive(Clone, Debug)]
-pub struct FunctionInfo {
-    pub is_modifier: bool,
-    pub is_virtual: bool,
-    pub name: String,
-    pub state_mutability: Option<StateMutability>,
-    pub parameters: ParameterList,
-    pub return_parameters: Option<ParameterList>,
+pub enum FunctionInfo {
+    Modifier(ModifierDefinition),
+    Function(FunctionDefinition),
 }
 
 impl From<&FunctionDefinition> for FunctionInfo {
     fn from(func: &FunctionDefinition) -> Self {
-        Self {
-            is_modifier: false,
-            is_virtual: func.is_virtual,
-            name: func.name.clone(),
-            state_mutability: func.state_mutability.clone(),
-            parameters: func.parameters.clone(),
-            return_parameters: Some(func.return_parameters.clone()),
-        }
+        Self::Function(func.clone())
     }
 }
 
 impl From<&ModifierDefinition> for FunctionInfo {
     fn from(modifier: &ModifierDefinition) -> Self {
-        Self {
-            is_modifier: true,
-            is_virtual: false,
-            name: modifier.name.clone(),
-            state_mutability: None,
-            parameters: modifier.parameters.clone(),
-            return_parameters: None,
-        }
+        Self::Modifier(modifier.clone())
     }
 }
 
 impl FunctionInfo {
-    pub fn is_pure(&self) -> bool {
-        matches!(self.state_mutability, Some(StateMutability::Pure))
+    pub fn name(&self) -> &str {
+        match self {
+            FunctionInfo::Modifier(modifier) => &modifier.name,
+            FunctionInfo::Function(func) => &func.name,
+        }
+    }
+
+    pub fn is_modifier(&self) -> bool {
+        matches!(self, FunctionInfo::Modifier(_))
+    }
+
+    pub fn state_mutability(&self) -> Option<&StateMutability> {
+        match self {
+            FunctionInfo::Modifier(_) => None,
+            FunctionInfo::Function(func) => func.state_mutability.as_ref(),
+        }
+    }
+
+    pub fn is_virtual(&self) -> bool {
+        match self {
+            FunctionInfo::Modifier(_) => false,
+            FunctionInfo::Function(func) => func.is_virtual,
+        }
     }
 }
 
 impl Display for FunctionInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.is_modifier {
-            write!(f, "modifier {}", self.name)
+        if self.is_modifier() {
+            write!(f, "modifier {}", self.name())
         } else {
-            let mutability = match &self.state_mutability {
+            let mutability = match &self.state_mutability() {
                 Some(StateMutability::Pure) => "pure",
                 Some(StateMutability::View) => "view",
                 Some(StateMutability::Nonpayable) => "nonpayable",
                 Some(StateMutability::Payable) => "payable",
                 None => "",
             };
-            if self.is_virtual {
-                write!(f, "function {}(..) {} virtual", self.name, mutability)
+            if self.is_virtual() {
+                write!(f, "function {}(..) {} virtual", self.name(), mutability)
             } else {
-                write!(f, "function {}(..) {}", self.name, mutability)
+                write!(f, "function {}(..) {}", self.name(), mutability)
             }
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct ContractInfo {
-    pub name: String,
-    pub kind: ContractKind,
-}
+pub struct ContractInfo(ContractDefinition);
 
 impl From<&ContractDefinition> for ContractInfo {
     fn from(contract: &ContractDefinition) -> Self {
-        Self { name: contract.name.clone(), kind: contract.kind.clone() }
+        Self(contract.clone())
+    }
+}
+
+impl Deref for ContractInfo {
+    type Target = ContractDefinition;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for ContractInfo {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
@@ -158,7 +175,13 @@ impl Display for InlineAssemblyInfo {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+impl From<&InlineAssembly> for InlineAssemblyInfo {
+    fn from(_assembly: &InlineAssembly) -> Self {
+        Self {}
+    }
+}
+
+#[derive(Clone, Default)]
 pub struct CallGraph {
     pub addr: RuntimeAddress,
     pub functions: BTreeMap<DebugUnit, FunctionInfo>,
@@ -209,16 +232,22 @@ impl CallGraphAnalysis {
         }
     }
 
-    pub fn register_contract(&mut self, unit: DebugUnit, def: &ContractDefinition) {
-        todo!()
+    pub fn register_contract(&mut self, unit: DebugUnit, def: &ContractDefinition) -> Result<()> {
+        self.contracts.insert(unit, def.into());
+        Ok(())
     }
 
-    pub fn register_function(&mut self, unit: DebugUnit, def: &dyn Walk) {
-        todo!()
-    }
+    pub fn register_function(&mut self, unit: DebugUnit, def: &dyn Any) -> Result<()> {
+        // Using downcast
+        if let Some(func) = def.downcast_ref::<FunctionDefinition>() {
+            self.functions.insert(unit, func.into());
+        } else if let Some(modifier) = def.downcast_ref::<ModifierDefinition>() {
+            self.functions.insert(unit, modifier.into());
+        } else {
+            bail!("Invalid function definition type");
+        };
 
-    pub fn register_statement(&mut self, unit: DebugUnit, def: &dyn Walk) {
-        todo!()
+        Ok(())
     }
 
     pub fn register_primitive_statement(&mut self, unit: DebugUnit, def: &dyn Walk) {
@@ -226,7 +255,7 @@ impl CallGraphAnalysis {
     }
 
     pub fn register_inline_assembly(&mut self, unit: DebugUnit, def: &InlineAssembly) {
-        todo!()
+        self.inline_assembly.insert(unit, def.into());
     }
 }
 

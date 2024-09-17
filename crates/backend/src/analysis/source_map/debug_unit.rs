@@ -1,4 +1,5 @@
 use std::{
+    any::Any,
     cmp::Ordering,
     collections::BTreeMap,
     fmt::{self, Debug, Display},
@@ -596,7 +597,7 @@ impl<'a> DebugUnitVisitor<'a> {
         Ok(())
     }
 
-    fn update_function(&mut self, src: &SourceLocation, def: &dyn Walk) -> Result<()> {
+    fn update_function(&mut self, src: &SourceLocation, def: &dyn Any) -> Result<()> {
         let src = self.get_unit_location(src)?;
         trace!("find a function unit: {}", src);
 
@@ -604,7 +605,7 @@ impl<'a> DebugUnitVisitor<'a> {
         self.last_function = Some(unit.clone());
 
         if let Ok(cg_analyzer) = self.cg_analyzer() {
-            cg_analyzer.register_function(unit.clone(), def);
+            cg_analyzer.register_function(unit.clone(), def)?;
         }
 
         self.insert_debug_unit(unit)
@@ -618,7 +619,7 @@ impl<'a> DebugUnitVisitor<'a> {
         self.last_contract = Some(unit.clone());
 
         if let Ok(cg_analyzer) = self.cg_analyzer() {
-            cg_analyzer.register_contract(unit.clone(), def);
+            cg_analyzer.register_contract(unit.clone(), def)?;
         }
 
         self.insert_debug_unit(unit)
