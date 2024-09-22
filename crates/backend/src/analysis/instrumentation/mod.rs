@@ -43,3 +43,14 @@
 //! When a variable's value is queried, e.g., in the watcher, in the middle of the execution, we
 //! will spawn a new EVM on top of the current storage, and call the function to read the value of
 //! that variable, with the UVID as the argument.
+//!
+//! We define `Step` as the smallest unit of execution during debugging. In the debugging process,
+//! we need to know where the next step starts in the bytecode, so that we can support step-by-step
+//! execution. Source map of bytecode is not reliable since it is usually points to wrong line. As
+//! such, we will insert hooks before each step in the source code to mark the start of the line.
+//! The hook is essentially an invocation to a predefined address `EDB_STEP_MARKER_ADDRESS`. During
+//! debugging, whenever `EDB_STEP_MARKER_ADDRESS` is called, we know that the source code switches
+//! to the next step.
+pub mod step;
+pub mod uvid;
+pub mod step_division;

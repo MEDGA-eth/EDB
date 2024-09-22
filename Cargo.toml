@@ -166,6 +166,7 @@ tracing-subscriber = "0.3"
 tui-textarea = { version = "0.6", features = ["search"] }
 vergen = { version = "8", default-features = false }
 yansi = { version = "1.0", features = ["detect-tty", "detect-env"] }
+lazy_static = "1.5"
 
 # soldeer
 soldeer = "0.2.19"

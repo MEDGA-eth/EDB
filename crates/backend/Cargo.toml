@@ -43,3 +43,4 @@ serde_json.workspace = true
 solang-parser.workspace = true
 tracing.workspace = true
 tokio.workspace = true
+lazy_static.workspace = true
