@@ -8,7 +8,7 @@ macro_rules! etherscan_rate_limit_guard {
                 Ok(response) => break Ok(response),
                 Err(foundry_block_explorers::errors::EtherscanError::RateLimitExceeded) => {
                     tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                    continue
+                    continue;
                 }
                 Err(e) => break Err(e),
             }
@@ -21,7 +21,7 @@ macro_rules! etherscan_rate_limit_guard {
                 Ok(response) => break Ok(response),
                 Err(foundry_block_explorers::errors::EtherscanError::RateLimitExceeded) => {
                     tokio::time::sleep(tokio::time::Duration::from_secs($secs)).await;
-                    continue
+                    continue;
                 }
                 Err(e) => break Err(e),
             }

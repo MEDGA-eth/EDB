@@ -1,12 +1,12 @@
 use std::ops::{Deref, DerefMut};
 
-use alloy_chains::Chain;
+use alloy_chains::{Chain, NamedChain};
 use alloy_network::Network;
 use alloy_primitives::TxHash;
 use alloy_provider::{Provider, ProviderCall, RootProvider};
 use alloy_rpc_types::{BlockId, BlockNumberOrTag, BlockTransactionsKind};
 use alloy_transport::{Transport, TransportError, TransportResult};
-use eyre::Result;
+use eyre::{bail, Result};
 
 use crate::cache::{Cache, CachePath, EDBCache};
 
@@ -60,6 +60,18 @@ where
         cache_path: C,
     ) -> Result<Self> {
         let chain = chain.into();
+
+        if cache_path.is_valid() {
+            let named_chain: NamedChain = chain.id().try_into().map_err(|_| {
+                eyre::eyre!(
+                    "The provider does not support caching for unnamed chain: {}",
+                    chain.id()
+                )
+            })?;
+            if named_chain == NamedChain::Dev || named_chain == NamedChain::AnvilHardhat {
+                bail!("The provider does not support caching for dev chain: {}", chain.id());
+            }
+        }
 
         self.receipt_cache = EDBCache::new(cache_path.rpc_receipt_cache_dir(chain), None)?;
         self.tx_cache = EDBCache::new(cache_path.rpc_tx_cache_dir(chain), None)?;

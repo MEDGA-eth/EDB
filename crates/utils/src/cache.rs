@@ -12,6 +12,11 @@ pub trait CachePath {
     /// Returns the path to edb's cache dir: `~/.edb/cache` by default.
     fn edb_cache_dir(&self) -> Option<PathBuf>;
 
+    /// Check whether the cache is valid.
+    fn is_valid(&self) -> bool {
+        self.edb_cache_dir().is_some()
+    }
+
     /// Returns the path to edb rpc cache dir: `<cache_root>/rpc`.
     fn edb_rpc_cache_dir(&self) -> Option<PathBuf> {
         Some(self.edb_cache_dir()?.join("rpc"))

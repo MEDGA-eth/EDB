@@ -522,7 +522,7 @@ impl PaneManager {
         };
 
         if side_len < MIN_SPLITABLE_PANE_SIZE {
-            return Err(RecoverableError::new("pane is too small to split".to_string()).into())
+            return Err(RecoverableError::new("pane is too small to split".to_string()).into());
         }
 
         let new_id = self.next_id;

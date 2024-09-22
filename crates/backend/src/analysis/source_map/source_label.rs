@@ -295,7 +295,7 @@ impl SourceLabelAnalysis {
             {
                 *source_labels.last_mut().expect("this cannot happen") =
                     SourceLabel::Tag { tag: unit.clone() };
-                continue
+                continue;
             }
 
             if unit.contains(src.offset() as usize, src.length() as usize) {
