@@ -1,19 +1,13 @@
-use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
-    fmt::Debug,
-};
+use std::collections::BTreeMap;
 
-use eyre::{bail, ensure, OptionExt, Result};
+use eyre::Result;
 
 use crate::{
-    analysis::source_map::{
-        debug_unit::DebugUnit, integrity::IntergrityLevel, source_label::SourceLabel,
-        RefinedSourceMap,
-    },
+    analysis::source_map::{integrity::IntergrityLevel, RefinedSourceMap},
     RuntimeAddress,
 };
 
-use super::{AnalyzedCallTrace, BlockNode, CalibrationPoint, FuncNode};
+use super::AnalyzedCallTrace;
 
 #[cfg(feature = "paralize_analysis")]
 use rayon::prelude::*;
@@ -80,10 +74,10 @@ impl AnalyzedCallTrace {
                 return Ok(());
             }
 
-            #[cfg(feature = "paralize_analysis")]
-            let iter = func.trace.par_iter_mut();
-            #[cfg(not(feature = "paralize_analysis"))]
-            let mut iter = func.trace.iter_mut();
+            // #[cfg(feature = "paralize_analysis")]
+            // let iter = func.trace.par_iter_mut();
+            // #[cfg(not(feature = "paralize_analysis"))]
+            // let mut iter = func.trace.iter_mut();
 
             // iter.try_for_each(|block| block.label_source(source_map))?;
             // func.construct_source_call_trace(source_map)?;

@@ -8,7 +8,7 @@ use std::{
 use eyre::{bail, Result};
 use foundry_compilers::artifacts::{
     ContractDefinition, ContractKind, FunctionDefinition, InlineAssembly, ModifierDefinition,
-    ParameterList, StateMutability,
+    StateMutability,
 };
 
 use crate::RuntimeAddress;
@@ -37,26 +37,26 @@ impl From<&ModifierDefinition> for FunctionInfo {
 impl FunctionInfo {
     pub fn name(&self) -> &str {
         match self {
-            FunctionInfo::Modifier(modifier) => &modifier.name,
-            FunctionInfo::Function(func) => &func.name,
+            Self::Modifier(modifier) => &modifier.name,
+            Self::Function(func) => &func.name,
         }
     }
 
     pub fn is_modifier(&self) -> bool {
-        matches!(self, FunctionInfo::Modifier(_))
+        matches!(self, Self::Modifier(_))
     }
 
     pub fn state_mutability(&self) -> Option<&StateMutability> {
         match self {
-            FunctionInfo::Modifier(_) => None,
-            FunctionInfo::Function(func) => func.state_mutability.as_ref(),
+            Self::Modifier(_) => None,
+            Self::Function(func) => func.state_mutability.as_ref(),
         }
     }
 
     pub fn is_virtual(&self) -> bool {
         match self {
-            FunctionInfo::Modifier(_) => false,
-            FunctionInfo::Function(func) => func.is_virtual,
+            Self::Modifier(_) => false,
+            Self::Function(func) => func.is_virtual,
         }
     }
 }
@@ -250,7 +250,7 @@ impl CallGraphAnalysis {
         Ok(())
     }
 
-    pub fn register_primitive_statement(&mut self, unit: DebugUnit, def: &dyn Walk) {
+    pub fn register_primitive_statement(&mut self, _unit: DebugUnit, _def: &dyn Walk) {
         todo!()
     }
 

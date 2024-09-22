@@ -216,7 +216,7 @@ fn disasm_artifact(
                 let c_info = call_graph.get_contract_info(cntr).expect("contract info");
                 let f_info = call_graph.get_function_info(func).expect("function info");
                 let s_info = call_graph.get_statement_info(stmt).expect("stmt info");
-                format!("{} - {} - {}", c_info.to_string(), f_info.to_string(), s_info.to_string())
+                format!("{c_info} - {f_info} - {s_info}")
             }
             SourceLabel::Tag { tag, .. } => match tag {
                 DebugUnit::Function(_) => {
@@ -224,7 +224,7 @@ fn disasm_artifact(
                         debug_units.contract(tag).expect("function has to belong to a contract");
                     let c_info = call_graph.get_contract_info(cntr).expect("contract info");
                     let f_info = call_graph.get_function_info(tag).expect("function info");
-                    format!("{} - {}", c_info.to_string(), f_info.to_string())
+                    format!("{c_info} - {f_info}")
                 }
                 DebugUnit::Contract(_) => {
                     call_graph.get_contract_info(tag).expect("contract info").to_string()
@@ -240,26 +240,14 @@ fn disasm_artifact(
                         debug_units.contract(tag).expect("function has to belong to a contract");
                     let c_info = call_graph.get_contract_info(cntr).expect("contract info");
 
-                    format!(
-                        "{} - {} - {}",
-                        c_info.to_string(),
-                        f_info.to_string(),
-                        s_info.to_string()
-                    )
+                    format!("{c_info} - {f_info} - {s_info}")
                 }
                 _ => String::new(),
             },
             _ => String::new(),
         };
 
-        println!(
-            "{:05} ({:05}): {:<85} | {:<20} | {}",
-            ic,
-            pc,
-            opcode_str,
-            src.to_string(),
-            label.to_string(),
-        );
+        println!("{:05} ({:05}): {:<85} | {:<20} | {label}", ic, pc, opcode_str, src.to_string(),);
         println!("{:<100} | {}", "", comments);
         println!("{}", "-".repeat(220));
     }

@@ -1,8 +1,7 @@
 use std::{
     any::Any,
-    cmp::Ordering,
     collections::BTreeMap,
-    fmt::{self, Debug, Display},
+    fmt::{self, Debug},
     hash::{Hash, Hasher},
     ops::{Deref, DerefMut},
     sync::Arc,
@@ -12,9 +11,8 @@ use eyre::{bail, ensure, eyre, OptionExt, Result};
 use foundry_compilers::artifacts::{
     ast::SourceLocation,
     yul::{YulExpression, YulStatement},
-    ContractDefinition, ContractKind, Expression, ExpressionOrVariableDeclarationStatement,
-    FunctionCall, FunctionCallKind, FunctionDefinition, InlineAssembly, ModifierDefinition,
-    ParameterList, StateMutability, Statement, TypeName,
+    ContractDefinition, ExpressionOrVariableDeclarationStatement, FunctionDefinition,
+    InlineAssembly, ModifierDefinition, Statement,
 };
 use solang_parser::{helpers::CodeLocation, lexer, pt};
 
@@ -512,8 +510,7 @@ impl<'a> DebugUnitVisitor<'a> {
     #[inline]
     fn cg_analyzer(&mut self) -> Result<&mut CallGraphAnalysis> {
         self.cg_analyzer
-            .as_mut()
-            .map(|a| &mut **a)
+            .as_deref_mut()
             .ok_or_eyre("the call graph analyzer is not set and hence co-analysis is disabled")
     }
 

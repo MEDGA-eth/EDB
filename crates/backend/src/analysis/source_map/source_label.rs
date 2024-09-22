@@ -64,7 +64,7 @@ impl fmt::Display for SourceLabel {
                 write!(f, "Tag({})", tag.loc())
             }
             Self::Others { scope, loc } => match (scope, loc) {
-                (Some(scope), Some(_)) => write!(f, "Located({})", scope),
+                (Some(scope), Some(_)) => write!(f, "Located({scope})"),
                 (Some(_), None) => write!(f, "Invalid"),
                 (None, Some(loc)) => write!(f, "Unlocated({loc})"),
                 (None, None) => write!(f, "Others"),

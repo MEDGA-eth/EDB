@@ -19,6 +19,7 @@ serial_test.workspace = true
 tempfile.workspace = true
 
 [dependencies]
+auto_impl.workspace = true
 alloy-chains.workspace = true
 alloy-json-abi.workspace = true
 alloy-network.workspace = true

@@ -3,10 +3,9 @@ use std::ops::{Deref, DerefMut};
 use alloy_chains::Chain;
 use alloy_network::Network;
 use alloy_primitives::TxHash;
-use alloy_provider::{Provider, RootProvider};
+use alloy_provider::{Provider, ProviderCall, RootProvider};
 use alloy_rpc_types::{BlockId, BlockNumberOrTag, BlockTransactionsKind};
 use alloy_transport::{Transport, TransportError, TransportResult};
-use async_trait::async_trait;
 use eyre::Result;
 
 use crate::cache::{Cache, CachePath, EDBCache};
@@ -72,7 +71,8 @@ where
 
 impl<P, N> Unpin for CachedProvider<P, N> where N: Network {}
 
-#[async_trait]
+#[cfg_attr(target_arch = "wasm32", async_trait::async_trait(?Send))]
+#[cfg_attr(not(target_arch = "wasm32"), async_trait::async_trait)]
 impl<P, T, N> Provider<T, N> for CachedProvider<P, N>
 where
     P: Provider<T, N>,
@@ -83,35 +83,55 @@ where
         self.provider.root()
     }
 
-    async fn get_transaction_receipt(
+    fn get_transaction_receipt(
         &self,
         hash: TxHash,
-    ) -> TransportResult<Option<N::ReceiptResponse>> {
+    ) -> ProviderCall<T, (TxHash,), Option<N::ReceiptResponse>> {
         if let Some(recipt) = self.receipt_cache.load_cache(hash.to_string()) {
-            return Ok(recipt);
+            ProviderCall::ready(Ok(recipt))
         } else {
-            let rv = self.provider.get_transaction_receipt(hash).await?;
+            let provider_call = self.provider.get_transaction_receipt(hash);
+            let cache = self.receipt_cache.clone();
 
-            match self.receipt_cache.save_cache(hash.to_string(), &rv) {
-                Ok(_) => Ok(rv),
-                Err(e) => TransportResult::Err(TransportError::local_usage_str(&e.to_string())),
-            }
+            ProviderCall::BoxedFuture(Box::pin(async move {
+                let response = provider_call.await;
+                if let Ok(receipt) = response {
+                    match cache.save_cache(hash.to_string(), &receipt) {
+                        Ok(_) => Ok(receipt),
+                        Err(e) => {
+                            TransportResult::Err(TransportError::local_usage_str(&e.to_string()))
+                        }
+                    }
+                } else {
+                    response
+                }
+            }))
         }
     }
 
-    async fn get_transaction_by_hash(
+    fn get_transaction_by_hash(
         &self,
         hash: TxHash,
-    ) -> TransportResult<Option<N::TransactionResponse>> {
+    ) -> ProviderCall<T, (TxHash,), Option<N::TransactionResponse>> {
         if let Some(tx) = self.tx_cache.load_cache(hash.to_string()) {
-            return Ok(tx);
+            ProviderCall::ready(Ok(tx))
         } else {
-            let rv = self.provider.get_transaction_by_hash(hash).await?;
+            let provider_call = self.provider.get_transaction_by_hash(hash);
+            let cache = self.tx_cache.clone();
 
-            match self.tx_cache.save_cache(hash.to_string(), &rv) {
-                Ok(_) => Ok(rv),
-                Err(e) => TransportResult::Err(TransportError::local_usage_str(&e.to_string())),
-            }
+            ProviderCall::BoxedFuture(Box::pin(async move {
+                let response = provider_call.await;
+                if let Ok(tx) = response {
+                    match cache.save_cache(hash.to_string(), &tx) {
+                        Ok(_) => Ok(tx),
+                        Err(e) => {
+                            TransportResult::Err(TransportError::local_usage_str(&e.to_string()))
+                        }
+                    }
+                } else {
+                    response
+                }
+            }))
         }
     }
 
