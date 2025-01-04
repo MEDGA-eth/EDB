@@ -214,33 +214,12 @@ fn expression_or_variable_declaration_statement_source_location<'a>(
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+    use std::{collections::BTreeMap, sync::Arc};
 
-    use foundry_compilers::{
-        artifacts::{Settings, Source, SourceUnit, Sources},
-        solc::{SolcCompiler, SolcLanguage, SolcSettings, SolcVersionedInput},
-        Compiler, CompilerInput,
+    use crate::{
+        analysis::ast_visitor::Walk,
+        utils::compilation::compile_to_ast,
     };
-
-    use crate::analysis::{ast_visitor::Walk, prune::ASTPruner};
-
-    fn compile_to_ast(code: &str) -> eyre::Result<(usize, SourceUnit)> {
-        let path: PathBuf = "contract.sol".into();
-        let mut sources = Sources::new();
-        sources.insert(path.clone(), Source::new(code));
-        let version = "0.8.12".parse()?;
-        let settings =
-            SolcSettings { settings: Settings::default().with_ast(), ..Default::default() };
-        let input = SolcVersionedInput::build(sources, settings, SolcLanguage::Solidity, version);
-        let output = SolcCompiler::AutoDetect.compile(&input)?;
-        if let Some(err) = output.errors.iter().find(|e| e.is_error()) {
-            return Err(eyre::eyre!("compilation failed: {}", err));
-        }
-        let src = output.sources.get(&path).expect("source not available").to_owned();
-        let id = src.id;
-        let src = ASTPruner::convert(&mut src.ast.expect("ast not found"))?;
-        Ok((id as usize, src))
-    }
 
     #[test]
     fn test_divide_normal_statements() {

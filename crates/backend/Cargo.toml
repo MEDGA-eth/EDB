@@ -32,6 +32,8 @@ eyre.workspace = true
 hex.workspace = true
 indicatif.workspace = true
 foundry-compilers = { workspace = true, features = ["svm-solc", "async"] }
+foundry-compilers-artifacts.workspace = true
+foundry-compilers-artifacts-solc.workspace = true
 foundry-block-explorers = { workspace = true, features = ["foundry-compilers"] }
 paste.workspace = true
 rayon = { workspace = true, optional = true }

@@ -13,7 +13,7 @@ resolver = "2"
 version = "0.0.1"
 edition = "2021"
 # Remember to update clippy.toml as well
-rust-version = "1.79"
+rust-version = "1.81"
 authors = ["The MEDGA Team"]
 license = "MIT OR Apache-2.0"
 homepage = "https://medga.org/"
@@ -78,9 +78,11 @@ edb-hardhat-adapter = { path = "crates/hardhat-adapter" }
 edb-utils = { path = "crates/utils" }
 
 # foundry
-foundry-block-explorers = { version = "0.7.3", default-features = false }
-foundry-compilers = { version = "0.11.1", default-features = false }
-foundry-fork-db = "0.3"
+foundry-block-explorers = { version = "=0.7.3", default-features = false }
+foundry-compilers = { version = "=0.11.1", default-features = false }
+foundry-compilers-artifacts = { version = "=0.11.1", default-features = false }
+foundry-compilers-artifacts-solc = { version = "=0.11.1", default-features = false }
+foundry-fork-db = "=0.3.1"
 foundry-common = { git = "https://github.com/foundry-rs/foundry", rev = "a592f7a" }
 foundry-evm = { git = "https://github.com/foundry-rs/foundry", rev = "a592f7a" }
 anvil = { git = "https://github.com/foundry-rs/foundry", rev = "a592f7a" }
@@ -88,9 +90,9 @@ solang-parser = "=0.3.3"
 
 ## revm
 # no default features to avoid c-kzg
-revm = { version = "14.0.2", default-features = false }
-revm-primitives = { version = "9.0.2", default-features = false }
-revm-inspectors = { version = "0.7", features = ["serde"] }
+revm = { version = "=14.0.2", default-features = false }
+revm-primitives = { version = "=9.0.2", default-features = false }
+revm-inspectors = { version = "=0.7.4", features = ["serde"] }
 
 ## ethers
 ethers-contract-abigen = { version = "2.0.14", default-features = false }
@@ -120,7 +122,7 @@ alloy-transport-ws = { version = "0.3.6", default-features = false }
 
 alloy-dyn-abi = "0.8.1"
 alloy-json-abi = "0.8.1"
-alloy-primitives = { version = "0.8.1", features = ["getrandom", "rand"] }
+alloy-primitives = { version = "=0.8.3", features = ["getrandom", "rand"] }
 alloy-sol-macro-expander = "0.8.1"
 alloy-sol-macro-input = "0.8.1"
 alloy-sol-types = "0.8.1"

@@ -51,6 +51,6 @@
 //! The hook is essentially an invocation to a predefined address `EDB_STEP_MARKER_ADDRESS`. During
 //! debugging, whenever `EDB_STEP_MARKER_ADDRESS` is called, we know that the source code switches
 //! to the next step.
-pub mod step;
-pub mod uvid;
-pub mod step_division;
+mod step;
+mod step_division;
+mod uvid;

@@ -1,6 +1,15 @@
 use alloy_primitives::Address;
 use eyre::{OptionExt, Result};
 use foundry_compilers::artifacts::Bytecode;
+use foundry_compilers::{
+    artifacts::{Settings, Source, SourceUnit, Sources},
+    solc::{SolcCompiler, SolcLanguage, SolcSettings, SolcVersionedInput},
+    Compiler, CompilerInput,
+};
+
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
+
+use crate::analysis::{ast_visitor::Walk, prune::ASTPruner};
 
 #[inline]
 pub fn link_contracts_fakely(bytecode: &mut Bytecode, addr: Option<Address>) -> Result<()> {
@@ -34,8 +43,8 @@ pub fn bytecode_align_similarity(bytecode1: &[u8], bytecode2: &[u8]) -> f64 {
         return 0.0;
     }
 
-    bytecode1.iter().zip(bytecode2.iter()).filter(|(a, b)| a == b).count() as f64 /
-        bytecode1.len() as f64
+    bytecode1.iter().zip(bytecode2.iter()).filter(|(a, b)| a == b).count() as f64
+        / bytecode1.len() as f64
 }
 
 #[inline]
@@ -59,4 +68,27 @@ pub fn bytecode_lcs_similarity(bytecode1: &[u8], bytecode2: &[u8]) -> f64 {
     }
 
     lcs_table[len_s1][len_s2] as f64 / len_s1.max(len_s2) as f64
+}
+
+/// Compile the given Solidity code to AST.
+///
+/// # Returns
+/// - The ID of the source file.
+/// - The compiled source unit.
+#[inline]
+pub fn compile_to_ast(code: &str) -> eyre::Result<(usize, SourceUnit)> {
+    let path: PathBuf = "contract.sol".into();
+    let mut sources = Sources::new();
+    sources.insert(path.clone(), Source::new(code));
+    let version = "0.8.12".parse()?;
+    let settings = SolcSettings { settings: Settings::default().with_ast(), ..Default::default() };
+    let input = SolcVersionedInput::build(sources, settings, SolcLanguage::Solidity, version);
+    let output = SolcCompiler::AutoDetect.compile(&input)?;
+    if let Some(err) = output.errors.iter().find(|e| e.is_error()) {
+        return Err(eyre::eyre!("compilation failed: {}", err));
+    }
+    let src = output.sources.get(&path).expect("source not available").to_owned();
+    let id = src.id;
+    let src = ASTPruner::convert(&mut src.ast.expect("ast not found"))?;
+    Ok((id as usize, src))
 }
