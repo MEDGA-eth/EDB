@@ -15,7 +15,7 @@ describe('<TerminalPanel />', () => {
     render(<TerminalPanel />, { wrapper });
     const input = screen.getByTestId('terminal-input');
     await userEvent.type(input, 'block.number{enter}');
-    await waitFor(() => expect(screen.getByTestId('term-result')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('term-result')).toBeTruthy());
     expect(screen.getByTestId('term-input').textContent).toContain('block.number');
   });
 
@@ -24,7 +24,7 @@ describe('<TerminalPanel />', () => {
     const { wrapper } = makeWrapper();
     render(<TerminalPanel />, { wrapper });
     await userEvent.type(screen.getByTestId('terminal-input'), 'x{enter}');
-    await waitFor(() => expect(screen.getByTestId('term-error')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('term-error')).toBeTruthy());
   });
 
   test('ignores empty submit', async () => {
