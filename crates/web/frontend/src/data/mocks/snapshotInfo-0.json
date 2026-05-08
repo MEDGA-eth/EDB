@@ -1,0 +1,19 @@
+{
+  "id": 0,
+  "frame_id": { "trace_entry_id": 0, "step_id": 0 },
+  "next_id": 1,
+  "prev_id": 0,
+  "target_address": "0x0000000000000000000000000000000000000000",
+  "bytecode_address": "0x0000000000000000000000000000000000000000",
+  "detail": {
+    "kind": "Opcode",
+    "id": 0,
+    "frame_id": { "trace_entry_id": 0, "step_id": 0 },
+    "pc": 0,
+    "opcode": 0,
+    "memory": [],
+    "stack": [],
+    "calldata": [],
+    "transient_storage": {}
+  }
+}
