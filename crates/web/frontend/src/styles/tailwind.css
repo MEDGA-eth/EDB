@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Quicksand", sans-serif;
+  --font-body: "Nunito", sans-serif;
+  --font-mono: "Fira Code", ui-monospace, monospace;
+  --color-bg-root: #f5f0e8;
+  --color-bg: #faf6f0;
+  --color-bg-elevated: #ffffff;
+  --color-fg: #2a1e0e;
+  --color-accent: #e04832;
+  --radius: 12px;
+}
+
+html, body, #root {
+  width: 100%; height: 100%;
+  font-family: var(--font-body);
+  color: var(--color-fg);
+  background: var(--color-bg-root);
+  -webkit-font-smoothing: antialiased;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
