@@ -196,10 +196,10 @@ impl Tui {
                                 // Now handle the deferred event if any
                                 if let Some(other_event) = other_event_to_handle {
                                     match other_event {
-                                        Event::Key(key_event) => {
-                                            if self.handle_key_event(key_event, &mut data_manager).await? {
-                                                break Ok(());
-                                            }
+                                        Event::Key(key_event)
+                                            if self.handle_key_event(key_event, &mut data_manager).await? =>
+                                        {
+                                            break Ok(());
                                         }
                                         Event::Resize(width, height) => self.handle_resize(width, height),
                                         Event::Mouse(_) => bail!("Unexpected mouse event in deferred handling"),
@@ -207,10 +207,10 @@ impl Tui {
                                     }
                                 }
                             }
-                            Event::Key(key_event) => {
-                                if self.handle_key_event(key_event, &mut data_manager).await? {
-                                    break Ok(());
-                                }
+                            Event::Key(key_event)
+                                if self.handle_key_event(key_event, &mut data_manager).await? =>
+                            {
+                                break Ok(());
                             }
                             Event::Resize(width, height) => self.handle_resize(width, height),
                             _ => {}

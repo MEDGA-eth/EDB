@@ -334,12 +334,12 @@ pub fn analyze(artifact: &Artifact) -> Result<AnalysisResult, AnalysisError> {
     let mut utid_to_user_defined_type = HashMap::new();
     let mut user_defined_types = HashMap::new();
     for result in source_results.iter() {
-        ucid_to_contract.extend(result.contract_table().into_iter());
-        ufid_to_function.extend(result.function_table().into_iter());
-        usid_to_step.extend(result.step_table().into_iter());
-        uvid_to_variable.extend(result.variable_table().into_iter());
-        utid_to_user_defined_type.extend(result.user_defined_type_table().into_iter());
-        user_defined_types.extend(result.user_defined_types().into_iter());
+        ucid_to_contract.extend(result.contract_table());
+        ufid_to_function.extend(result.function_table());
+        usid_to_step.extend(result.step_table());
+        uvid_to_variable.extend(result.variable_table());
+        utid_to_user_defined_type.extend(result.user_defined_type_table());
+        user_defined_types.extend(result.user_defined_types());
     }
     let sources = source_results.into_iter().map(|s| (s.id, s)).collect();
 
