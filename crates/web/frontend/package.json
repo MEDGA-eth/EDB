@@ -6,7 +6,7 @@
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "bun test",
+    "test": "bun test src/",
     "e2e": "playwright test",
     "mocks:gen": "bun run scripts/gen-mocks.ts"
   },
