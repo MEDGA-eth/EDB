@@ -1,5 +1,7 @@
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { EditorState } from '@codemirror/state';
 import { EditorView, lineNumbers } from '@codemirror/view';
+import { tags as t } from '@lezer/highlight';
 import { solidity } from '@replit/codemirror-lang-solidity';
 import { useEffect, useRef } from 'react';
 import { useCode } from '../../hooks/useCode';
@@ -7,6 +9,41 @@ import { useSession } from '../../store/session';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { ErrorCard } from '../ErrorCard';
 import { tokenize } from '../../lib/opcodeTokens';
+
+const edbHighlight = HighlightStyle.define([
+  { tag: t.keyword, color: 'var(--color-syn-keyword)', fontWeight: '600' },
+  { tag: [t.string, t.special(t.string)], color: 'var(--color-syn-string)' },
+  { tag: [t.number, t.bool, t.null], color: 'var(--color-syn-number)' },
+  { tag: t.comment, color: 'var(--color-syn-comment)', fontStyle: 'italic' },
+  { tag: [t.typeName, t.className, t.namespace], color: 'var(--color-syn-type)' },
+  {
+    tag: [t.function(t.variableName), t.function(t.propertyName)],
+    color: 'var(--color-syn-func)',
+  },
+  { tag: [t.operator, t.operatorKeyword], color: 'var(--color-fg)' },
+  { tag: t.variableName, color: 'var(--color-fg)' },
+  { tag: t.propertyName, color: 'var(--color-fg-secondary)' },
+  { tag: t.punctuation, color: 'var(--color-fg-tertiary)' },
+]);
+
+const edbTheme = EditorView.theme({
+  '&': {
+    fontFamily: 'var(--font-mono)',
+    fontSize: '13px',
+    backgroundColor: 'transparent',
+  },
+  '.cm-content': { caretColor: 'var(--color-fg)' },
+  '.cm-gutters': {
+    backgroundColor: 'transparent',
+    color: 'var(--color-fg-tertiary)',
+    border: 'none',
+  },
+  '.cm-activeLine': { backgroundColor: 'var(--color-bg-hover)' },
+  '.cm-activeLineGutter': { backgroundColor: 'var(--color-bg-hover)' },
+  '.cm-selectionBackground, & ::selection': {
+    backgroundColor: 'var(--color-accent-dim)',
+  },
+});
 
 export function CodePanel() {
   return (
@@ -66,7 +103,13 @@ function SolidityView({
     if (!ref.current || !file) return;
     const state = EditorState.create({
       doc: file.content,
-      extensions: [lineNumbers(), solidity, EditorView.editable.of(false)],
+      extensions: [
+        lineNumbers(),
+        solidity,
+        syntaxHighlighting(edbHighlight),
+        edbTheme,
+        EditorView.editable.of(false),
+      ],
     });
     const view = new EditorView({ state, parent: ref.current });
     return () => view.destroy();
