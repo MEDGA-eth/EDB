@@ -12,6 +12,9 @@ import { TracePanel } from '../components/panels/TracePanel';
 import { DisplayPanel } from '../components/panels/DisplayPanel';
 import { TerminalPanel } from '../components/panels/TerminalPanel';
 import { FileExplorer } from '../components/explorer/FileExplorer';
+import { BreakpointsView } from '../components/explorer/BreakpointsView';
+import { CommandPalette } from '../components/CommandPalette';
+import { useGlobalKeybinds } from '../hooks/useGlobalKeybinds';
 import { useSession, type ActivityKind } from '../store/session';
 
 const SIDEBAR_WIDTH = 280;
@@ -185,7 +188,13 @@ function SideBar({ activity }: { activity: ActivityKind }) {
         {activity}
       </header>
       <div className="flex-1 overflow-auto" data-testid={`side-bar-${activity}`}>
-        {activity === 'explorer' ? <FileExplorer /> : <SidePlaceholder activity={activity} />}
+        {activity === 'explorer' ? (
+          <FileExplorer />
+        ) : activity === 'breakpoints' ? (
+          <BreakpointsView />
+        ) : (
+          <SidePlaceholder activity={activity} />
+        )}
       </div>
     </aside>
   );
@@ -204,6 +213,7 @@ function SidePlaceholder({ activity }: { activity: ActivityKind }) {
 export function IDELayout() {
   const activity = useSession((s) => s.activeActivity);
   const [editorPx, setEditorPx] = useState(0); // forces re-mount when window resizes radically
+  useGlobalKeybinds();
 
   useEffect(() => {
     const onResize = () => setEditorPx((n) => n + 1);
@@ -236,6 +246,7 @@ export function IDELayout() {
         </div>
       </div>
       <StatusBar />
+      <CommandPalette />
     </div>
   );
 }

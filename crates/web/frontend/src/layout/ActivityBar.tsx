@@ -1,4 +1,4 @@
-import { Folder, Network, Eye, Terminal, Circle } from 'lucide-react';
+import { Folder, Network, Eye, Terminal, Circle, Search } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useSession, type ActivityKind } from '../store/session';
 
@@ -19,6 +19,7 @@ const ITEMS: Item[] = [
 export function ActivityBar() {
   const active = useSession((s) => s.activeActivity);
   const setActivity = useSession((s) => s.setActivity);
+  const setPaletteOpen = useSession((s) => s.setPaletteOpen);
   return (
     <nav
       className="flex w-12 flex-col border-r border-(--color-border) bg-(--color-bg)"
@@ -50,6 +51,18 @@ export function ActivityBar() {
           </button>
         );
       })}
+      <div className="mt-auto flex flex-col">
+        <button
+          type="button"
+          onClick={() => setPaletteOpen(true)}
+          title="Open command palette (Ctrl+P)"
+          aria-label="Open command palette"
+          data-testid="activity-palette"
+          className="flex h-12 items-center justify-center text-(--color-fg-secondary) transition hover:text-(--color-fg)"
+        >
+          <Search size={20} />
+        </button>
+      </div>
     </nav>
   );
 }
