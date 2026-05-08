@@ -140,3 +140,18 @@ pub async fn start_tui(options: &TuiOptions, rpc_server_addr: SocketAddr) -> Res
 
     Ok(())
 }
+
+/// Open `url` in the user's default browser.
+///
+/// On failure, logs a warning and prints the URL to stdout so the user can
+/// open it manually. Never returns an error — browser opening is best-effort.
+pub fn open_browser(url: &str) {
+    match webbrowser::open(url) {
+        Ok(_) => tracing::info!("Opened {url} in browser"),
+        Err(e) => {
+            tracing::warn!("Failed to open browser: {e}");
+            eprintln!("\nedb-web is running. Open this URL in your browser:");
+            eprintln!("    {url}\n");
+        }
+    }
+}

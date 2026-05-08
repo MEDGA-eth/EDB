@@ -21,35 +21,39 @@ use edb_common::fork_and_prepare;
 use edb_engine::Engine;
 use eyre::Result;
 
-use crate::utils;
+use crate::{Ui, utils};
 
 /// Replay an existing transaction following the correct architecture
 pub async fn replay_transaction(tx_hash: TxHash, cli: &crate::Cli, rpc_url: &str) -> Result<()> {
     tracing::info!("Starting transaction replay workflow");
 
-    // Step 1: Fork the chain and replay earlier transactions in the block
-    // Fork and prepare the database/environment for the target transaction
     let fork_result = fork_and_prepare(rpc_url, tx_hash, cli.quick).await?;
-
     tracing::info!(
         "Forked chain and prepared database for transaction replay at block {}",
         fork_result.fork_info.block_number
     );
 
-    // Step 2: Build inputs for the engine
     let engine_config = cli.to_engine_config(rpc_url);
-
-    // Step 3: Call engine::prepare with forked database and EVM config
-    tracing::info!("Calling engine::prepare with prepared inputs");
     let engine = Engine::new(engine_config);
-    let rpc_server_addr = engine.prepare(fork_result, None).await?;
 
-    // Step 4: Launch TUI and wait for user to exit
-    utils::start_tui(&cli.tui_options, rpc_server_addr).await?;
+    let rpc_server_addr = match cli.ui {
+        Ui::Tui => engine.prepare(fork_result, None).await?,
+        Ui::Web => engine.prepare_with_router(fork_result, None, Some(edb_web::router())).await?,
+    };
 
-    // Step 5: Shutdown EDB
+    match cli.ui {
+        Ui::Tui => {
+            utils::start_tui(&cli.tui_options, rpc_server_addr).await?;
+        }
+        Ui::Web => {
+            let url = format!("http://{rpc_server_addr}/");
+            utils::open_browser(&url);
+            tracing::info!("Web UI ready. Press Ctrl+C to exit.");
+            tokio::signal::ctrl_c().await?;
+        }
+    }
+
     tracing::info!("Shutting down EDB...");
     engine.shutdown_rpc_server(&tx_hash)?;
-
     Ok(())
 }
