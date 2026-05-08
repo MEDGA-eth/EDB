@@ -10,6 +10,16 @@ export type TerminalEntry =
 
 export type ConnectionState = 'connected' | 'degraded' | 'offline';
 export type PanelTab = 'code' | 'trace' | 'display' | 'terminal';
+export type ActivityKind = 'explorer' | 'trace' | 'variables' | 'terminal' | 'breakpoints';
+
+export interface OpenFile {
+  /** stable id used as the dockview panel id; e.g. `${addr}::${path}` */
+  id: string;
+  /** address-of-code this file belongs to */
+  addr: string;
+  /** virtual path within the bundle; for opcodes use the literal `disasm` */
+  path: string;
+}
 
 export interface SessionState {
   currentSnapshotId: number;
@@ -19,6 +29,13 @@ export interface SessionState {
   theme: Theme;
   connection: ConnectionState;
   sessionEnded: boolean;
+
+  /* IDE shell state */
+  activeActivity: ActivityKind;
+  openFiles: OpenFile[];
+  activeFileId: string | null;
+  /** serialised dockview JSON; persisted across reloads */
+  layoutJson: string | null;
 
   setSnapshotId(id: number): void;
   nextSnapshot(max: number): void;
@@ -31,6 +48,16 @@ export interface SessionState {
   setTheme(theme: Theme): void;
   setConnection(state: ConnectionState): void;
   setSessionEnded(ended: boolean): void;
+
+  setActivity(a: ActivityKind): void;
+  openFile(args: { addr: string; path: string }): void;
+  closeFile(id: string): void;
+  setActiveFile(id: string | null): void;
+  setLayoutJson(json: string | null): void;
+}
+
+function fileId(addr: string, path: string): string {
+  return `${addr}::${path}`;
 }
 
 export const useSession = create<SessionState>()(
@@ -43,6 +70,11 @@ export const useSession = create<SessionState>()(
       theme: 'light',
       connection: 'connected',
       sessionEnded: false,
+
+      activeActivity: 'explorer',
+      openFiles: [],
+      activeFileId: null,
+      layoutJson: null,
 
       setSnapshotId: (id) => set({ currentSnapshotId: Math.max(0, id) }),
       nextSnapshot: (max) =>
@@ -57,6 +89,30 @@ export const useSession = create<SessionState>()(
       setTheme: (theme) => set({ theme }),
       setConnection: (state) => set({ connection: state }),
       setSessionEnded: (ended) => set({ sessionEnded: ended }),
+
+      setActivity: (a) => set({ activeActivity: a }),
+      openFile: ({ addr, path }) => {
+        const id = fileId(addr, path);
+        const existing = get().openFiles.find((f) => f.id === id);
+        if (existing) {
+          set({ activeFileId: id });
+          return;
+        }
+        set({
+          openFiles: [...get().openFiles, { id, addr, path }],
+          activeFileId: id,
+        });
+      },
+      closeFile: (id) => {
+        const remaining = get().openFiles.filter((f) => f.id !== id);
+        const wasActive = get().activeFileId === id;
+        set({
+          openFiles: remaining,
+          activeFileId: wasActive ? (remaining[remaining.length - 1]?.id ?? null) : get().activeFileId,
+        });
+      },
+      setActiveFile: (id) => set({ activeFileId: id }),
+      setLayoutJson: (json) => set({ layoutJson: json }),
     }),
     {
       name: 'edb-web:session',
@@ -68,6 +124,10 @@ export const useSession = create<SessionState>()(
         breakpoints: [],
         connection: 'connected',
         sessionEnded: false,
+        // per-session (don't persist):
+        activeActivity: 'explorer',
+        openFiles: [],
+        activeFileId: null,
       }),
     },
   ),

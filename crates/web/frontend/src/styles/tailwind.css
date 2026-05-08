@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./dockview.css";
 
 @theme {
   /* fonts */
