@@ -20,6 +20,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v5
 
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -80,6 +85,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v5
 
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -110,6 +120,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v5
 
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -139,6 +154,11 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v5
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -172,3 +192,23 @@ jobs:
           EDB_TEST_ETHERSCAN_MODE: cache-only
           EDB_ASSERT: all
           RUST_LOG: info
+
+  web-frontend:
+    name: Web frontend tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: crates/web/frontend
+        run: bun install --frozen-lockfile
+
+      - name: Run frontend tests
+        working-directory: crates/web/frontend
+        run: bun test --coverage

@@ -1,0 +1,41 @@
+name: E2E
+
+on:
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  web-e2e:
+    name: Web UI E2E
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: crates/web/frontend
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright
+        working-directory: crates/web/frontend
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run E2E tests (mock mode)
+        working-directory: crates/web/frontend
+        run: bun run e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: crates/web/frontend/playwright-report
+          retention-days: 7
