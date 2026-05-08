@@ -71,3 +71,8 @@ html, body, #root {
 }
 
 *, *::before, *::after { box-sizing: border-box; }
+
+.syn-op   { color: var(--color-syn-keyword); }
+.syn-num  { color: var(--color-syn-number); }
+.syn-addr { color: var(--color-syn-type); }
+.syn-comment { color: var(--color-syn-comment); font-style: italic; }
