@@ -124,6 +124,8 @@ where
     context: Arc<EngineContext<DB>>,
     /// Method handler for dispatching RPC requests to appropriate implementations
     method_handler: Arc<MethodHandler<DB>>,
+    /// Optional extra Axum router merged into the app at startup (e.g. static UI assets)
+    extra_router: Option<Router>,
 }
 
 impl<DB> DebugRpcServer<DB>
@@ -137,7 +139,17 @@ where
         let context = Arc::new(context);
         let method_handler = Arc::new(MethodHandler::new(context.clone()));
 
-        Self { context, method_handler }
+        Self { context, method_handler, extra_router: None }
+    }
+
+    /// Attach an extra Axum router to be merged into the server's app on startup.
+    ///
+    /// Use this to mount additional routes (e.g. the embedded web UI from
+    /// `edb-web`) on the same listener as the JSON-RPC API. Routes in the
+    /// extra router must not conflict with `POST /` or `GET /health`.
+    pub fn with_extra_router(mut self, extra: Router) -> Self {
+        self.extra_router = Some(extra);
+        self
     }
 
     /// Start the RPC server
@@ -150,12 +162,17 @@ where
     ///
     /// This method creates the Axum server with Send+Sync state, leveraging
     /// the now thread-safe EngineContext.
-    pub async fn start_on_port(self, port: u16) -> Result<RpcServerHandle> {
+    pub async fn start_on_port(mut self, port: u16) -> Result<RpcServerHandle> {
         // Create the Axum app with the server as state
+        let extra = self.extra_router.take();
         let app = Router::new()
             .route("/", post(handle_rpc_request))
             .route("/health", get(health_check))
             .with_state(RpcState { server: Arc::new(self) });
+        let app = match extra {
+            Some(extra) => app.merge(extra),
+            None => app,
+        };
 
         let addr = SocketAddr::from(([127, 0, 0, 1], port));
         let listener = tokio::net::TcpListener::bind(addr).await?;
