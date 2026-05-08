@@ -81,3 +81,7 @@ pub mod utils;
 
 pub use server::*;
 pub use types::*;
+
+/// Re-export of `axum::Router` for callers that want to attach extra routes
+/// via [`server::DebugRpcServer::with_extra_router`].
+pub use axum::Router;

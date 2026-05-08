@@ -57,7 +57,7 @@ use tracing::info;
 
 use crate::{
     EngineContext, SnapshotAnalysis, orchestration,
-    rpc::{RpcServerHandle, start_debug_server},
+    rpc::{Router, RpcServerHandle},
     utils::next_etherscan_api_key,
 };
 
@@ -191,6 +191,22 @@ impl Engine {
         <CacheDB<DB> as Database>::Error: Clone + Send + Sync,
         <DB as Database>::Error: Clone + Send + Sync,
     {
+        self.prepare_with_router(fork_result, progress_tx, None).await
+    }
+
+    /// Same as [`Engine::prepare`] but also attaches an optional extra Axum
+    /// router (e.g. for serving the embedded web UI on the same listener).
+    pub async fn prepare_with_router<DB>(
+        &self,
+        fork_result: ForkResult<DB>,
+        progress_tx: Option<mpsc::UnboundedSender<edb_common::ProgressMessage>>,
+        extra_router: Option<Router>,
+    ) -> Result<SocketAddr>
+    where
+        DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
+        <CacheDB<DB> as Database>::Error: Clone + Send + Sync,
+        <DB as Database>::Error: Clone + Send + Sync,
+    {
         // a utility macro to send progress message to the progress channel, if it exists
         macro_rules! send_progress {
             // With step tracking: send_progress!(current, total, "message")
@@ -318,7 +334,12 @@ impl Engine {
             replay_result.execution_trace,
         )?;
 
-        let rpc_handle = start_debug_server(context).await?;
+        let server = crate::rpc::DebugRpcServer::new(context);
+        let server = match extra_router {
+            Some(r) => server.with_extra_router(r),
+            None => server,
+        };
+        let rpc_handle = server.start().await?;
         info!("Debug RPC server started on {}", rpc_handle.addr());
 
         // Store the server handle for future reference
