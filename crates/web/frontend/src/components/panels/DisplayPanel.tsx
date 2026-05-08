@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Copy, RefreshCw } from 'lucide-react';
 import { useSession } from '../../store/session';
 import { useSnapshotInfo } from '../../hooks/useSnapshotInfo';
 import { useStorageDiff } from '../../hooks/useStorageDiff';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { ErrorCard } from '../ErrorCard';
+import { Toolbar, ToolbarButton, ToolbarDivider } from '../Toolbar';
 
 type Tab = 'vars' | 'stack' | 'memory' | 'storage' | 'transient';
 const TABS: { key: Tab; label: string }[] = [
@@ -22,15 +25,73 @@ export function DisplayPanel() {
   );
 }
 
+interface SnapshotDetail {
+  detail?: {
+    kind?: string;
+    stack?: string[];
+    memory?: number[];
+    transient_storage?: Record<string, string>;
+  };
+}
+
+interface StorageRow {
+  slot: string;
+  before: string | null;
+  after: string | null;
+}
+
 function DisplayPanelInner() {
   const id = useSession((s) => s.currentSnapshotId);
   const { data, error, refetch } = useSnapshotInfo(id);
+  const { data: storageData } = useStorageDiff(id);
   const [tab, setTab] = useState<Tab>('vars');
+  const qc = useQueryClient();
 
   if (error) return <ErrorCard message={(error as Error).message} onRetry={() => refetch()} />;
 
+  function copyActive() {
+    let text = '';
+    if (tab === 'vars') text = JSON.stringify(data, null, 2);
+    else if (tab === 'stack') text = ((data as SnapshotDetail | undefined)?.detail?.stack ?? []).join('\n');
+    else if (tab === 'memory') text = formatMemory(((data as SnapshotDetail | undefined)?.detail?.memory) ?? []);
+    else if (tab === 'storage')
+      text = (storageData ?? [])
+        .map((d: StorageRow) => `${d.slot}\t${d.before ?? ''}\t${d.after ?? ''}`)
+        .join('\n');
+    else if (tab === 'transient')
+      text = Object.entries(((data as SnapshotDetail | undefined)?.detail?.transient_storage) ?? {})
+        .map(([k, v]) => `${k}=${v}`)
+        .join('\n');
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(text);
+    }
+  }
+
+  function refreshActive() {
+    qc.invalidateQueries({ queryKey: ['snapshot', id] });
+    qc.invalidateQueries({ queryKey: ['storage-diff', id] });
+  }
+
   return (
     <div className="flex h-full flex-col">
+      <Toolbar testid="display-toolbar">
+        <ToolbarButton
+          icon={RefreshCw}
+          label="Refresh"
+          testid="display-refresh"
+          onClick={refreshActive}
+        />
+        <ToolbarButton
+          icon={Copy}
+          label="Copy active tab"
+          testid="display-copy"
+          onClick={copyActive}
+        />
+        <ToolbarDivider />
+        <span className="font-display text-[11px] text-(--color-fg-tertiary)">
+          snapshot {id}
+        </span>
+      </Toolbar>
       <div
         role="tablist"
         className="flex gap-1 border-b border-(--color-border) bg-(--color-bg)"
@@ -90,8 +151,7 @@ function StackView({ snap }: { snap: unknown }) {
   );
 }
 
-function MemoryView({ snap }: { snap: unknown }) {
-  const mem = (snap as { detail?: { memory?: number[] } }).detail?.memory ?? [];
+function formatMemory(mem: number[]): string {
   const rows: string[] = [];
   for (let i = 0; i < mem.length; i += 32) {
     const slice = mem
@@ -100,7 +160,12 @@ function MemoryView({ snap }: { snap: unknown }) {
       .join('');
     rows.push(`${i.toString(16).padStart(6, '0')}: ${slice}`);
   }
-  return <pre>{rows.join('\n')}</pre>;
+  return rows.join('\n');
+}
+
+function MemoryView({ snap }: { snap: unknown }) {
+  const mem = (snap as { detail?: { memory?: number[] } }).detail?.memory ?? [];
+  return <pre>{formatMemory(mem)}</pre>;
 }
 
 function StorageView({ id }: { id: number }) {

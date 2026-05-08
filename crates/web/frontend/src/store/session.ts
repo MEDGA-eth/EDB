@@ -37,15 +37,25 @@ export interface SessionState {
   /** serialised dockview JSON; persisted across reloads */
   layoutJson: string | null;
 
+  /* command-palette + global view toggles */
+  paletteOpen: boolean;
+  wordWrap: boolean;
+  showLineNumbers: boolean;
+  /** trace expand/collapse "epoch" — bumping forces panels to re-evaluate */
+  traceExpandTick: number;
+  traceCollapseTick: number;
+
   setSnapshotId(id: number): void;
   nextSnapshot(max: number): void;
   prevSnapshot(): void;
   addBreakpoint(bp: Breakpoint): void;
   removeBreakpoint(idx: number): void;
+  clearBreakpoints(): void;
   appendTerminal(entry: TerminalEntry): void;
   clearTerminal(): void;
   setPanelTab(tab: PanelTab): void;
   setTheme(theme: Theme): void;
+  toggleTheme(): void;
   setConnection(state: ConnectionState): void;
   setSessionEnded(ended: boolean): void;
 
@@ -54,6 +64,15 @@ export interface SessionState {
   closeFile(id: string): void;
   setActiveFile(id: string | null): void;
   setLayoutJson(json: string | null): void;
+
+  setPaletteOpen(open: boolean): void;
+  togglePalette(): void;
+  setWordWrap(on: boolean): void;
+  toggleWordWrap(): void;
+  setShowLineNumbers(on: boolean): void;
+  toggleLineNumbers(): void;
+  bumpTraceExpand(): void;
+  bumpTraceCollapse(): void;
 }
 
 function fileId(addr: string, path: string): string {
@@ -76,6 +95,12 @@ export const useSession = create<SessionState>()(
       activeFileId: null,
       layoutJson: null,
 
+      paletteOpen: false,
+      wordWrap: false,
+      showLineNumbers: true,
+      traceExpandTick: 0,
+      traceCollapseTick: 0,
+
       setSnapshotId: (id) => set({ currentSnapshotId: Math.max(0, id) }),
       nextSnapshot: (max) =>
         set({ currentSnapshotId: Math.min(get().currentSnapshotId + 1, Math.max(0, max - 1)) }),
@@ -83,10 +108,12 @@ export const useSession = create<SessionState>()(
       addBreakpoint: (bp) => set({ breakpoints: [...get().breakpoints, bp] }),
       removeBreakpoint: (idx) =>
         set({ breakpoints: get().breakpoints.filter((_, i) => i !== idx) }),
+      clearBreakpoints: () => set({ breakpoints: [] }),
       appendTerminal: (entry) => set({ terminalHistory: [...get().terminalHistory, entry] }),
       clearTerminal: () => set({ terminalHistory: [] }),
       setPanelTab: (tab) => set({ panelTab: tab }),
       setTheme: (theme) => set({ theme }),
+      toggleTheme: () => set({ theme: get().theme === 'dark' ? 'light' : 'dark' }),
       setConnection: (state) => set({ connection: state }),
       setSessionEnded: (ended) => set({ sessionEnded: ended }),
 
@@ -113,6 +140,15 @@ export const useSession = create<SessionState>()(
       },
       setActiveFile: (id) => set({ activeFileId: id }),
       setLayoutJson: (json) => set({ layoutJson: json }),
+
+      setPaletteOpen: (open) => set({ paletteOpen: open }),
+      togglePalette: () => set({ paletteOpen: !get().paletteOpen }),
+      setWordWrap: (on) => set({ wordWrap: on }),
+      toggleWordWrap: () => set({ wordWrap: !get().wordWrap }),
+      setShowLineNumbers: (on) => set({ showLineNumbers: on }),
+      toggleLineNumbers: () => set({ showLineNumbers: !get().showLineNumbers }),
+      bumpTraceExpand: () => set({ traceExpandTick: get().traceExpandTick + 1 }),
+      bumpTraceCollapse: () => set({ traceCollapseTick: get().traceCollapseTick + 1 }),
     }),
     {
       name: 'edb-web:session',
@@ -128,6 +164,9 @@ export const useSession = create<SessionState>()(
         activeActivity: 'explorer',
         openFiles: [],
         activeFileId: null,
+        paletteOpen: false,
+        traceExpandTick: 0,
+        traceCollapseTick: 0,
       }),
     },
   ),

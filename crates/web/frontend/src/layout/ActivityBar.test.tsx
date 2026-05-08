@@ -31,4 +31,11 @@ describe('<ActivityBar />', () => {
     expect(screen.getByTestId('activity-terminal').getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByTestId('activity-explorer').getAttribute('aria-pressed')).toBe('false');
   });
+
+  test('palette button opens the palette', async () => {
+    useSession.setState({ paletteOpen: false });
+    render(<ActivityBar />);
+    await userEvent.click(screen.getByTestId('activity-palette'));
+    expect(useSession.getState().paletteOpen).toBe(true);
+  });
 });

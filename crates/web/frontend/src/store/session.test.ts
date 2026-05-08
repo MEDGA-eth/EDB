@@ -16,6 +16,11 @@ describe('useSession', () => {
       openFiles: [],
       activeFileId: null,
       layoutJson: null,
+      paletteOpen: false,
+      wordWrap: false,
+      showLineNumbers: true,
+      traceExpandTick: 0,
+      traceCollapseTick: 0,
     });
   });
   afterEach(() => { localStorage.clear(); });
@@ -114,6 +119,49 @@ describe('useSession', () => {
   test('setLayoutJson stores a layout snapshot', () => {
     useSession.getState().setLayoutJson('{"foo":1}');
     expect(useSession.getState().layoutJson).toBe('{"foo":1}');
+  });
+
+  test('togglePalette flips paletteOpen', () => {
+    expect(useSession.getState().paletteOpen).toBe(false);
+    useSession.getState().togglePalette();
+    expect(useSession.getState().paletteOpen).toBe(true);
+    useSession.getState().setPaletteOpen(false);
+    expect(useSession.getState().paletteOpen).toBe(false);
+  });
+
+  test('toggleTheme flips theme', () => {
+    expect(useSession.getState().theme).toBe('light');
+    useSession.getState().toggleTheme();
+    expect(useSession.getState().theme).toBe('dark');
+    useSession.getState().toggleTheme();
+    expect(useSession.getState().theme).toBe('light');
+  });
+
+  test('toggleWordWrap and toggleLineNumbers flip their flags', () => {
+    expect(useSession.getState().wordWrap).toBe(false);
+    useSession.getState().toggleWordWrap();
+    expect(useSession.getState().wordWrap).toBe(true);
+    expect(useSession.getState().showLineNumbers).toBe(true);
+    useSession.getState().toggleLineNumbers();
+    expect(useSession.getState().showLineNumbers).toBe(false);
+  });
+
+  test('bumpTraceExpand / bumpTraceCollapse increment counters', () => {
+    expect(useSession.getState().traceExpandTick).toBe(0);
+    useSession.getState().bumpTraceExpand();
+    useSession.getState().bumpTraceExpand();
+    expect(useSession.getState().traceExpandTick).toBe(2);
+    useSession.getState().bumpTraceCollapse();
+    expect(useSession.getState().traceCollapseTick).toBe(1);
+  });
+
+  test('clearBreakpoints empties the list', () => {
+    const s = useSession.getState();
+    s.addBreakpoint({ loc: { kind: 'Opcode', bytecode_address: '0x' + '0'.repeat(40), pc: 1 }, condition: null });
+    s.addBreakpoint({ loc: { kind: 'Opcode', bytecode_address: '0x' + '0'.repeat(40), pc: 2 }, condition: null });
+    expect(useSession.getState().breakpoints).toHaveLength(2);
+    useSession.getState().clearBreakpoints();
+    expect(useSession.getState().breakpoints).toHaveLength(0);
   });
 
   test('persistence excludes per-session fields', () => {
