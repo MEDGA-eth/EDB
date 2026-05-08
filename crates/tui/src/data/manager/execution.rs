@@ -323,7 +323,7 @@ impl ExecutionManager {
     }
 
     pub fn get_sanitized_id(&self, id: usize) -> usize {
-        id.max(0).min(self.state.snapshot_count - 1)
+        id.min(self.state.snapshot_count - 1)
     }
 
     pub fn get_storage(&mut self, id: usize, slot: U256) -> Option<&U256> {
@@ -670,7 +670,7 @@ impl ExecutionManager {
             return Ok(());
         }
 
-        let prev_id = self.current_snapshot.saturating_sub(count).max(0);
+        let prev_id = self.current_snapshot.saturating_sub(count);
         self.goto(prev_id, false)
     }
 

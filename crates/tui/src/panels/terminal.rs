@@ -1605,7 +1605,7 @@ impl TerminalPanel {
 
         // Auto-scroll if cursor moves out of view (EXACTLY like code panel logic)
         if self.vim_cursor_line < self.scroll_offset + 1 {
-            self.scroll_offset = (self.vim_cursor_line - 1).max(0);
+            self.scroll_offset = self.vim_cursor_line - 1;
         }
 
         self.vim_number_prefix.clear();
