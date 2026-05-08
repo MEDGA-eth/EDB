@@ -19,8 +19,8 @@
 use std::{collections::HashMap, env, fs, time::Duration};
 
 use alloy_primitives::Address;
-use edb_common::{CachePath, EdbCachePath, DEFAULT_ETHERSCAN_CACHE_TTL};
-use eyre::{bail, Result};
+use edb_common::{CachePath, DEFAULT_ETHERSCAN_CACHE_TTL, EdbCachePath};
+use eyre::{Result, bail};
 use foundry_block_explorers::Client;
 use futures::future::join_all;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -29,8 +29,8 @@ use semver::Version;
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    analysis::AnalysisResult, dump_source_for_debugging, find_or_install_solc,
-    format_compiler_errors, instrument, Artifact, EngineConfig, OnchainCompiler, TraceReplayResult,
+    Artifact, EngineConfig, OnchainCompiler, TraceReplayResult, analysis::AnalysisResult,
+    dump_source_for_debugging, find_or_install_solc, format_compiler_errors, instrument,
 };
 
 /// Download and compile verified source code for each contract

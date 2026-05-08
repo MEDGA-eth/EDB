@@ -16,13 +16,13 @@
 
 //! EDB instance registry for tracking connected debugging sessions
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{
     collections::HashMap,
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::sync::{broadcast, RwLock};
+use tokio::sync::{RwLock, broadcast};
 use tracing::{debug, info, warn};
 
 #[derive(Clone)]
@@ -69,7 +69,8 @@ impl EdbRegistry {
     /// Creates a new EDB instance registry
     ///
     /// # Arguments
-    /// * `grace_period` - Seconds to wait before auto-shutdown when no instances (0 = no auto-shutdown)
+    /// * `grace_period` - Seconds to wait before auto-shutdown when no instances (0 = no
+    ///   auto-shutdown)
     /// * `shutdown_tx` - Channel to send shutdown signals
     ///
     /// # Returns
@@ -219,17 +220,16 @@ impl EdbRegistry {
 
                 // Check if grace period has expired (0 means no auto-shutdown)
                 if grace_period > 0
-                    && let Some(start_time) = *grace_start {
-                        let now = SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs();
+                    && let Some(start_time) = *grace_start
+                {
+                    let now =
+                        SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
 
-                        if (now - start_time) >= grace_period {
-                            warn!("Grace period expired - sending shutdown signal");
-                            let _ = self.shutdown_tx.send(());
-                        }
+                    if (now - start_time) >= grace_period {
+                        warn!("Grace period expired - sending shutdown signal");
+                        let _ = self.shutdown_tx.send(());
                     }
+                }
             }
         }
     }

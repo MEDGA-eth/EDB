@@ -25,8 +25,10 @@
 //! The `EDB_ASSERT` environment variable accepts the following patterns:
 //!
 //! - **Enable all assertions**: `EDB_ASSERT=*` or `EDB_ASSERT=all`
-//! - **Enable specific crate**: `EDB_ASSERT=edb_engine` (enables all assertions in `edb_engine` and its submodules)
-//! - **Enable specific module**: `EDB_ASSERT=edb_engine::inspector` (enables assertions in this module and its children)
+//! - **Enable specific crate**: `EDB_ASSERT=edb_engine` (enables all assertions in `edb_engine` and
+//!   its submodules)
+//! - **Enable specific module**: `EDB_ASSERT=edb_engine::inspector` (enables assertions in this
+//!   module and its children)
 //! - **Multiple targets**: `EDB_ASSERT=edb_engine::inspector,edb_common::types` (comma-separated)
 //!
 //! # Matching Rules

@@ -667,9 +667,10 @@ impl CacheManager {
         temp_dir: &std::path::Path,
         cache_dir: &std::path::Path,
     ) -> Result<()> {
-        // Remove existing cache directory if it exists (however, we cannot check with exists() first)
-        // Ignore errors - if it doesn't exist, that's fine
-        // This is necessary because fs::rename doesn't replace existing directories on all platforms
+        // Remove existing cache directory if it exists (however, we cannot check with exists()
+        // first) Ignore errors - if it doesn't exist, that's fine
+        // This is necessary because fs::rename doesn't replace existing directories on all
+        // platforms
         let _ = fs::remove_dir_all(cache_dir);
 
         // Now rename temp directory to cache directory
@@ -754,7 +755,7 @@ impl CacheManager {
 mod tests {
     use super::*;
     use tempfile::TempDir;
-    use tokio::time::{sleep, Duration};
+    use tokio::time::{Duration, sleep};
     use tracing::{debug, info};
 
     fn create_test_cache_manager(max_items: u32) -> (CacheManager, TempDir) {
@@ -1058,7 +1059,8 @@ mod tests {
         for file_path in &split_files {
             let file_size = fs::metadata(file_path).unwrap().len() as usize;
             assert!(
-                file_size <= MAX_CACHE_FILE_SIZE + 10000, // Allow 10KB overhead for JSON formatting
+                file_size <= MAX_CACHE_FILE_SIZE + 10000, /* Allow 10KB overhead for JSON
+                                                           * formatting */
                 "Split file {} is too large: {} bytes",
                 file_path.display(),
                 file_size

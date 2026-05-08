@@ -41,21 +41,21 @@
 //! - `POST /` - Main JSON-RPC endpoint for debugging methods
 //! - `GET /health` - Health check endpoint returning server status
 
-use super::methods::MethodHandler;
-use super::types::{RpcError, RpcRequest, RpcResponse};
-use super::utils::get_default_rpc_port;
+use super::{
+    methods::MethodHandler,
+    types::{RpcError, RpcRequest, RpcResponse},
+    utils::get_default_rpc_port,
+};
 use crate::EngineContext;
 use axum::{
+    Router,
     extract::{Json as JsonExtract, State},
     response::Json as JsonResponse,
     routing::{get, post},
-    Router,
 };
 use eyre::Result;
-use revm::database::CacheDB;
-use revm::{Database, DatabaseCommit, DatabaseRef};
-use std::net::SocketAddr;
-use std::sync::Arc;
+use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
+use std::{net::SocketAddr, sync::Arc};
 use tokio::sync::oneshot;
 use tracing::{error, info, warn};
 

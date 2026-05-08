@@ -25,7 +25,7 @@ use once_cell::sync::OnceCell;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use serde::{Deserialize, Serialize};
 
-use crate::analysis::{macros::universal_id, Analyzer};
+use crate::analysis::{Analyzer, macros::universal_id};
 
 universal_id! {
     /// A Universal Type Identifier (UTID) is a unique identifier for a type in a contract.
@@ -36,7 +36,7 @@ universal_id! {
 #[derive(Debug, Clone)]
 pub struct UserDefinedTypeRef {
     inner: Arc<RwLock<UserDefinedType>>,
-    /* cached readonly fields*/
+    /* cached readonly fields */
     utid: OnceCell<UTID>,
     /// The AST node ID of the type definition.
     ast_id: OnceCell<usize>,

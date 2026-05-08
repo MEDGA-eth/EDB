@@ -64,13 +64,13 @@ use std::sync::Arc;
 
 use alloy_dyn_abi::DynSolValue;
 use edb_common::types::{Breakpoint, BreakpointLocation};
-use eyre::{bail, Result};
+use eyre::{Result, bail};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use revm::{database::CacheDB, Database, DatabaseCommit, DatabaseRef};
+use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 use serde_json::Value;
 use tracing::debug;
 
-use crate::{error_codes, eval, EngineContext, RpcError, Snapshot, SnapshotDetail};
+use crate::{EngineContext, RpcError, Snapshot, SnapshotDetail, error_codes, eval};
 
 /// Retrieve all snapshots where a breakpoint was hit.
 ///
@@ -94,7 +94,8 @@ use crate::{error_codes, eval, EngineContext, RpcError, Snapshot, SnapshotDetail
 ///
 /// # Location Types
 /// - **Opcode**: `{"Opcode": {"bytecode_address": "0x...", "pc": 42}}`
-/// - **Source**: `{"Source": {"bytecode_address": "0x...", "line_number": 15, "file_path": "Contract.sol"}}`
+/// - **Source**: `{"Source": {"bytecode_address": "0x...", "line_number": 15, "file_path":
+///   "Contract.sol"}}`
 ///
 /// # Error Conditions
 /// - Invalid breakpoint specification

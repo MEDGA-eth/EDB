@@ -18,14 +18,13 @@
 //!
 //! This module provides a help overlay that displays context-aware keyboard shortcuts.
 
-use crate::data::DataManager;
-use crate::layout::LayoutType;
+use crate::{data::DataManager, layout::LayoutType};
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
-    Frame,
 };
 
 /// Help item representing a keyboard shortcut
@@ -130,9 +129,10 @@ impl HelpOverlay {
             for item in &section.items {
                 // Skip items that are layout-specific and don't match current layout
                 if let Some(specific_layout) = item.layout_specific
-                    && specific_layout != layout_type {
-                        continue;
-                    }
+                    && specific_layout != layout_type
+                {
+                    continue;
+                }
 
                 lines.push(Line::from(vec![
                     Span::styled(

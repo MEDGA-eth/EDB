@@ -27,10 +27,10 @@ use std::{env, fs, path::PathBuf, sync::Once};
 use tracing::Level;
 use tracing_appender::{non_blocking, rolling};
 use tracing_subscriber::{
+    EnvFilter,
     fmt::{self, format::FmtSpan, time::LocalTime},
     layer::SubscriberExt,
     util::SubscriberInitExt,
-    EnvFilter,
 };
 
 /// Initialize fancy logging for EDB components
@@ -57,7 +57,7 @@ use tracing_subscriber::{
 /// async fn main() -> eyre::Result<()> {
 ///     // Initialize logging for the main EDB binary
 ///     logging::init_logging("edb", true)?;
-///     
+///
 ///     tracing::info!("Application started");
 ///     Ok(())
 /// }
@@ -183,7 +183,7 @@ fn log_environment_info(component_name: &str) {
 ///     // Initialize file-only logging for TUI
 ///     let log_path = logging::init_file_only_logging("edb-tui")?;
 ///     eprintln!("Logs are being written to: {}", log_path.display());
-///     
+///
 ///     tracing::info!("TUI started");
 ///     Ok(())
 /// }

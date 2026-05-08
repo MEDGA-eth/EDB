@@ -23,9 +23,9 @@
 use alloy_primitives::{Address, Log, U256};
 use edb_common::types::{CallResult, Trace, TraceEntry};
 use revm::{
+    Inspector,
     context::ContextTr,
     interpreter::{CallInputs, CallOutcome, CreateInputs, CreateOutcome, Interpreter},
-    Inspector,
 };
 use std::{collections::HashMap, ops::Deref};
 use tracing::{debug, error};

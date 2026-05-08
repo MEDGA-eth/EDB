@@ -16,16 +16,15 @@
 
 //! Code retrieval RPC method implementation
 
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use alloy_primitives::{Address, Bytes};
 use edb_common::types::{Code, OpcodeInfo, SourceInfo};
-use revm::{database::CacheDB, Database, DatabaseCommit, DatabaseRef};
+use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 use serde_json::Value;
 use tracing::debug;
 
-use crate::{error_codes, utils::disasm::disassemble, EngineContext, SnapshotDetail};
+use crate::{EngineContext, SnapshotDetail, error_codes, utils::disasm::disassemble};
 
 use super::super::types::RpcError;
 
@@ -195,7 +194,6 @@ where
 ///
 /// # Parameters
 /// - `address`: The contract address
-///    
 /// # Returns
 /// - The constructor arguments as a JSON value, or null if not available
 pub fn get_constructor_args<DB>(

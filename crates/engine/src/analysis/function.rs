@@ -21,8 +21,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     analysis::{
-        macros::{define_ref, universal_id},
         Analyzer, ContractRef, SourceRange, StepRef, VariableScopeRef,
+        macros::{define_ref, universal_id},
     },
     utils::VisitorAction,
 };

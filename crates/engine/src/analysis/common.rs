@@ -16,9 +16,9 @@
 
 //! Common analysis types and functionality for the Ethereum Debug Bridge (EDB) engine.
 //!
-//! This module provides the core data structures and analysis logic for processing Solidity source code
-//! and extracting debugging information. It handles compilation, AST parsing, and step-by-step analysis
-//! of smart contract execution paths.
+//! This module provides the core data structures and analysis logic for processing Solidity source
+//! code and extracting debugging information. It handles compilation, AST parsing, and step-by-step
+//! analysis of smart contract execution paths.
 //!
 //! # Overview
 //!
@@ -68,11 +68,11 @@ use std::path::PathBuf;
 use foundry_compilers::artifacts::SourceUnit;
 
 use crate::{
+    ASTPruner, Artifact, USID, UVID, VariableRef,
     analysis::{
         AnalysisError, Analyzer, ContractRef, FunctionRef, FunctionTypeNameRef, StatementBody,
-        StepRef, UserDefinedTypeRef, VariableScopeRef, UCID, UFID, UTID,
+        StepRef, UCID, UFID, UTID, UserDefinedTypeRef, VariableScopeRef,
     },
-    ASTPruner, Artifact, VariableRef, USID, UVID,
 };
 
 /// Analysis results for a single source file.
@@ -275,8 +275,8 @@ pub struct AnalysisResult {
 /// # Example
 ///
 /// ```rust
-/// use foundry_compilers::solc::SolcVersionedInput;
 /// use crate::analysis::common::analyze;
+/// use foundry_compilers::solc::SolcVersionedInput;
 ///
 /// // Create your SolcVersionedInput
 /// let input = SolcVersionedInput::build(/* ... */);
@@ -378,7 +378,7 @@ mod tests {
     use foundry_block_explorers::contract::Metadata;
     use foundry_compilers::{
         artifacts::{
-            output_selection::OutputSelection, EvmVersion, Settings, SolcInput, Source, Sources,
+            EvmVersion, Settings, SolcInput, Source, Sources, output_selection::OutputSelection,
         },
         solc::SolcLanguage,
     };
@@ -459,7 +459,8 @@ contract SimpleContract {
         assert!(!source_result.steps.is_empty(), "Should have analyzed steps in the contract");
 
         // Verify that we have analysis results for the function
-        // Since we can't directly access source content from SourceStep, we'll check the number of steps
+        // Since we can't directly access source content from SourceStep, we'll check the number of
+        // steps
         let step_count = source_result.steps.len();
         assert!(step_count > 0, "Should have found steps in the contract");
     }

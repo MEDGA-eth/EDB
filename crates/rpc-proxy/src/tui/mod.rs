@@ -26,7 +26,7 @@
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use eyre::Result;
 use ratatui::prelude::*;
@@ -55,21 +55,22 @@ where
         // Handle events
         if event::poll(Duration::from_millis(0))?
             && let Event::Key(key) = event::read()?
-                && key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => break,
-                        KeyCode::Char('r') => app.refresh().await,
-                        KeyCode::Char('c') => app.clear_cache().await,
-                        KeyCode::Char('h') => app.toggle_help(),
-                        KeyCode::Tab => app.next_tab(),
-                        KeyCode::BackTab => app.previous_tab(),
-                        KeyCode::Up => app.scroll_up(),
-                        KeyCode::Down => app.scroll_down(),
-                        KeyCode::Left => app.previous_provider(),
-                        KeyCode::Right => app.next_provider(),
-                        _ => {}
-                    }
-                }
+            && key.kind == KeyEventKind::Press
+        {
+            match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => break,
+                KeyCode::Char('r') => app.refresh().await,
+                KeyCode::Char('c') => app.clear_cache().await,
+                KeyCode::Char('h') => app.toggle_help(),
+                KeyCode::Tab => app.next_tab(),
+                KeyCode::BackTab => app.previous_tab(),
+                KeyCode::Up => app.scroll_up(),
+                KeyCode::Down => app.scroll_down(),
+                KeyCode::Left => app.previous_provider(),
+                KeyCode::Right => app.next_provider(),
+                _ => {}
+            }
+        }
 
         // Update app state on tick
         if last_tick.elapsed() >= tick_rate {

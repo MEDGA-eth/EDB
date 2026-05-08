@@ -20,7 +20,7 @@ use std::{fs, marker::PhantomData, path::PathBuf, time::Duration};
 
 use alloy_chains::Chain;
 use eyre::Result;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tracing::{trace, warn};
 
 /// Default cache TTL for etherscan.
@@ -237,11 +237,7 @@ where
     }
 
     fn save_cache(&self, label: impl Into<String>, data: &T) -> Result<()> {
-        if let Some(cache) = self {
-            cache.save_cache(label, data)
-        } else {
-            Ok(())
-        }
+        if let Some(cache) = self { cache.save_cache(label, data) } else { Ok(()) }
     }
 }
 

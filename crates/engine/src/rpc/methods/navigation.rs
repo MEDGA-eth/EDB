@@ -18,13 +18,11 @@
 //!
 //! This module implements RPC methods for navigating through snapshots.
 
-use crate::rpc::types::RpcError;
-use crate::{error_codes, ContextQueryTr, EngineContext, Snapshot, SnapshotDetail};
-use edb_common::types::ExecutionFrameId;
-use edb_common::OpcodeTr;
-use revm::bytecode::OpCode;
-use revm::database::CacheDB;
-use revm::{Database, DatabaseCommit, DatabaseRef};
+use crate::{
+    ContextQueryTr, EngineContext, Snapshot, SnapshotDetail, error_codes, rpc::types::RpcError,
+};
+use edb_common::{OpcodeTr, types::ExecutionFrameId};
+use revm::{Database, DatabaseCommit, DatabaseRef, bytecode::OpCode, database::CacheDB};
 use serde_json::Value;
 use std::sync::Arc;
 use tracing::debug;

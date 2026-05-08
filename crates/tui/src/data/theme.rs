@@ -22,8 +22,8 @@
 use std::ops::Deref;
 
 use crate::{
-    config::{Config, PanelConfig},
     ColorScheme,
+    config::{Config, PanelConfig},
 };
 use eyre::Result;
 use tracing::{debug, info};

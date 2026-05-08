@@ -55,12 +55,12 @@ use alloy_primitives::Address;
 use edb_common::types::{ExecutionFrameId, Trace};
 use eyre::Result;
 use itertools::Itertools;
-use revm::{database::CacheDB, Database, DatabaseCommit, DatabaseRef};
+use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 use tracing::{debug, error, warn};
 
 use crate::{
-    analysis::{AnalysisResult, StepRef, UFID},
     Snapshot, Snapshots,
+    analysis::{AnalysisResult, StepRef, UFID},
 };
 
 /// Trait for analyzing snapshots to enable debugging navigation.
@@ -74,7 +74,7 @@ pub trait SnapshotAnalysis {
     /// call stack hierarchies, and execution flow patterns based on the execution trace
     /// and source code analysis results.
     fn analyze(&mut self, trace: &Trace, analysis: &HashMap<Address, AnalysisResult>)
-        -> Result<()>;
+    -> Result<()>;
 }
 
 impl<DB> SnapshotAnalysis for Snapshots<DB>
@@ -198,7 +198,8 @@ where
         for current_id in holed_snapshots {
             let entry_id = self[current_id].0.trace_entry_id();
 
-            // Try to find the first snapshot in the ancestor frames that is after the current snapshot
+            // Try to find the first snapshot in the ancestor frames that is after the current
+            // snapshot
             let mut next_id = None;
             let mut entry = trace
                 .get(entry_id)
@@ -397,7 +398,8 @@ where
                     break;
                 };
 
-                // Check whether we are done with this callsite (callsite_certainly_done has higher priority)
+                // Check whether we are done with this callsite (callsite_certainly_done has higher
+                // priority)
                 let callsite_certainly_done =
                     parent_entry.func_info.contains_ufid(next_ufid) && !is_entry(next_step);
                 let callsite_certainly_not_done = next_contract.is_none(); // We are still in free functions

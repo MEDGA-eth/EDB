@@ -21,7 +21,7 @@
 use crate::data::DataManager;
 use crossterm::event::{KeyEvent, MouseEvent};
 use eyre::Result;
-use ratatui::{layout::Rect, Frame};
+use ratatui::{Frame, layout::Rect};
 use std::fmt::Debug;
 
 /// Panel types for identification

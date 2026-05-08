@@ -37,8 +37,8 @@ pub trait OpcodeTr {
     ///
     /// # Example
     /// ```rust
-    /// use revm::bytecode::OpCode;
     /// use edb_common::OpcodeTr;
+    /// use revm::bytecode::OpCode;
     ///
     /// assert!(OpCode::SSTORE.modifies_evm_state());
     /// assert!(OpCode::CREATE.modifies_evm_state());
@@ -59,8 +59,8 @@ pub trait OpcodeTr {
     ///
     /// # Example
     /// ```rust
-    /// use revm::bytecode::OpCode;
     /// use edb_common::OpcodeTr;
+    /// use revm::bytecode::OpCode;
     ///
     /// assert!(OpCode::TSTORE.modifies_transient_storage());
     /// assert!(!OpCode::TLOAD.modifies_transient_storage());

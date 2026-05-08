@@ -16,7 +16,7 @@
 
 use std::sync::Arc;
 
-use revm::{database::CacheDB, Database, DatabaseCommit, DatabaseRef};
+use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 
 use crate::{EngineContext, RpcError};
 

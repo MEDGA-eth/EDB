@@ -18,31 +18,34 @@
 //!
 //! This module contains the core application state management and event handling.
 
-use crate::data::DataManager;
-use crate::layout::{LayoutConfig, LayoutManager, LayoutType};
-use crate::panels::{
-    CodePanel, DisplayPanel, EventResponse, HelpOverlay, Panel, PanelTr, PanelType, TerminalPanel,
-    TracePanel,
+use crate::{
+    data::DataManager,
+    layout::{LayoutConfig, LayoutManager, LayoutType},
+    panels::{
+        CodePanel, DisplayPanel, EventResponse, HelpOverlay, Panel, PanelTr, PanelType,
+        TerminalPanel, TracePanel,
+    },
+    rpc::RpcClient,
 };
-use crate::rpc::RpcClient;
-use crossterm::event::{
-    DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
-    MouseButton, MouseEvent, MouseEventKind,
+use crossterm::{
+    event::{
+        DisableMouseCapture, EnableMouseCapture, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
+        MouseButton, MouseEvent, MouseEventKind,
+    },
+    execute,
 };
-use crossterm::execute;
 use eyre::Result;
-use ratatui::layout::Alignment;
-use ratatui::style::Style;
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
     Frame,
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::Style,
+    text::{Line, Span},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
-use std::io::{stdout, Write};
-use std::sync::Arc;
 use std::{
     collections::HashMap,
+    io::{Write, stdout},
+    sync::Arc,
     time::{Duration, Instant},
 };
 use tracing::{debug, warn};
@@ -137,11 +140,7 @@ impl ConnectionStatus {
     /// Get detailed status for debugging
     pub fn detailed_status(&self) -> String {
         let base = self.status_display();
-        if let Some(error) = &self.error_message {
-            format!("{base} - {error}")
-        } else {
-            base
-        }
+        if let Some(error) = &self.error_message { format!("{base} - {error}") } else { base }
     }
 }
 
@@ -359,11 +358,13 @@ Press '\' to turn off Mouse Mode and re-enable text selection."#;
         // Render status bar
         self.render_status_bar(frame, layout_chunks[0]);
 
-        // Split main content for 2-panel layout: Main (cycles Trace/Code/Display) + Terminal (fixed)
+        // Split main content for 2-panel layout: Main (cycles Trace/Code/Display) + Terminal
+        // (fixed)
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Percentage(self.horizontal_split), // Main panel (Trace/Code/Display cycle)
+                Constraint::Percentage(self.horizontal_split), /* Main panel (Trace/Code/Display
+                                                                * cycle) */
                 Constraint::Percentage(100 - self.horizontal_split), // Terminal panel (fixed)
             ])
             .split(layout_chunks[1]);
@@ -516,9 +517,10 @@ Press '\' to turn off Mouse Mode and re-enable text selection."#;
                         // Find a good break point (prefer breaking at spaces)
                         let mut break_point = content_width;
                         if let Some(space_pos) = remaining[..content_width].rfind(' ')
-                            && space_pos > content_width / 2 {
-                                break_point = space_pos;
-                            }
+                            && space_pos > content_width / 2
+                        {
+                            break_point = space_pos;
+                        }
 
                         wrapped_lines.push(remaining[..break_point].to_string());
                         remaining = remaining[break_point..].trim_start();
@@ -627,7 +629,8 @@ Press '\' to turn off Mouse Mode and re-enable text selection."#;
                     self.popup = None;
                     return Ok(EventResponse::Handled);
                 }
-                _ => return Ok(EventResponse::Handled), // Consume all other keys when error is shown
+                _ => return Ok(EventResponse::Handled), /* Consume all other keys when error is
+                                                         * shown */
             }
         }
 
@@ -704,7 +707,8 @@ Press '\' to turn off Mouse Mode and re-enable text selection."#;
             KeyCode::Char(' ') => {
                 match self.layout_manager.layout_type() {
                     LayoutType::Full => {
-                        // In full layout, Space toggles between Code and Trace only when focused on the left panel
+                        // In full layout, Space toggles between Code and Trace only when focused on
+                        // the left panel
                         if self.current_panel == PanelType::Code
                             || self.current_panel == PanelType::Trace
                         {
@@ -730,7 +734,8 @@ Press '\' to turn off Mouse Mode and re-enable text selection."#;
                         }
                     }
                     LayoutType::Compact => {
-                        // In compact mode, Space cycles through Trace → Code → Display only when focused on main panel
+                        // In compact mode, Space cycles through Trace → Code → Display only when
+                        // focused on main panel
                         if self.current_panel != PanelType::Terminal {
                             self.compact_main_panel = match self.compact_main_panel {
                                 PanelType::Trace => PanelType::Code,
@@ -974,31 +979,32 @@ Press '\' to turn off Mouse Mode and re-enable text selection."#;
 
         // Show intuitive, contextual feedback in terminal
         if let Some(terminal_panel) = self.panels.get_mut(&PanelType::Terminal)
-            && let Some(terminal) = terminal_panel.as_any_mut().downcast_mut::<TerminalPanel>() {
-                let message = match direction {
-                    ResizeDirection::Left => format!(
-                        "Left panels narrowed to {}% (right panels expanded to {}%)",
-                        self.vertical_split,
-                        100 - self.vertical_split
-                    ),
-                    ResizeDirection::Right => format!(
-                        "Left panels expanded to {}% (right panels narrowed to {}%)",
-                        self.vertical_split,
-                        100 - self.vertical_split
-                    ),
-                    ResizeDirection::Up => format!(
-                        "Top panels shortened to {}% (bottom panels expanded to {}%)",
-                        self.horizontal_split,
-                        100 - self.horizontal_split
-                    ),
-                    ResizeDirection::Down => format!(
-                        "Top panels expanded to {}% (bottom panels shortened to {}%)",
-                        self.horizontal_split,
-                        100 - self.horizontal_split
-                    ),
-                };
-                terminal.add_system(&message);
-            }
+            && let Some(terminal) = terminal_panel.as_any_mut().downcast_mut::<TerminalPanel>()
+        {
+            let message = match direction {
+                ResizeDirection::Left => format!(
+                    "Left panels narrowed to {}% (right panels expanded to {}%)",
+                    self.vertical_split,
+                    100 - self.vertical_split
+                ),
+                ResizeDirection::Right => format!(
+                    "Left panels expanded to {}% (right panels narrowed to {}%)",
+                    self.vertical_split,
+                    100 - self.vertical_split
+                ),
+                ResizeDirection::Up => format!(
+                    "Top panels shortened to {}% (bottom panels expanded to {}%)",
+                    self.horizontal_split,
+                    100 - self.horizontal_split
+                ),
+                ResizeDirection::Down => format!(
+                    "Top panels expanded to {}% (bottom panels shortened to {}%)",
+                    self.horizontal_split,
+                    100 - self.horizontal_split
+                ),
+            };
+            terminal.add_system(&message);
+        }
     }
 
     /// Handle terminal resize
@@ -1049,16 +1055,18 @@ Press '\' to turn off Mouse Mode and re-enable text selection."#;
             MouseEventKind::ScrollUp => {
                 // Handle scroll up - move selection up
                 if let Some(panel) = self.panels.get_mut(&self.current_panel)
-                    && let Err(e) = panel.handle_mouse_event(event, data_manager) {
-                        self.popup = Some(PopupType::Error(format!("{e}")));
-                    }
+                    && let Err(e) = panel.handle_mouse_event(event, data_manager)
+                {
+                    self.popup = Some(PopupType::Error(format!("{e}")));
+                }
             }
             MouseEventKind::ScrollDown => {
                 // Handle scroll down - move selection down
                 if let Some(panel) = self.panels.get_mut(&self.current_panel)
-                    && let Err(e) = panel.handle_mouse_event(event, data_manager) {
-                        self.popup = Some(PopupType::Error(format!("{e}")));
-                    }
+                    && let Err(e) = panel.handle_mouse_event(event, data_manager)
+                {
+                    self.popup = Some(PopupType::Error(format!("{e}")));
+                }
             }
             _ => {}
         }

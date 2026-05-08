@@ -36,11 +36,11 @@ use std::sync::Arc;
 use edb_common::types::{
     HookSnapshotInfoDetail, OpcodeSnapshotInfoDetail, SnapshotInfo, SnapshotInfoDetail,
 };
-use revm::{database::CacheDB, Database, DatabaseCommit, DatabaseRef};
+use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 use serde_json::Value;
 use tracing::debug;
 
-use crate::{error_codes, EngineContext, SnapshotDetail};
+use crate::{EngineContext, SnapshotDetail, error_codes};
 
 use super::super::types::RpcError;
 

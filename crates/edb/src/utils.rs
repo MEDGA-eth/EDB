@@ -17,10 +17,8 @@
 //! Utility functions for the EDB binary
 
 use clap::Args;
-use eyre::{eyre, Result};
-use std::net::SocketAddr;
-use std::path::PathBuf;
-use std::process::Command;
+use eyre::{Result, eyre};
+use std::{net::SocketAddr, path::PathBuf, process::Command};
 use tracing::debug;
 
 /// Find a binary in the following order:
@@ -54,11 +52,12 @@ pub fn find_binary(name: &str) -> Result<PathBuf> {
     #[cfg(unix)]
     {
         if let Ok(output) = Command::new("which").arg(name).output()
-            && output.status.success() {
-                let path = String::from_utf8(output.stdout)?.trim().to_string();
-                debug!("Found {} in PATH at {}", name, path);
-                return Ok(PathBuf::from(path));
-            }
+            && output.status.success()
+        {
+            let path = String::from_utf8(output.stdout)?.trim().to_string();
+            debug!("Found {} in PATH at {}", name, path);
+            return Ok(PathBuf::from(path));
+        }
     }
 
     #[cfg(windows)]

@@ -19,7 +19,8 @@ use serde::{Deserialize, Serialize};
 
 /// Represents a range of source code in a source file.
 ///
-/// The intension of this struct is to replace the `SourceLocation` in the `foundry_compilers` crate, which provides more consistent source location information:
+/// The intension of this struct is to replace the `SourceLocation` in the `foundry_compilers`
+/// crate, which provides more consistent source location information:
 /// - The start, length, and file always exists, instead of being `Option`.
 /// - The semicolon of the statement is included in the range.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -57,7 +58,8 @@ impl SourceRange {
         Self { file, start, length }
     }
 
-    /// Expands the source range to the next semicolon in the same source file. The semicolon will be included in the range. If there is no semicolon, the source range is not expanded.
+    /// Expands the source range to the next semicolon in the same source file. The semicolon will
+    /// be included in the range. If there is no semicolon, the source range is not expanded.
     pub fn expand_to_next_semicolon(mut self, source: &str) -> Self {
         let start = self.start;
         let end = self.next_loc();

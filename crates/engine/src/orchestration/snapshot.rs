@@ -19,18 +19,18 @@
 use std::collections::{HashMap, HashSet};
 
 use alloy_primitives::{Address, Bytes};
-use edb_common::{relax_evm_constraints, types::Trace, EdbContext};
+use edb_common::{EdbContext, relax_evm_constraints, types::Trace};
 use eyre::Result;
 use foundry_compilers::artifacts::Contract;
 use revm::{
-    context::TxEnv, database::CacheDB, Database, DatabaseCommit, DatabaseRef, InspectEvm,
-    MainBuilder,
+    Database, DatabaseCommit, DatabaseRef, InspectEvm, MainBuilder, context::TxEnv,
+    database::CacheDB,
 };
 use tracing::info;
 
 use crate::{
-    analysis::AnalysisResult, Artifact, HookSnapshotInspector, HookSnapshots,
-    OpcodeSnapshotInspector, OpcodeSnapshots, Snapshots,
+    Artifact, HookSnapshotInspector, HookSnapshots, OpcodeSnapshotInspector, OpcodeSnapshots,
+    Snapshots, analysis::AnalysisResult,
 };
 
 /// Time travel (i.e., snapshotting) at the opcode level for contracts we do not

@@ -19,7 +19,7 @@
 //! This module provides utilities for parsing Solidity-like expressions into
 //! abstract syntax trees that can be evaluated by the expression evaluator.
 
-use eyre::{bail, Result};
+use eyre::{Result, bail};
 use solang_parser::{
     parse,
     pt::{Expression, SourceUnit, SourceUnitPart, Statement},

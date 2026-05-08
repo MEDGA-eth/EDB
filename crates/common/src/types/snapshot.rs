@@ -23,7 +23,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::{EdbSolValue, ExecutionFrameId};
 
-/// Complete snapshot information capturing EVM state at a specific execution point for debugging navigation
+/// Complete snapshot information capturing EVM state at a specific execution point for debugging
+/// navigation
 #[derive(Debug, Clone, Serialize, Deserialize, From)]
 pub struct SnapshotInfo {
     /// Unique snapshot identifier for debugging navigation
@@ -319,10 +320,9 @@ pub mod transient_string_map {
             let mut deserializer = serde_json::Deserializer::from_str(invalid_json);
             let result: Result<TransientStorage, _> = deserialize(&mut deserializer);
             assert!(result.is_err());
-            assert!(result
-                .unwrap_err()
-                .to_string()
-                .contains("Invalid transient storage key format"));
+            assert!(
+                result.unwrap_err().to_string().contains("Invalid transient storage key format")
+            );
 
             // Test invalid address format
             let invalid_json = r#"{"not_an_address:100": "1000"}"#;

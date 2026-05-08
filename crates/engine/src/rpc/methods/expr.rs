@@ -59,11 +59,11 @@
 use std::sync::Arc;
 
 use edb_common::types::EdbSolValue;
-use revm::{database::CacheDB, Database, DatabaseCommit, DatabaseRef};
+use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 use serde_json::Value;
 use tracing::debug;
 
-use crate::{error_codes, eval, EngineContext, RpcError};
+use crate::{EngineContext, RpcError, error_codes, eval};
 
 /// Evaluate a Solidity-like expression against a specific snapshot.
 ///

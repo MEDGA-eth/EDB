@@ -18,17 +18,16 @@ use std::sync::Arc;
 
 use alloy_dyn_abi::DynSolValue;
 use alloy_primitives::{Address, B256, I256, U256};
-use eyre::{bail, Result};
-use revm::database::CacheDB;
-use revm::{Database, DatabaseCommit, DatabaseRef};
+use eyre::{Result, bail};
+use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 use solang_parser::pt::{Expression, Identifier, Loc, Parameter, Type};
 
-use crate::eval::handlers::debug::create_debug_handlers;
-use crate::eval::handlers::edb::EdbHandler;
-use crate::EngineContext;
+use crate::{
+    EngineContext,
+    eval::handlers::{debug::create_debug_handlers, edb::EdbHandler},
+};
 
-use super::handlers::EvaluatorHandlers;
-use super::utils::parse_input;
+use super::{handlers::EvaluatorHandlers, utils::parse_input};
 
 /// Main expression evaluator for Solidity-like expressions.
 ///
@@ -527,7 +526,8 @@ impl ExpressionEvaluator {
         args: &[DynSolValue],
     ) -> Result<Option<DynSolValue>> {
         match (member_name, callee, args.len()) {
-            // Note: Length properties are handled in handle_builtin_property since they take no arguments
+            // Note: Length properties are handled in handle_builtin_property since they take no
+            // arguments
 
             // ============ ARRAY/LIST METHODS ============
 
@@ -1351,9 +1351,11 @@ enum LogicalOp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::eval::handlers::debug::{create_debug_handlers, create_simulation_debug_handlers};
-    use crate::eval::handlers::{MappingArrayHandler, MemberAccessHandler};
-    use alloy_primitives::{address, U256};
+    use crate::eval::handlers::{
+        MappingArrayHandler, MemberAccessHandler,
+        debug::{create_debug_handlers, create_simulation_debug_handlers},
+    };
+    use alloy_primitives::{U256, address};
 
     #[test]
     fn test_evaluate_number_literal() {
@@ -1480,9 +1482,11 @@ mod tests {
         // Test int values
         assert!(evaluator.to_bool(&DynSolValue::Int(I256::from_raw(U256::from(1)), 256)).unwrap());
         assert!(!evaluator.to_bool(&DynSolValue::Int(I256::from_raw(U256::from(0)), 256)).unwrap());
-        assert!(evaluator
-            .to_bool(&DynSolValue::Int(I256::from_raw(U256::from(1)).wrapping_neg(), 256))
-            .unwrap());
+        assert!(
+            evaluator
+                .to_bool(&DynSolValue::Int(I256::from_raw(U256::from(1)).wrapping_neg(), 256))
+                .unwrap()
+        );
     }
 
     // ========== Direct eval() method tests ==========
@@ -2088,11 +2092,13 @@ mod tests {
         // Test handler not configured errors
         let result = evaluator.eval("unknownVar", 0);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .to_lowercase()
-            .contains("no variable handler configured"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .to_lowercase()
+                .contains("no variable handler configured")
+        );
     }
 
     #[test]
@@ -2739,8 +2745,8 @@ mod tests {
         let (handlers, _debug_handler) = create_simulation_debug_handlers();
         let evaluator = ExpressionEvaluator::new(handlers);
 
-        // Test different value types based on naming conventions that match the debug handler patterns exactly
-        // The debug handler looks for exact word matches with .contains()
+        // Test different value types based on naming conventions that match the debug handler
+        // patterns exactly The debug handler looks for exact word matches with .contains()
 
         // Test balance/amount/value types -> Uint (with specific values)
         let balance_result = evaluator.eval("balance", 0);
@@ -2764,7 +2770,8 @@ mod tests {
             panic!("Expected value to return Uint(1000000, 256)");
         }
 
-        // Test address/owner/sender types -> Address (using variable names that contain the keywords)
+        // Test address/owner/sender types -> Address (using variable names that contain the
+        // keywords)
         let address_result = evaluator.eval("myaddress", 0);
         assert!(matches!(address_result.unwrap(), DynSolValue::Address(_)));
 
@@ -3182,7 +3189,8 @@ mod tests {
         debug_handler.set_function("getRiskFactor", DynSolValue::Uint(U256::from(80), 256)); // 0.8x
         debug_handler.set_function("getTimeDecay", DynSolValue::Uint(U256::from(95), 256)); // 0.95x
 
-        // Ultra Complex Expression: Multi-layered yield farming calculation with time decay and risk adjustment
+        // Ultra Complex Expression: Multi-layered yield farming calculation with time decay and
+        // risk adjustment
         let ultra_complex = r#"
             (
                 (

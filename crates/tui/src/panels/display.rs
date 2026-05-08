@@ -19,12 +19,16 @@
 //! This panel can switch between different display modes based on context.
 
 use super::{EventResponse, PanelTr, PanelType};
-use crate::data::DataManager;
-use crate::panels::utils;
-use crate::ui::borders::BorderPresets;
-use crate::ui::colors::ColorScheme;
-use crate::ui::status::StatusBar;
-use crate::ui::syntax::{SyntaxHighlighter, SyntaxType};
+use crate::{
+    data::DataManager,
+    panels::utils,
+    ui::{
+        borders::BorderPresets,
+        colors::ColorScheme,
+        status::StatusBar,
+        syntax::{SyntaxHighlighter, SyntaxType},
+    },
+};
 use alloy_primitives::{Address, Bytes, U256};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use edb_common::types::{
@@ -33,15 +37,15 @@ use edb_common::types::{
 };
 use eyre::Result;
 use ratatui::{
+    Frame,
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{List, ListItem, Paragraph},
-    Frame,
 };
 use revm::state::TransientStorage;
-use std::cmp::{self, Ordering};
 use std::{
+    cmp::{self, Ordering},
     collections::{HashMap, HashSet},
     mem,
     sync::Arc,
@@ -631,16 +635,17 @@ impl DisplayPanel {
 
         // Check for SSTORE/TSTORE indicator
         if let Some(current_snapshot) = self.current_execution_snapshot
-            && let Some(info) = dm.execution.get_snapshot_info(current_snapshot) {
-                let prev_snapshot_id = info.prev_id();
-                if let Some(prev_info) = dm.execution.get_snapshot_info(prev_snapshot_id)
-                    && let SnapshotInfoDetail::Opcode(detail) = prev_info.detail()
-                        && (detail.opcode == 0x55 || detail.opcode == 0x5D)
-                            && !detail.stack.is_empty()
-                        {
-                            count += 7; // SSTORE/TSTORE operation lines (simpler format)
-                        }
+            && let Some(info) = dm.execution.get_snapshot_info(current_snapshot)
+        {
+            let prev_snapshot_id = info.prev_id();
+            if let Some(prev_info) = dm.execution.get_snapshot_info(prev_snapshot_id)
+                && let SnapshotInfoDetail::Opcode(detail) = prev_info.detail()
+                && (detail.opcode == 0x55 || detail.opcode == 0x5D)
+                && !detail.stack.is_empty()
+            {
+                count += 7; // SSTORE/TSTORE operation lines (simpler format)
             }
+        }
 
         if !self.storage_changes.is_empty() {
             if count > 0 {
@@ -658,14 +663,17 @@ impl DisplayPanel {
 
         // Check for TSTORE indicator
         if let Some(current_snapshot) = self.current_execution_snapshot
-            && let Some(info) = dm.execution.get_snapshot_info(current_snapshot) {
-                let prev_snapshot_id = info.prev_id();
-                if let Some(prev_info) = dm.execution.get_snapshot_info(prev_snapshot_id)
-                    && let SnapshotInfoDetail::Opcode(detail) = prev_info.detail()
-                        && detail.opcode == 0x5D && !detail.stack.is_empty() {
-                            count += 5; // TSTORE operation lines (simpler format)
-                        }
+            && let Some(info) = dm.execution.get_snapshot_info(current_snapshot)
+        {
+            let prev_snapshot_id = info.prev_id();
+            if let Some(prev_info) = dm.execution.get_snapshot_info(prev_snapshot_id)
+                && let SnapshotInfoDetail::Opcode(detail) = prev_info.detail()
+                && detail.opcode == 0x5D
+                && !detail.stack.is_empty()
+            {
+                count += 5; // TSTORE operation lines (simpler format)
             }
+        }
 
         if !self.transient_storage.is_empty() {
             if count > 0 {
@@ -1075,17 +1083,18 @@ impl DisplayPanel {
             }
             DisplayMode::Expressions => {
                 if let Some(entry) = self.expressions.get_mut(self.selected_index)
-                    && let Some(expr) = &entry.expression {
-                        // Toggle the multi-line state
-                        entry.is_multi_line = !entry.is_multi_line;
+                    && let Some(expr) = &entry.expression
+                {
+                    // Toggle the multi-line state
+                    entry.is_multi_line = !entry.is_multi_line;
 
-                        // Persist the toggle state
-                        if entry.is_multi_line {
-                            self.multi_line_expressions.insert(expr.clone());
-                        } else {
-                            self.multi_line_expressions.remove(expr);
-                        }
+                    // Persist the toggle state
+                    if entry.is_multi_line {
+                        self.multi_line_expressions.insert(expr.clone());
+                    } else {
+                        self.multi_line_expressions.remove(expr);
                     }
+                }
             }
             _ => {}
         }
@@ -2073,7 +2082,8 @@ impl PanelTr for DisplayPanel {
                 Ok(EventResponse::Handled)
             }
             KeyCode::Enter => {
-                // Toggle multi-line display for variables and expressions, or toggle breakpoint enable/disable
+                // Toggle multi-line display for variables and expressions, or toggle breakpoint
+                // enable/disable
                 match self.mode {
                     DisplayMode::Variables | DisplayMode::Expressions => {
                         self.toggle_multiline(dm);

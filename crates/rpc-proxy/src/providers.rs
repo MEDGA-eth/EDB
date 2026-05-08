@@ -18,10 +18,14 @@
 
 use eyre::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::{
+    collections::HashSet,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::{Duration, Instant},
+};
 use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 
@@ -422,8 +426,10 @@ mod tests {
     use super::*;
     use std::io::ErrorKind;
     use tracing::{debug, info};
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
+    use wiremock::{
+        Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
+    };
 
     async fn skip_if_loopback_binds_restricted(test_name: &str) -> bool {
         match tokio::net::TcpListener::bind("127.0.0.1:0").await {

@@ -19,28 +19,34 @@
 //! This panel shows the call trace and allows navigation through trace entries.
 
 use super::{EventResponse, PanelTr, PanelType};
-use crate::data::DataManager;
-use crate::ui::borders::BorderPresets;
-use crate::ui::status::StatusBar;
-use crate::ui::syntax::{SyntaxHighlighter, SyntaxType};
+use crate::{
+    data::DataManager,
+    ui::{
+        borders::BorderPresets,
+        status::StatusBar,
+        syntax::{SyntaxHighlighter, SyntaxType},
+    },
+};
 use alloy_dyn_abi::DynSolValue;
-use alloy_primitives::{hex, Bytes};
+use alloy_primitives::{Bytes, hex};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use edb_common::types::{CallResult, CallType, Trace, TraceEntry};
-use eyre::{bail, Result};
+use eyre::{Result, bail};
 use ratatui::{
+    Frame,
     layout::Rect,
     style::Style,
     text::{Line, Span},
     widgets::{List, ListItem, Paragraph},
-    Frame,
 };
 use revm::{
     context::CreateScheme,
     interpreter::{CallScheme, InstructionResult},
 };
-use std::collections::HashSet;
-use std::ops::{Deref, DerefMut};
+use std::{
+    collections::HashSet,
+    ops::{Deref, DerefMut},
+};
 use tracing::debug;
 
 /// Represents different types of trace lines for multi-line display
@@ -150,7 +156,8 @@ impl TracePanelInner {
             .map(|line_type| {
                 let formatted_line = self.format_display_line(line_type, trace, dm);
                 // Calculate the visual width of the line including cursor indicators
-                // Note: format_display_line already adds the cursor indicators, so we just sum all spans
+                // Note: format_display_line already adds the cursor indicators, so we just sum all
+                // spans
                 formatted_line.spans.iter().map(|span| span.content.chars().count()).sum()
             })
             .max()
@@ -656,7 +663,8 @@ impl TracePanelInner {
                     "  │   ".to_string()
                 }
             } else {
-                // Child level details - always start with 2 spaces, then tree indent, then connector
+                // Child level details - always start with 2 spaces, then tree indent, then
+                // connector
                 let tree_indent = self.build_tree_indent_clean(entry, trace);
                 if self.is_last_child(entry, trace) {
                     format!("  {tree_indent}  {child_line}   ")
@@ -783,24 +791,25 @@ impl TracePanelInner {
         }
 
         // Check if it's a Panic(uint256) revert (0x4e487b71)
-        if output.len() >= 4 && output.starts_with(&[0x4e, 0x48, 0x7b, 0x71])
+        if output.len() >= 4
+            && output.starts_with(&[0x4e, 0x48, 0x7b, 0x71])
             && let Ok(DynSolValue::Uint(panic_code, _)) =
                 alloy_dyn_abi::DynSolType::Uint(256).abi_decode(&output[4..])
-            {
-                let panic_reason = match panic_code.to_string().as_str() {
-                    "1" => "assertion failed",
-                    "17" => "arithmetic overflow/underflow",
-                    "18" => "division by zero",
-                    "33" => "enum conversion error",
-                    "34" => "invalid storage byte array access",
-                    "49" => "pop() on empty array",
-                    "50" => "array index out of bounds",
-                    "65" => "memory allocation overflow",
-                    "81" => "zero initialization of invalid type",
-                    _ => "unknown panic",
-                };
-                return format!("Panic({panic_code}: {panic_reason})");
-            }
+        {
+            let panic_reason = match panic_code.to_string().as_str() {
+                "1" => "assertion failed",
+                "17" => "arithmetic overflow/underflow",
+                "18" => "division by zero",
+                "33" => "enum conversion error",
+                "34" => "invalid storage byte array access",
+                "49" => "pop() on empty array",
+                "50" => "array index out of bounds",
+                "65" => "memory allocation overflow",
+                "81" => "zero initialization of invalid type",
+                _ => "unknown panic",
+            };
+            return format!("Panic({panic_code}: {panic_reason})");
+        }
 
         // Fallback: show hex data
         if output.len() <= 32 {
@@ -847,7 +856,8 @@ impl TracePanelInner {
         }
     }
 
-    /// Apply syntax highlighting to Solidity code using the existing syntax highlighter (for owned strings)
+    /// Apply syntax highlighting to Solidity code using the existing syntax highlighter (for owned
+    /// strings)
     fn highlight_solidity_code(&self, code: String, dm: &DataManager) -> Vec<Span<'static>> {
         let tokens = self.syntax_highlighter.tokenize(&code, SyntaxType::Solidity);
 
@@ -1329,10 +1339,14 @@ impl PanelTr for TracePanel {
                             debug!("Jumping to snapshot: {}", snapshot_id);
                             dm.execution.goto(snapshot_id, false)?;
                         } else {
-                            bail!("The selected trace entry has no associated snapshot (likely a state variable view function). We cannot change execution to this entry.");
+                            bail!(
+                                "The selected trace entry has no associated snapshot (likely a state variable view function). We cannot change execution to this entry."
+                            );
                         }
                     } else {
-                        bail!("Internal Error: No trace entry selected. Please report this issue to https://github.com/edb-rs/edb/issues.");
+                        bail!(
+                            "Internal Error: No trace entry selected. Please report this issue to https://github.com/edb-rs/edb/issues."
+                        );
                     }
                     Ok(EventResponse::ChangeFocus(PanelType::Code))
                 }
@@ -1345,10 +1359,14 @@ impl PanelTr for TracePanel {
                             debug!("Jumping to snapshot: {}", snapshot_id);
                             dm.execution.display(snapshot_id)?;
                         } else {
-                            bail!("The selected trace entry has no associated snapshot (likely a state variable view function). We cannot display code view.");
+                            bail!(
+                                "The selected trace entry has no associated snapshot (likely a state variable view function). We cannot display code view."
+                            );
                         }
                     } else {
-                        bail!("Internal Error: No trace entry selected. Please report this issue to https://github.com/edb-rs/edb/issues.");
+                        bail!(
+                            "Internal Error: No trace entry selected. Please report this issue to https://github.com/edb-rs/edb/issues."
+                        );
                     }
                     Ok(EventResponse::ChangeFocus(PanelType::Code))
                 }

@@ -50,16 +50,15 @@ use alloy_primitives::TxHash;
 use dashmap::DashMap;
 use edb_common::ForkResult;
 use eyre::Result;
-use revm::{context::Host, database::CacheDB, Database, DatabaseCommit, DatabaseRef};
+use revm::{Database, DatabaseCommit, DatabaseRef, context::Host, database::CacheDB};
 use std::{net::SocketAddr, sync::Arc};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tracing::info;
 
 use crate::{
-    orchestration,
-    rpc::{start_debug_server, RpcServerHandle},
+    EngineContext, SnapshotAnalysis, orchestration,
+    rpc::{RpcServerHandle, start_debug_server},
     utils::next_etherscan_api_key,
-    EngineContext, SnapshotAnalysis,
 };
 
 /// Configuration for the EDB debugging engine.
@@ -122,7 +121,8 @@ pub struct Engine {
     server_handles: Arc<DashMap<TxHash, RpcServerHandle>>,
 
     /// Per-transaction locks to prevent duplicate analysis of the same transaction
-    /// Each transaction hash gets its own lock, allowing parallel analysis of different transactions
+    /// Each transaction hash gets its own lock, allowing parallel analysis of different
+    /// transactions
     in_flight: Arc<DashMap<TxHash, Arc<Mutex<()>>>>,
 
     /// Configuration for the engine

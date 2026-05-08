@@ -55,21 +55,21 @@ use std::env;
 
 use alloy_primitives::{Address, Bytes, TxHash};
 use edb_common::{
-    fork_and_prepare, relax_evm_constraints, Cache, CachePath, EdbCache, EdbCachePath, EdbContext,
-    ForkResult,
+    Cache, CachePath, EdbCache, EdbCachePath, EdbContext, ForkResult, fork_and_prepare,
+    relax_evm_constraints,
 };
 use eyre::Result;
-use foundry_block_explorers::{contract::ContractCreationData, Client};
+use foundry_block_explorers::{Client, contract::ContractCreationData};
 use revm::{
+    Database, DatabaseCommit, DatabaseRef, InspectEvm, MainBuilder,
     context::{Cfg, ContextTr},
     database::CacheDB,
     primitives::KECCAK_EMPTY,
     state::Bytecode,
-    Database, DatabaseCommit, DatabaseRef, InspectEvm, MainBuilder,
 };
 use tracing::{debug, error};
 
-use crate::{next_etherscan_api_key, Artifact, TweakInspector};
+use crate::{Artifact, TweakInspector, next_etherscan_api_key};
 
 /// Utility for modifying deployed contract bytecode through creation transaction replay.
 ///

@@ -21,13 +21,13 @@ use edb_rpc_proxy::{
     proxy::{ProxyServer, ProxyServerBuilder},
 };
 use reqwest::Client;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::{collections::HashMap, io::ErrorKind, net::SocketAddr, time::Duration};
 use tempfile::TempDir;
 use tokio::time::sleep;
 use wiremock::{
-    matchers::{method, path},
     Mock, MockServer, ResponseTemplate,
+    matchers::{method, path},
 };
 
 /// Helper to create a test proxy server
@@ -554,7 +554,8 @@ async fn test_proxy_cache_data_collection() {
     assert_eq!(stats_after_request["total_entries"], 1);
 
     // Verify the cache contains the expected data
-    // Since cache keys are now hash-based, we'll verify that there's exactly one key starting with the method name
+    // Since cache keys are now hash-based, we'll verify that there's exactly one key starting with
+    // the method name
     let method_keys: Vec<_> =
         cache_after_request.keys().filter(|k| k.starts_with("eth_getBlockByNumber:")).collect();
     assert_eq!(

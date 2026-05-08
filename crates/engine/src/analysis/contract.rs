@@ -19,8 +19,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     analysis::{
-        macros::{define_ref, universal_id},
         Analyzer,
+        macros::{define_ref, universal_id},
     },
     utils::VisitorAction,
 };

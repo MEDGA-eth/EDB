@@ -19,8 +19,8 @@
 //! This module provides the core data structures and utilities for representing
 //! and tracking variables during smart contract analysis. It includes:
 //!
-//! - **UVID (Universal Variable Identifier)**: A unique identifier system for
-//!   tracking variables across different scopes and contexts
+//! - **UVID (Universal Variable Identifier)**: A unique identifier system for tracking variables
+//!   across different scopes and contexts
 //! - **Variable**: The main data structure representing a smart contract variable
 //! - **VariableType**: Enumeration of supported Solidity variable types
 //! - **VariableScope**: Structure for managing variable scope information
@@ -35,10 +35,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     analysis::{
-        macros::{define_ref, universal_id},
         Analyzer, ContractRef, FunctionRef,
+        macros::{define_ref, universal_id},
     },
-    utils::{contains_user_defined_type, VisitorAction},
+    utils::{VisitorAction, contains_user_defined_type},
 };
 
 // use crate::{
@@ -114,11 +114,7 @@ impl VariableRef {
     /// Returns the base variable of this variable.
     pub fn base(&self) -> Self {
         let inner = self.inner.read();
-        if let Some(base) = inner.base() {
-            base
-        } else {
-            self.clone()
-        }
+        if let Some(base) = inner.base() { base } else { self.clone() }
     }
 }
 
@@ -133,7 +129,7 @@ impl VariableRef {
 /// # Examples
 ///
 /// ```rust
-/// use edb::analysis::variable::{Variable, UVID, VariableType, VariableScope};
+/// use edb::analysis::variable::{UVID, Variable, VariableScope, VariableType};
 /// use foundry_compilers::artifacts::VariableDeclaration;
 ///
 /// let variable = Variable {
@@ -356,9 +352,10 @@ impl Analyzer {
         if declaration.state_variable {
             // FIXME: this is a temporary workaround on user defined struct types.
             // Struct may not be able to be declared as a public state variable.
-            // So here when we encounter a state variable with a user defined type, we skip the visibility check.
-            // In the future, we may further consider to support user defined struct types as public state variables
-            // under the condition that it does not contain inner recursive types (array or mapping fields).
+            // So here when we encounter a state variable with a user defined type, we skip the
+            // visibility check. In the future, we may further consider to support user
+            // defined struct types as public state variables under the condition that
+            // it does not contain inner recursive types (array or mapping fields).
             if declaration.type_name.as_ref().map(contains_user_defined_type).unwrap_or(false) {
                 return Ok(());
             }
@@ -380,18 +377,19 @@ impl Analyzer {
                 Expression::Identifier(identifier) => {
                     if let Some(declaration_id) = &identifier.referenced_declaration
                         && declaration_id >= &0
-                            && let Some(variable) = this.variables.get(&(*declaration_id as usize))
-                            {
-                                return Some(variable.clone());
-                            }
+                        && let Some(variable) = this.variables.get(&(*declaration_id as usize))
+                    {
+                        return Some(variable.clone());
+                    }
                     None
                 }
                 Expression::IndexAccess(index_access) => {
                     if let Some(base_variable) = get_varaiable(this, &index_access.base_expression)
-                        && let Some(index) = &index_access.index_expression {
-                            let var = Variable::Index { base: base_variable, index: index.clone() };
-                            return Some(var.into());
-                        }
+                        && let Some(index) = &index_access.index_expression
+                    {
+                        let var = Variable::Index { base: base_variable, index: index.clone() };
+                        return Some(var.into());
+                    }
                     None
                 }
                 Expression::IndexRangeAccess(index_range_access) => {
@@ -475,7 +473,7 @@ impl Analyzer {
 mod tests {
     use std::collections::HashMap;
 
-    use super::{Variable, VariableKind, EDB_RUNTIME_VALUE_OFFSET, UVID};
+    use super::{EDB_RUNTIME_VALUE_OFFSET, UVID, Variable, VariableKind};
     use crate::{
         analysis::analyzer::tests::compile_and_analyze,
         test_utils::compile_contract_source_to_source_unit,
@@ -553,11 +551,13 @@ mod tests {
 
         // no step should have `z` in its accessible variables
         for step in &analysis.steps {
-            assert!(!step
-                .read()
-                .accessible_variables
-                .iter()
-                .any(|v| v.read().declaration().name == "z"));
+            assert!(
+                !step
+                    .read()
+                    .accessible_variables
+                    .iter()
+                    .any(|v| v.read().declaration().name == "z")
+            );
         }
     }
 
@@ -1126,8 +1126,8 @@ mod tests {
 
         let var_table = analysis.variable_table();
 
-        // Unnamed return variables should NOT be in the variable table (filtered by empty name check)
-        // Only the function parameters 'input' and 'x' should be tracked
+        // Unnamed return variables should NOT be in the variable table (filtered by empty name
+        // check) Only the function parameters 'input' and 'x' should be tracked
         let var_names: Vec<String> = var_table.values().map(|v| v.read().name()).collect();
 
         // Should have the input parameters
@@ -1139,8 +1139,8 @@ mod tests {
             assert!(!name.is_empty(), "Should not have variables with empty names");
         }
 
-        // The variable count should only include parameters (and any internal variables created by the compiler)
-        // but definitely not unnamed return variables
+        // The variable count should only include parameters (and any internal variables created by
+        // the compiler) but definitely not unnamed return variables
         let function_foo = analysis
             .functions
             .iter()

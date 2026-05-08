@@ -88,16 +88,16 @@ static TEST_ENV_INITIALIZED: std::sync::OnceLock<bool> = std::sync::OnceLock::ne
 ///
 /// # Arguments
 ///
-/// * `use_temp` - If `true`, copies the testdata cache to a temporary directory for
-///   test isolation. This is useful for tests that may modify cache contents and need
-///   to avoid polluting the shared testdata cache. If `false`, uses the shared testdata
-///   cache directory directly (read-only usage recommended).
+/// * `use_temp` - If `true`, copies the testdata cache to a temporary directory for test isolation.
+///   This is useful for tests that may modify cache contents and need to avoid polluting the shared
+///   testdata cache. If `false`, uses the shared testdata cache directory directly (read-only usage
+///   recommended).
 ///
 /// # Behavior
 ///
 /// - Sets `EDB_CACHE_DIR` to either a temporary copy or the shared testdata cache
-/// - Sets `EDB_ETHERSCAN_CACHE_TTL` to `u32::MAX` (effectively infinite) to avoid
-///   cache expiration during tests
+/// - Sets `EDB_ETHERSCAN_CACHE_TTL` to `u32::MAX` (effectively infinite) to avoid cache expiration
+///   during tests
 /// - Creates the cache directory if it doesn't exist
 /// - Ensures setup only happens once per process
 ///
@@ -144,7 +144,10 @@ pub fn setup_test_environment(use_temp: bool) {
         // SAFETY: edition 2024 marks env::set_var as unsafe (RFC 3445); this runs once
         // during test setup, before threads accessing the env have been spawned.
         unsafe {
-            env::set_var(crate::env::EDB_CACHE_DIR, cache_dir.to_str().expect("Invalid cache path"));
+            env::set_var(
+                crate::env::EDB_CACHE_DIR,
+                cache_dir.to_str().expect("Invalid cache path"),
+            );
             env::set_var(crate::env::EDB_ETHERSCAN_CACHE_TTL, format!("{}", u32::MAX));
         }
 

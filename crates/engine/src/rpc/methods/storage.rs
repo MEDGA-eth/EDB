@@ -16,12 +16,12 @@
 
 use std::sync::Arc;
 
-use alloy_primitives::{map::HashMap, U256};
-use revm::{database::CacheDB, Database, DatabaseCommit, DatabaseRef};
+use alloy_primitives::{U256, map::HashMap};
+use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 use serde_json::Value;
 use tracing::debug;
 
-use crate::{error_codes, EngineContext, RpcError};
+use crate::{EngineContext, RpcError, error_codes};
 
 pub fn get_storage_diff<DB>(
     context: &Arc<EngineContext<DB>>,

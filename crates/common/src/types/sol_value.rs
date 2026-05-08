@@ -17,8 +17,7 @@
 use std::ops::{Deref, DerefMut};
 
 use alloy_dyn_abi::DynSolValue;
-use alloy_primitives::hex;
-use alloy_primitives::{Address, FixedBytes, I256, U256};
+use alloy_primitives::{Address, FixedBytes, I256, U256, hex};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Wrapper around DynSolValue with custom serialization for EDB debugging and analysis
@@ -51,7 +50,8 @@ impl DerefMut for EdbSolValue {
     }
 }
 
-/// Serializable representation of DynSolValue for JSON and other formats with complete type information preservation
+/// Serializable representation of DynSolValue for JSON and other formats with complete type
+/// information preservation
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type", content = "value")]
 enum SerializedDynSolValue {
@@ -185,7 +185,8 @@ pub trait SolValueFormatter {
     fn format_type(&self) -> String;
 }
 
-/// Configuration context for formatting Solidity values with various display options and address resolution
+/// Configuration context for formatting Solidity values with various display options and address
+/// resolution
 #[derive(Default)]
 pub struct SolValueFormatterContext {
     /// Optional function to resolve addresses to human-readable names or labels
@@ -262,11 +263,7 @@ impl SolValueFormatter for DynSolValue {
                         format!("{}...{}", &addr_str[..8], &addr_str[addr_str.len() - 6..])
                     };
 
-                    if ctx.with_ty {
-                        format!("address({addr_str})")
-                    } else {
-                        addr_str
-                    }
+                    if ctx.with_ty { format!("address({addr_str})") } else { addr_str }
                 }
             }
 
@@ -540,7 +537,7 @@ fn format_custom_struct(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy_primitives::{address, FixedBytes, I256, U256};
+    use alloy_primitives::{FixedBytes, I256, U256, address};
     use serde_json;
 
     #[test]

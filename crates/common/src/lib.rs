@@ -21,7 +21,8 @@
 //! This crate provides shared utilities used by both the edb binary
 //! and the engine crate, including chain forking and transaction replay.
 
-/// Common types used throughout the EDB ecosystem including execution traces, snapshots, and code representations
+/// Common types used throughout the EDB ecosystem including execution traces, snapshots, and code
+/// representations
 pub mod types;
 
 /// Caching utilities for storing and retrieving RPC responses to optimize performance

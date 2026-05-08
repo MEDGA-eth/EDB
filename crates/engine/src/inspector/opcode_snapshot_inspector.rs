@@ -19,7 +19,7 @@
 //! This inspector captures instruction-level execution details including:
 //! - Current instruction offset (PC)
 //! - Contract address
-//! - Current opcode  
+//! - Current opcode
 //! - Memory state (with Arc sharing for unchanged memory)
 //! - Stack state (using persistent data for efficient clone)
 //! - Call data (with Arc sharing across the same trace entry)
@@ -29,20 +29,19 @@
 
 use alloy_primitives::{Address, Bytes, U256};
 use edb_common::{
-    edb_debug_assert, edb_debug_assert_eq,
+    EdbContext, OpcodeTr, edb_debug_assert, edb_debug_assert_eq,
     types::{ExecutionFrameId, Trace},
-    EdbContext, OpcodeTr,
 };
 use revm::{
+    Database, DatabaseCommit, DatabaseRef, Inspector,
     bytecode::opcode::OpCode,
     context::{ContextTr, LocalContextTr},
     database::CacheDB,
     interpreter::{
-        interpreter_types::{InputsTr, Jumps},
         CallInputs, CallOutcome, CreateInputs, CreateOutcome, Interpreter,
+        interpreter_types::{InputsTr, Jumps},
     },
     state::TransientStorage,
-    Database, DatabaseCommit, DatabaseRef, Inspector,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -649,10 +648,18 @@ where
         };
 
         println!("\n\x1b[33m💾 Memory Optimization:\x1b[0m");
-        println!("  Memory - Unique instances: \x1b[32m{}\x1b[0m / Total refs: \x1b[32m{}\x1b[0m (Sharing: \x1b[32m{:.1}%\x1b[0m)", 
-            unique_memory_instances.len(), total_memory_instances, memory_sharing_ratio);
-        println!("  Calldata - Unique instances: \x1b[32m{}\x1b[0m / Total refs: \x1b[32m{}\x1b[0m (Sharing: \x1b[32m{:.1}%\x1b[0m)", 
-            unique_calldata_instances.len(), total_calldata_instances, calldata_sharing_ratio);
+        println!(
+            "  Memory - Unique instances: \x1b[32m{}\x1b[0m / Total refs: \x1b[32m{}\x1b[0m (Sharing: \x1b[32m{:.1}%\x1b[0m)",
+            unique_memory_instances.len(),
+            total_memory_instances,
+            memory_sharing_ratio
+        );
+        println!(
+            "  Calldata - Unique instances: \x1b[32m{}\x1b[0m / Total refs: \x1b[32m{}\x1b[0m (Sharing: \x1b[32m{:.1}%\x1b[0m)",
+            unique_calldata_instances.len(),
+            total_calldata_instances,
+            calldata_sharing_ratio
+        );
 
         println!("\n\x1b[33m📋 Frame Details:\x1b[0m");
         println!(
@@ -766,9 +773,7 @@ fn check_memory_consistency(origin: &[u8], reference: &[u8]) -> bool {
     }
 
     // Check if extra bytes in longer slice are all zeros
-    if let Some((i, &byte)) =
-        longer[shorter.len()..].iter().enumerate().find(|&(_, b)| *b != 0)
-    {
+    if let Some((i, &byte)) = longer[shorter.len()..].iter().enumerate().find(|&(_, b)| *b != 0) {
         let absolute_idx = shorter.len() + i;
         debug!(
             "Memory length mismatch at byte {}: expected a padding 0, got {:02x}",

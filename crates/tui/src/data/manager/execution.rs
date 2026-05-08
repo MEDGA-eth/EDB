@@ -25,7 +25,7 @@
 //! on RPC calls or complex trace processing.
 
 use alloy_primitives::{Address, U256};
-use eyre::{bail, Result};
+use eyre::{Result, bail};
 use std::{
     collections::{HashMap, HashSet},
     ops::Deref,
@@ -37,10 +37,10 @@ use tracing::{debug, error};
 use edb_common::types::{Breakpoint, BreakpointLocation, Code, SnapshotInfo, Trace};
 
 use crate::{
+    RpcClient,
     data::manager::core::{
         FetchCache, ManagerCore, ManagerInner, ManagerRequestTr, ManagerStateTr, ManagerTr,
     },
-    RpcClient,
 };
 
 #[derive(Debug, Clone)]
@@ -972,19 +972,11 @@ impl ExecutionManager {
             let (bp, _) = self.breakpoints[idx].clone();
             self.get_breakpoint_hits(&bp).and_then(|hits| {
                 let inscope_hits = hits.iter().filter(|&&hit_id| hit_id >= lb && hit_id <= ub);
-                if forward {
-                    inscope_hits.min().cloned()
-                } else {
-                    inscope_hits.max().cloned()
-                }
+                if forward { inscope_hits.min().cloned() } else { inscope_hits.max().cloned() }
             })
         });
 
-        if forward {
-            inscope_bps.min().unwrap_or(to)
-        } else {
-            inscope_bps.max().unwrap_or(to)
-        }
+        if forward { inscope_bps.min().unwrap_or(to) } else { inscope_bps.max().unwrap_or(to) }
     }
 }
 
