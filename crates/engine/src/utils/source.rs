@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use foundry_compilers::artifacts::{
-    ast::SourceLocation, Block, BlockOrStatement, StateMutability, Statement, TypeName, Visibility,
+    Block, BlockOrStatement, StateMutability, Statement, TypeName, Visibility, ast::SourceLocation,
 };
 use semver::VersionReq;
 
@@ -27,7 +27,8 @@ use crate::analysis::{find_next_semicolon_after_source_location, stmt_src};
 ///
 /// * `id` - The source index
 /// * `source` - The source string
-/// * `location` - The source location. The index in the `location` must be the same as the `id` if it is present.
+/// * `location` - The source location. The index in the `location` must be the same as the `id` if
+///   it is present.
 pub fn source_string_at_location<'a>(
     id: u32,
     source: &'a str,
@@ -45,7 +46,8 @@ pub fn source_string_at_location<'a>(
 /// # Arguments
 ///
 /// * `source` - The source string
-/// * `location` - The source location. The index in the `location` is not checked whether it is the same as the id of the source.
+/// * `location` - The source location. The index in the `location` is not checked whether it is the
+///   same as the id of the source.
 pub fn source_string_at_location_unchecked<'a>(
     source: &'a str,
     location: &SourceLocation,
@@ -155,12 +157,12 @@ pub fn mutability_to_str(mutability: &StateMutability) -> &'static str {
 /// # Returns
 ///
 /// The index of the next character immediately after the source location.
-///
 pub fn find_next_index_of_source_location(src: &SourceLocation) -> Option<usize> {
     if let Some(start) = src.start
-        && let Some(length) = src.length {
-            return Some(start + length);
-        }
+        && let Some(length) = src.length
+    {
+        return Some(start + length);
+    }
     None
 }
 
@@ -216,7 +218,8 @@ pub fn find_index_of_first_statement_in_block_or_statement(
 /// The index of the first statement in the `Block`.
 pub fn find_index_of_first_statement_in_block(block: &Block) -> Option<usize> {
     block.statements.first().map_or(
-        // if the block has no statements, the index of the first statement is the start of the block '{' plus 1
+        // if the block has no statements, the index of the first statement is the start of the
+        // block '{' plus 1
         block.src.start.map(|s| s + 1),
         |stmt| stmt_src(stmt).start,
     )
@@ -234,7 +237,8 @@ pub fn find_index_of_first_statement_in_block(block: &Block) -> Option<usize> {
 /// The index of the next character immediately after the last statement in the `Block`.
 pub fn find_next_index_of_last_statement_in_block(source: &str, block: &Block) -> Option<usize> {
     block.statements.last().map_or(
-        // if the block has no statements, the index of the last statement is the end of the block '}'
+        // if the block has no statements, the index of the last statement is the end of the block
+        // '}'
         find_next_index_of_source_location(&block.src).map(|s| s - 1),
         |stmt| find_next_index_of_statement(source, stmt),
     )
@@ -390,12 +394,14 @@ pub fn contains_mapping_type(type_name: &TypeName) -> bool {
         }
         TypeName::ElementaryTypeName(_) => false,
         TypeName::FunctionTypeName(_) => false,
-        // TODO: the user defined type may have a mapping type, this need to be inspected in the future
+        // TODO: the user defined type may have a mapping type, this need to be inspected in the
+        // future
         TypeName::UserDefinedTypeName(_) => false,
     }
 }
 
-/// Check if the abi.encode function (which is available since solidity 0.4.24) is available in the given version requirement.
+/// Check if the abi.encode function (which is available since solidity 0.4.24) is available in the
+/// given version requirement.
 ///
 /// # Arguments
 ///
@@ -466,7 +472,8 @@ mod tests {
 
     #[test]
     fn test_abi_encode_available_greater_than() {
-        // Test greater than versions - these should return true because they don't allow versions < 0.4.24
+        // Test greater than versions - these should return true because they don't allow versions <
+        // 0.4.24
         assert!(!abi_encode_available(&VersionReq::parse(">0.4.23").unwrap())); // allows 0.4.24+, no < 0.4.24
         assert!(!abi_encode_available(&VersionReq::parse(">0.4.20").unwrap())); // allows 0.4.21+, no < 0.4.24
         assert!(!abi_encode_available(&VersionReq::parse(">0.3.0").unwrap())); // allows 0.3.1+, no < 0.4.24
@@ -480,13 +487,15 @@ mod tests {
 
     #[test]
     fn test_abi_encode_available_greater_equal() {
-        // Test greater than or equal versions - these should return true because they don't allow versions < 0.4.24
+        // Test greater than or equal versions - these should return true because they don't allow
+        // versions < 0.4.24
         assert!(abi_encode_available(&VersionReq::parse(">=0.4.24").unwrap()));
         assert!(abi_encode_available(&VersionReq::parse(">=0.4.25").unwrap()));
         assert!(abi_encode_available(&VersionReq::parse(">=0.5.0").unwrap()));
         assert!(abi_encode_available(&VersionReq::parse(">=0.6.0").unwrap()));
 
-        // These should return false because the lower bound is < 0.4.24, so versions < 0.4.24 are allowed
+        // These should return false because the lower bound is < 0.4.24, so versions < 0.4.24 are
+        // allowed
         assert!(!abi_encode_available(&VersionReq::parse(">=0.4.23").unwrap()));
         assert!(!abi_encode_available(&VersionReq::parse(">=0.4.20").unwrap()));
     }
@@ -506,12 +515,14 @@ mod tests {
 
     #[test]
     fn test_abi_encode_available_less_equal() {
-        // Test less than or equal versions - these should return false because they allow versions < 0.4.24
+        // Test less than or equal versions - these should return false because they allow versions
+        // < 0.4.24
         assert!(!abi_encode_available(&VersionReq::parse("<=0.4.24").unwrap()));
         assert!(!abi_encode_available(&VersionReq::parse("<=0.4.25").unwrap()));
         assert!(!abi_encode_available(&VersionReq::parse("<=0.5.0").unwrap()));
 
-        // These should return false because the upper bound is < 0.4.24, so versions < 0.4.24 are allowed
+        // These should return false because the upper bound is < 0.4.24, so versions < 0.4.24 are
+        // allowed
         assert!(!abi_encode_available(&VersionReq::parse("<=0.4.23").unwrap()));
         assert!(!abi_encode_available(&VersionReq::parse("<=0.4.20").unwrap()));
     }
@@ -524,11 +535,13 @@ mod tests {
         assert!(abi_encode_available(&VersionReq::parse("~0.5.0").unwrap()));
         assert!(abi_encode_available(&VersionReq::parse("~0.5.1").unwrap()));
 
-        // These should return false because the lower bound is < 0.4.24, so versions < 0.4.24 are allowed
+        // These should return false because the lower bound is < 0.4.24, so versions < 0.4.24 are
+        // allowed
         assert!(!abi_encode_available(&VersionReq::parse("~0.4.23").unwrap()));
         assert!(!abi_encode_available(&VersionReq::parse("~0.4.20").unwrap()));
 
-        // Test tilde with only major version - these should return false because they allow versions < 0.4.24
+        // Test tilde with only major version - these should return false because they allow
+        // versions < 0.4.24
         assert!(!abi_encode_available(&VersionReq::parse("~0").unwrap()));
         assert!(!abi_encode_available(&VersionReq::parse("~0.3").unwrap()));
     }
@@ -541,18 +554,21 @@ mod tests {
         assert!(abi_encode_available(&VersionReq::parse("^0.5.0").unwrap()));
         assert!(abi_encode_available(&VersionReq::parse("^0.6.0").unwrap()));
 
-        // These should return false because the lower bound is < 0.4.24, so versions < 0.4.24 are allowed
+        // These should return false because the lower bound is < 0.4.24, so versions < 0.4.24 are
+        // allowed
         assert!(!abi_encode_available(&VersionReq::parse("^0.4.23").unwrap()));
         assert!(!abi_encode_available(&VersionReq::parse("^0.4.20").unwrap()));
 
-        // Test caret with only major version - these should return false because they allow versions < 0.4.24
+        // Test caret with only major version - these should return false because they allow
+        // versions < 0.4.24
         assert!(!abi_encode_available(&VersionReq::parse("^0").unwrap()));
         assert!(!abi_encode_available(&VersionReq::parse("^0.3").unwrap()));
     }
 
     #[test]
     fn test_abi_encode_available_wildcard() {
-        // Test wildcard versions - these should return true because they don't allow versions < 0.4.24
+        // Test wildcard versions - these should return true because they don't allow versions <
+        // 0.4.24
         assert!(abi_encode_available(&VersionReq::parse("0.4.24").unwrap()));
         assert!(abi_encode_available(&VersionReq::parse("0.4.25").unwrap()));
         assert!(abi_encode_available(&VersionReq::parse("0.5.0").unwrap()));
@@ -564,7 +580,8 @@ mod tests {
 
     #[test]
     fn test_abi_encode_available_complex_ranges() {
-        // Test complex version ranges - these should return true because they don't allow versions < 0.4.24
+        // Test complex version ranges - these should return true because they don't allow versions
+        // < 0.4.24
         assert!(abi_encode_available(&VersionReq::parse(">=0.4.24, <0.9.0").unwrap()));
         assert!(abi_encode_available(&VersionReq::parse(">=0.5.0, <0.8.0").unwrap()));
 

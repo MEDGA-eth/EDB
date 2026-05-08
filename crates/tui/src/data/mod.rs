@@ -62,6 +62,7 @@ pub mod theme;
 pub mod watcher;
 
 use crate::{
+    RpcClient,
     data::{
         manager::{
             core::{ManagerCore, ManagerTr},
@@ -71,7 +72,6 @@ use crate::{
         theme::Theme,
         watcher::Watcher,
     },
-    RpcClient,
 };
 
 /// Central data manager containing all state managers

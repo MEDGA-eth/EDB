@@ -24,18 +24,18 @@ use futures::future::join_all;
 use once_cell::sync::Lazy;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use std::collections::HashMap;
-use std::collections::HashSet;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Instant;
+use serde_json::{Value, json};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Instant,
+};
 use tokio::sync::{Mutex, RwLock};
 use tracing::{error, info};
 
-use crate::test_utils::paths;
-use crate::test_utils::{engine, proxy};
+use crate::test_utils::{engine, paths, proxy};
 
 /// Test transaction fixtures used across all RPC tests
 pub mod test_transactions {
@@ -70,7 +70,8 @@ pub mod test_transactions {
         ("oog_tweak", "0xc14075310349be0c3a1dc4ee58c761c22f25c2b72c12d22f5e1c06f66f94b958");
 
     /// Returns all available test transaction fixtures.
-    /// This provides a complete set of transactions covering different complexity levels and use cases.
+    /// This provides a complete set of transactions covering different complexity levels and use
+    /// cases.
     pub fn all() -> Vec<(&'static str, &'static str)> {
         vec![SIMPLE, LARGE, UNISWAP_V3, UNISWAP_V3_ALT, UNISWAP_V4, OOG_TWEAK]
     }

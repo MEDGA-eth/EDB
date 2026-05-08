@@ -50,9 +50,9 @@ use std::{collections::HashSet, sync::Arc};
 
 use alloy_dyn_abi::DynSolValue;
 use alloy_primitives::U256;
-use edb_common::types::{parse_callable_abi_entries, CallableAbiEntry, TraceEntry};
-use eyre::{bail, eyre, Result};
-use revm::{database::CacheDB, Database, DatabaseCommit, DatabaseRef};
+use edb_common::types::{CallableAbiEntry, TraceEntry, parse_callable_abi_entries};
+use eyre::{Result, bail, eyre};
+use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 use tracing::debug;
 
 use super::*;
@@ -73,11 +73,12 @@ fn from_abi_info(entry: &CallableAbiEntry) -> Option<DynSolValue> {
 fn into_abi_info(value: &DynSolValue) -> Option<CallableAbiEntry> {
     if let DynSolValue::Tuple(elements) = value
         && elements.len() == 2
-            && let DynSolValue::String(magic) = &elements[0]
-                && magic == EDB_EVAL_PLACEHOLDER_MAGIC
-                    && let DynSolValue::String(serial_abi) = &elements[1] {
-                        return serde_json::from_str(serial_abi).ok();
-                    }
+        && let DynSolValue::String(magic) = &elements[0]
+        && magic == EDB_EVAL_PLACEHOLDER_MAGIC
+        && let DynSolValue::String(serial_abi) = &elements[1]
+    {
+        return serde_json::from_str(serial_abi).ok();
+    }
     None
 }
 
@@ -267,10 +268,12 @@ where
         };
 
         for entry in parse_callable_abi_entries(contract) {
-            if entry.name == name && entry.is_state_variable()
-                && let Some(value) = from_abi_info(&entry) {
-                    return Ok(value);
-                }
+            if entry.name == name
+                && entry.is_state_variable()
+                && let Some(value) = from_abi_info(&entry)
+            {
+                return Ok(value);
+            }
         }
 
         bail!("No value found for name='{}', snapshot_id={}", name, snapshot_id)
@@ -377,7 +380,8 @@ where
                 }
             };
 
-            // Recursively handle remaining indices - this is key because next_value might have abi_info
+            // Recursively handle remaining indices - this is key because next_value might have
+            // abi_info
             self.get_mapping_or_array_value(next_value, remaining_indices.to_vec(), snapshot_id)
         }
     }
@@ -795,9 +799,9 @@ where
                                 Ok(result) => return Ok(result),
                                 Err(_e) => {
                                     debug!(
-                                    "Function '{}' found in contract at address {:?}, but call failed",
-                                    member, address_candidate
-                                );
+                                        "Function '{}' found in contract at address {:?}, but call failed",
+                                        member, address_candidate
+                                    );
                                 }
                             }
                         }
@@ -887,7 +891,9 @@ where
 {
     fn validate_value(&self, value: DynSolValue) -> Result<DynSolValue> {
         if into_abi_info(&value).is_some() {
-            bail!("Mapping or array value cannot be directly returned; please access a member or call a function to get a concrete value");
+            bail!(
+                "Mapping or array value cannot be directly returned; please access a member or call a function to get a concrete value"
+            );
         } else {
             Ok(value)
         }

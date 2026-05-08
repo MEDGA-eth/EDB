@@ -23,14 +23,14 @@ use alloy_dyn_abi::JsonAbiExt;
 use alloy_primitives::{Address, Bytes, U256};
 use edb_common::EdbContext;
 use eyre::Result;
-use foundry_compilers::{artifacts::Contract, Artifact as _};
+use foundry_compilers::{Artifact as _, artifacts::Contract};
 use itertools::Itertools;
 use revm::{
+    Database, DatabaseCommit, DatabaseRef, Inspector,
     bytecode::OpCode,
     context::{CreateScheme, JournalTr},
     database::CacheDB,
     interpreter::{CreateInputs, CreateOutcome, Interpreter},
-    Database, DatabaseCommit, DatabaseRef, Inspector,
 };
 use tracing::{debug, error, info, warn};
 
@@ -237,25 +237,27 @@ impl<'a> TweakInspector<'a> {
                 // Check if the same K value appears before CODECOPY
                 // CODECOPY typically has pattern: PUSHn <K> ... CODECOPY
                 if let Some(push_before_codecopy) = disasm.instructions.get(j - 2)
-                    && push_before_codecopy.is_push() {
-                        let Some(k2) = extract_push_value(push_before_codecopy) else { continue };
-                        if k2 == k_value {
-                            k_candidates.push(k_value);
-                            debug!("Found confirmed K value with full pattern: {}", k_value);
-                            break;
-                        }
+                    && push_before_codecopy.is_push()
+                {
+                    let Some(k2) = extract_push_value(push_before_codecopy) else { continue };
+                    if k2 == k_value {
+                        k_candidates.push(k_value);
+                        debug!("Found confirmed K value with full pattern: {}", k_value);
+                        break;
                     }
+                }
 
                 // Also check j-1 position for direct PUSH K CODECOPY
                 if let Some(push_before_codecopy) = disasm.instructions.get(j - 1)
-                    && push_before_codecopy.is_push() {
-                        let Some(k2) = extract_push_value(push_before_codecopy) else { continue };
-                        if k2 == k_value {
-                            k_candidates.push(k_value);
-                            debug!("Found confirmed K value with full pattern: {}", k_value);
-                            break;
-                        }
+                    && push_before_codecopy.is_push()
+                {
+                    let Some(k2) = extract_push_value(push_before_codecopy) else { continue };
+                    if k2 == k_value {
+                        k_candidates.push(k_value);
+                        debug!("Found confirmed K value with full pattern: {}", k_value);
+                        break;
                     }
+                }
             }
         }
 
@@ -394,17 +396,18 @@ where
             if outcome.result.is_ok() {
                 // Get the deployed bytecode from the context
                 if let Some(created_address) = outcome.address
-                    && created_address == self.target_address {
-                        // Get deployed code from outcome's output (runtime bytecode)
-                        // self.deployed_code =
-                        //     context.load_account_code(created_address).map(|c| c.data.clone());
-                        self.deployed_code = Some(outcome.result.output.clone());
-                        info!(
-                            "Successfully captured deployed bytecode for {:?}: {} bytes",
-                            self.target_address,
-                            outcome.result.output.len()
-                        );
-                    }
+                    && created_address == self.target_address
+                {
+                    // Get deployed code from outcome's output (runtime bytecode)
+                    // self.deployed_code =
+                    //     context.load_account_code(created_address).map(|c| c.data.clone());
+                    self.deployed_code = Some(outcome.result.output.clone());
+                    info!(
+                        "Successfully captured deployed bytecode for {:?}: {} bytes",
+                        self.target_address,
+                        outcome.result.output.len()
+                    );
+                }
             } else {
                 error!(
                     "Target deployment failed for {:?}: {:?} ({:?}, Bytes: {}, Address: {:?})",

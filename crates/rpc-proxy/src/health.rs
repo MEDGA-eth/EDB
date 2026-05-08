@@ -16,7 +16,7 @@
 
 //! Health check service for proxy status
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Health check service for monitoring proxy status

@@ -20,7 +20,7 @@ use alloy_primitives::U256;
 use edb_common::OpcodeTr;
 use revm::{
     bytecode::OpCode,
-    interpreter::{interpreter_types::Jumps, Interpreter},
+    interpreter::{Interpreter, interpreter_types::Jumps},
 };
 
 #[inline]

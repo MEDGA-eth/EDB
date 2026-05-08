@@ -20,8 +20,8 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{HashMap, VecDeque},
     sync::{
-        atomic::{AtomicU64, Ordering},
         Arc, RwLock,
+        atomic::{AtomicU64, Ordering},
     },
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -358,11 +358,7 @@ impl MetricsCollector {
         let hits = self.cache_hits.load(Ordering::Relaxed);
         let total = self.total_requests.load(Ordering::Relaxed);
 
-        if total == 0 {
-            0.0
-        } else {
-            (hits as f64 / total as f64) * 100.0
-        }
+        if total == 0 { 0.0 } else { (hits as f64 / total as f64) * 100.0 }
     }
 
     /// Get error rate as percentage
@@ -370,11 +366,7 @@ impl MetricsCollector {
         let errors = self.total_errors.load(Ordering::Relaxed);
         let total = self.total_requests.load(Ordering::Relaxed);
 
-        if total == 0 {
-            0.0
-        } else {
-            (errors as f64 / total as f64) * 100.0
-        }
+        if total == 0 { 0.0 } else { (errors as f64 / total as f64) * 100.0 }
     }
 
     /// Add a historical data point
@@ -412,11 +404,7 @@ impl MetricsCollector {
             let total_time: u64 = stats.values().map(|s| s.total_response_time_ms).sum();
             let total_requests: u64 = stats.values().map(|s| s.total_requests).sum();
 
-            if total_requests > 0 {
-                total_time as f64 / total_requests as f64
-            } else {
-                0.0
-            }
+            if total_requests > 0 { total_time as f64 / total_requests as f64 } else { 0.0 }
         } else {
             0.0
         }

@@ -19,13 +19,14 @@ use foundry_compilers::artifacts::{ContractKind, Mutability, StorageLocation, Ty
 use semver::Version;
 
 use crate::{
-    analysis::{VariableRef, USID, UVID},
-    contains_function_type, contains_mapping_type, contains_user_defined_type, VersionRef,
-    MAGIC_SNAPSHOT_NUMBER, MAGIC_VARIABLE_UPDATE_NUMBER,
+    MAGIC_SNAPSHOT_NUMBER, MAGIC_VARIABLE_UPDATE_NUMBER, VersionRef,
+    analysis::{USID, UVID, VariableRef},
+    contains_function_type, contains_mapping_type, contains_user_defined_type,
 };
 
 pub fn generate_step_hook(version: &VersionRef, usid: USID) -> Option<String> {
-    // Solidity 0.4 does not support abi.encode, so we use a "0.4-compatible" way to encode the parameters.
+    // Solidity 0.4 does not support abi.encode, so we use a "0.4-compatible" way to encode the
+    // parameters.
     if **version < Version::parse("0.5.0").unwrap() {
         Some(format!(
             "require(keccak256(uint256({}), uint256({})) != bytes32(uint256(0x2333)));",
@@ -53,9 +54,10 @@ pub fn generate_variable_update_hook(
         return None;
     }
 
-    // We currently do not support recording variables involving user-defined types and arrays (< 0.8.0), as well as state variables.
-    // In addition, source code with 0.4.x solidity version is not supported due to the lack of the `abi.encode` function.
-    // TODO: support user-defined types and arrays, as well as state variables, solidity <0.4.24, in the future
+    // We currently do not support recording variables involving user-defined types and arrays (<
+    // 0.8.0), as well as state variables. In addition, source code with 0.4.x solidity version
+    // is not supported due to the lack of the `abi.encode` function. TODO: support user-defined
+    // types and arrays, as well as state variables, solidity <0.4.24, in the future
     let declaration = variable.declaration();
     let base_type = &declaration.type_name;
     let is_state_variable = declaration.state_variable;
@@ -360,7 +362,8 @@ mod tests {
             assert!(result.is_some(), "Should generate view method for nested mapping->array");
 
             let code = result.unwrap();
-            // Should have address key parameter and uint256 index1 parameter (depth-based naming) with EDB suffix
+            // Should have address key parameter and uint256 index1 parameter (depth-based naming)
+            // with EDB suffix
             assert!(code.contains("function userTokens_edb_state_var_"));
             assert!(code.contains("(address key, uint256 index1)"));
             assert!(code.contains("return userTokens[key][index1];"));
@@ -372,7 +375,8 @@ mod tests {
             assert!(result.is_some(), "Should generate view method for nested mapping->mapping");
 
             let code = result.unwrap();
-            // Should have uint256 key parameter and address key1 parameter (depth-based naming) with EDB suffix
+            // Should have uint256 key parameter and address key1 parameter (depth-based naming)
+            // with EDB suffix
             assert!(code.contains("function permissions_edb_state_var_"));
             assert!(code.contains("(uint256 key, address key1)"));
             assert!(code.contains("return permissions[key][key1];"));

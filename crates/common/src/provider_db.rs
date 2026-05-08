@@ -16,12 +16,12 @@
 
 //! Async REVM database adapter backed by the workspace Alloy provider.
 
-use alloy_network::{primitives::HeaderResponse, BlockResponse, Network};
+use alloy_network::{BlockResponse, Network, primitives::HeaderResponse};
 use alloy_provider::Provider;
 use alloy_rpc_types::BlockId;
 use revm::{
-    database_interface::{async_db::DatabaseAsyncRef, DBErrorMarker},
-    primitives::{Address, StorageKey, StorageValue, B256},
+    database_interface::{DBErrorMarker, async_db::DatabaseAsyncRef},
+    primitives::{Address, B256, StorageKey, StorageValue},
     state::{AccountInfo, Bytecode},
 };
 use std::fmt::{self, Display};
@@ -98,7 +98,9 @@ impl<N: Network, P: Provider<N>> DatabaseAsyncRef for ProviderDb<N, P> {
     }
 
     async fn code_by_hash_async_ref(&self, _code_hash: B256) -> Result<Bytecode, Self::Error> {
-        panic!("code_by_hash_async_ref should not be called because code is loaded via basic_async_ref");
+        panic!(
+            "code_by_hash_async_ref should not be called because code is loaded via basic_async_ref"
+        );
     }
 
     async fn storage_async_ref(

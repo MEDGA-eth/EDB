@@ -23,8 +23,7 @@ use revm::primitives::{
     eip4844::{BLOB_BASE_FEE_UPDATE_FRACTION_CANCUN, BLOB_BASE_FEE_UPDATE_FRACTION_PRAGUE},
     hardfork::SpecId,
 };
-use std::collections::BTreeMap;
-use std::sync::LazyLock;
+use std::{collections::BTreeMap, sync::LazyLock};
 
 /// Global BTreeMap for Ethereum mainnet hardfork specifications
 /// The key is the starting block number for each hardfork

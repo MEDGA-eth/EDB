@@ -86,7 +86,8 @@ pub struct Analyzer {
     pub(super) is_declaring_param: bool,
     /// Context flag: true when declaring return variables
     pub(super) is_declaring_return: bool,
-    /// Context flag: true when we are inside a `VariableDeclarationStatement` with an initial value
+    /// Context flag: true when we are inside a `VariableDeclarationStatement` with an initial
+    /// value
     pub(super) is_declaring_with_initial_expr: bool,
 }
 
@@ -219,7 +220,8 @@ impl Visitor for Analyzer {
 
             let version_str =
                 version_str.into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(",");
-            // one source file may have multiple `pragma solidity` directives, we collect all of them
+            // one source file may have multiple `pragma solidity` directives, we collect all of
+            // them
             self.version_requirements.push(version_str);
         }
         Ok(VisitorAction::Continue)

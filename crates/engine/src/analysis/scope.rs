@@ -22,7 +22,7 @@
 use foundry_compilers::artifacts::ast::SourceLocation;
 use serde::{Deserialize, Serialize};
 
-use crate::analysis::{macros::define_ref, Analyzer, SourceRange, VariableRef};
+use crate::analysis::{Analyzer, SourceRange, VariableRef, macros::define_ref};
 
 define_ref! {
     /// A reference-counted pointer to a VariableScope.
@@ -43,7 +43,8 @@ define_ref! {
 
 /* Cached read methods */
 impl VariableScopeRef {
-    /// Returns all variables in this scope and its parent scopes recursively. The variables are cached.
+    /// Returns all variables in this scope and its parent scopes recursively. The variables are
+    /// cached.
     pub fn variables_recursive(&self) -> &Vec<VariableRef> {
         self.variables_recursive.get_or_init(|| {
             let mut variables = self.read().declared_variables.clone();
@@ -91,7 +92,8 @@ impl VariableScope {
         self.src
     }
 
-    /// Returns all variables in this scope and its parent scopes recursively. The variables are not cached.
+    /// Returns all variables in this scope and its parent scopes recursively. The variables are not
+    /// cached.
     pub fn variables_recursive(&self) -> Vec<VariableRef> {
         let mut variables = self.declared_variables.clone();
         variables.extend(
@@ -233,7 +235,8 @@ contract TestContract {
         let outer_block = &function_scope.children()[0];
         let inner_block = &outer_block.children()[0];
 
-        // The innermost scope should see all variables: stateVar (from contract), x (from function), y (from outer block), z (from inner block)
+        // The innermost scope should see all variables: stateVar (from contract), x (from
+        // function), y (from outer block), z (from inner block)
         let all_vars = inner_block.variables_recursive();
         assert!(
             all_vars.len() >= 3,

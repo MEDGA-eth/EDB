@@ -19,24 +19,26 @@
 //! This panel shows source code with syntax highlighting and current line indication.
 
 use super::{EventResponse, PanelTr, PanelType};
-use crate::data::DataManager;
-use crate::ui::borders::BorderPresets;
-use crate::ui::status::{FileStatus, StatusBar};
-use crate::ui::syntax::{SyntaxHighlighter, SyntaxType};
+use crate::{
+    data::DataManager,
+    ui::{
+        borders::BorderPresets,
+        status::{FileStatus, StatusBar},
+        syntax::{SyntaxHighlighter, SyntaxType},
+    },
+};
 use alloy_primitives::Address;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use edb_common::types::{Breakpoint, BreakpointLocation, Code, SnapshotInfoDetail};
 use eyre::Result;
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
-    Frame,
 };
-use std::collections::HashMap;
-use std::mem;
-use std::path::PathBuf;
+use std::{collections::HashMap, mem, path::PathBuf};
 use tracing::{debug, info};
 
 /// Code display mode

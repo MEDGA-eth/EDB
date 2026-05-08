@@ -32,7 +32,7 @@ use crate::{
 };
 use alloy_dyn_abi::{DynSolValue, EventExt, FunctionExt, JsonAbiExt};
 use alloy_json_abi::JsonAbi;
-use alloy_primitives::{hex, Address, Bytes, LogData, Selector, U256};
+use alloy_primitives::{Address, Bytes, LogData, Selector, U256, hex};
 use edb_common::types::{
     CallableAbiInfo, EdbSolValue, SolValueFormatter, SolValueFormatterContext as FormatCtx,
 };
@@ -349,7 +349,7 @@ impl Resolver {
                         "{}(0x{}...)",
                         function_abi.name,
                         hex::encode(&calldata[4..calldata.len().min(8)])
-                    ))
+                    ));
                 }
             }
         }

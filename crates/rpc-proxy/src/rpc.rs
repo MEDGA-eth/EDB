@@ -16,17 +16,20 @@
 
 //! RPC request handling and caching logic
 
-use crate::cache::CacheManager;
-use crate::metrics::{ErrorType, MetricsCollector};
-use crate::providers::ProviderManager;
+use crate::{
+    cache::CacheManager,
+    metrics::{ErrorType, MetricsCollector},
+    providers::ProviderManager,
+};
 use eyre::Result;
 use reqwest::StatusCode;
 use serde_json::Value;
-use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
-use std::time::Instant;
+use std::{
+    collections::{HashMap, HashSet, hash_map::DefaultHasher},
+    hash::{Hash, Hasher},
+    sync::Arc,
+    time::Instant,
+};
 use tracing::{debug, warn};
 
 /// RPC methods that can be cached (when using deterministic block parameters)
@@ -222,22 +225,23 @@ impl RpcHandler {
                     debug!("Error response for {}, not caching", method);
                     // Classify error type for metrics
                     if let Some(error_obj) = resp.get("error")
-                        && let Some(error_msg) = error_obj.get("message").and_then(|m| m.as_str()) {
-                            let error_msg_lower = error_msg.to_lowercase();
-                            if RATE_LIMIT_PATTERNS
-                                .iter()
-                                .any(|pattern| error_msg_lower.contains(pattern))
-                            {
-                                self.metrics_collector.record_error(ErrorType::RateLimit);
-                            } else if USER_ERROR_PATTERNS
-                                .iter()
-                                .any(|pattern| error_msg_lower.contains(pattern))
-                            {
-                                self.metrics_collector.record_error(ErrorType::UserError);
-                            } else {
-                                self.metrics_collector.record_error(ErrorType::Other);
-                            }
+                        && let Some(error_msg) = error_obj.get("message").and_then(|m| m.as_str())
+                    {
+                        let error_msg_lower = error_msg.to_lowercase();
+                        if RATE_LIMIT_PATTERNS
+                            .iter()
+                            .any(|pattern| error_msg_lower.contains(pattern))
+                        {
+                            self.metrics_collector.record_error(ErrorType::RateLimit);
+                        } else if USER_ERROR_PATTERNS
+                            .iter()
+                            .any(|pattern| error_msg_lower.contains(pattern))
+                        {
+                            self.metrics_collector.record_error(ErrorType::UserError);
+                        } else {
+                            self.metrics_collector.record_error(ErrorType::Other);
                         }
+                    }
                 }
             }
 
@@ -277,30 +281,31 @@ impl RpcHandler {
 
         // Check JSON error response
         if let Some(json) = json_response
-            && let Some(error) = json.get("error") {
-                // Check error message
-                if let Some(message) = error.get("message").and_then(|m| m.as_str()) {
-                    let msg_lower = message.to_lowercase();
-                    if RATE_LIMIT_PATTERNS.iter().any(|pattern| msg_lower.contains(pattern)) {
-                        debug!(
-                            "Rate limit response detected by error message: {}",
-                            &msg_lower.chars().take(200).collect::<String>()
-                        );
-                        return true;
-                    }
-                }
-
-                // Check error code (some providers use specific codes for rate limiting)
-                if let Some(code) = error.get("code").and_then(|c| c.as_i64()) {
-                    match code {
-                        429 | -32005 | -32098 | -32099 => {
-                            debug!("Rate limit response detected by error code: {}", code);
-                            return true;
-                        }
-                        _ => {}
-                    }
+            && let Some(error) = json.get("error")
+        {
+            // Check error message
+            if let Some(message) = error.get("message").and_then(|m| m.as_str()) {
+                let msg_lower = message.to_lowercase();
+                if RATE_LIMIT_PATTERNS.iter().any(|pattern| msg_lower.contains(pattern)) {
+                    debug!(
+                        "Rate limit response detected by error message: {}",
+                        &msg_lower.chars().take(200).collect::<String>()
+                    );
+                    return true;
                 }
             }
+
+            // Check error code (some providers use specific codes for rate limiting)
+            if let Some(code) = error.get("code").and_then(|c| c.as_i64()) {
+                match code {
+                    429 | -32005 | -32098 | -32099 => {
+                        debug!("Rate limit response detected by error code: {}", code);
+                        return true;
+                    }
+                    _ => {}
+                }
+            }
+        }
 
         false
     }
@@ -433,7 +438,8 @@ impl RpcHandler {
                         if retry < MAX_RETRIES - 1 {
                             self.provider_manager.health_check_all().await;
                             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                            // Clear tried providers to allow retry of previously failed ones after health check
+                            // Clear tried providers to allow retry of previously failed ones after
+                            // health check
                             tried_providers.clear();
                             continue;
                         }
@@ -545,15 +551,17 @@ impl RpcHandler {
                                             provider_url, error_hash
                                         );
 
-                                        // If multiple providers return the same error, it's likely legitimate
+                                        // If multiple providers return the same error, it's likely
+                                        // legitimate
                                         if let Some((_, count)) = error_responses.get(&error_hash)
-                                            && *count >= MAX_MULTIPLE_SAME_ERROR {
-                                                debug!(
-                                                    "Multiple providers ({}) returned same error, likely legitimate",
-                                                    count
-                                                );
-                                                return Ok(response_json);
-                                            }
+                                            && *count >= MAX_MULTIPLE_SAME_ERROR
+                                        {
+                                            debug!(
+                                                "Multiple providers ({}) returned same error, likely legitimate",
+                                                count
+                                            );
+                                            return Ok(response_json);
+                                        }
 
                                         // Mark provider as failed and continue
                                         self.provider_manager
@@ -670,11 +678,11 @@ impl RpcHandler {
                         .get("blockNumber")
                         .or_else(|| param_obj.get("toBlock"))
                         .or_else(|| param_obj.get("fromBlock"))
-                        && let Some("latest" | "pending" | "earliest" | "safe" | "finalized") =
-                            block_value.as_str()
-                        {
-                            return true;
-                        }
+                    && let Some("latest" | "pending" | "earliest" | "safe" | "finalized") =
+                        block_value.as_str()
+                {
+                    return true;
+                }
             }
         }
 
@@ -735,8 +743,8 @@ mod tests {
     use tempfile::TempDir;
     use tracing::{debug, info};
     use wiremock::{
-        matchers::{method, path},
         Mock, MockServer, ResponseTemplate,
+        matchers::{method, path},
     };
 
     async fn skip_if_loopback_binds_restricted(test_name: &str) -> bool {
@@ -1114,8 +1122,9 @@ mod tests {
             "result": "response_from_server_3"
         });
 
-        // Setup expectations for non-cacheable method (eth_blockNumber) to test weighted distribution
-        // Each server should get roughly equal requests for single request calls due to weighted selection
+        // Setup expectations for non-cacheable method (eth_blockNumber) to test weighted
+        // distribution Each server should get roughly equal requests for single request
+        // calls due to weighted selection
         Mock::given(method("POST"))
             .and(path("/"))
             .respond_with(ResponseTemplate::new(200).set_body_json(&response1))

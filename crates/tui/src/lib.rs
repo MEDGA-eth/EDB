@@ -42,11 +42,11 @@ pub use ui::{
 use crossterm::{
     event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyEvent},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use eyre::{bail, Result};
+use eyre::{Result, bail};
 use futures::{FutureExt, StreamExt};
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{Terminal, backend::CrosstermBackend};
 use std::{io, sync::Arc, time::Duration};
 use tokio::{select, time::interval};
 use tracing::{debug, error, info, warn};

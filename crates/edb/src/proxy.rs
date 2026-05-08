@@ -17,10 +17,12 @@
 //! RPC Proxy management for EDB
 
 use crate::Cli;
-use eyre::{eyre, Result};
-use serde_json::{json, Value};
-use std::process::{Command, Stdio};
-use std::time::Duration;
+use eyre::{Result, eyre};
+use serde_json::{Value, json};
+use std::{
+    process::{Command, Stdio},
+    time::Duration,
+};
 use tokio::time::sleep;
 use tracing::{debug, info, warn};
 

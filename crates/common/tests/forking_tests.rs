@@ -16,9 +16,9 @@
 
 //! Forking tests.
 
-use alloy_primitives::{address, b256, U256};
+use alloy_primitives::{U256, address, b256};
 use alloy_rpc_types::Transaction;
-use edb_common::{get_tx_env_from_tx, ForkInfo};
+use edb_common::{ForkInfo, get_tx_env_from_tx};
 use revm::primitives::hardfork::SpecId;
 use tracing::{debug, info};
 

@@ -19,20 +19,20 @@
 //! This module provides ACTUAL REVM TRANSACTION EXECUTION with transact_commit()
 
 use crate::{
-    get_blob_base_fee_update_fraction_by_spec_id, get_mainnet_spec_id, provider_db::ProviderDb,
-    EdbContext, EdbDB,
+    EdbContext, EdbDB, get_blob_base_fee_update_fraction_by_spec_id, get_mainnet_spec_id,
+    provider_db::ProviderDb,
 };
-use alloy_primitives::{address, Address, TxHash, TxKind, B256, U256};
+use alloy_primitives::{Address, B256, TxHash, TxKind, U256, address};
 use alloy_provider::{Provider, ProviderBuilder};
 use alloy_rpc_types::{BlockNumberOrTag, Transaction, TransactionTrait};
 use eyre::Result;
 use indicatif::ProgressBar;
 use revm::{
+    Context, Database, DatabaseCommit, DatabaseRef, ExecuteCommitEvm, ExecuteEvm, MainBuilder,
+    MainContext,
     context::{ContextTr, TxEnv},
     context_interface::block::BlobExcessGasAndPrice,
     database::CacheDB,
-    Context, Database, DatabaseCommit, DatabaseRef, ExecuteCommitEvm, ExecuteEvm, MainBuilder,
-    MainContext,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -117,7 +117,9 @@ pub async fn fork_and_prepare(
         .await
         .map_err(|e| eyre::eyre!("Failed to get chain ID: {:?}", e))?;
     if chain_id != 1 {
-        warn!("We currently only support mainnet (chain ID 1), got {chain_id}. Use it at your own risk.");
+        warn!(
+            "We currently only support mainnet (chain ID 1), got {chain_id}. Use it at your own risk."
+        );
     }
 
     // Get the target transaction to find which block it's in
@@ -227,7 +229,10 @@ pub async fn fork_and_prepare(
 
         // Actually execute each transaction with revm
         let console_bar = Arc::new(ProgressBar::new(preceding_txs.len() as u64));
-        let template = format!("{{spinner:.green}} 🔮 Replaying blockchain history for {} [{{bar:40.cyan/blue}}] {{pos:>3}}/{{len:3}} ⛽ {{msg}}", &target_tx_hash.to_string()[2..10]);
+        let template = format!(
+            "{{spinner:.green}} 🔮 Replaying blockchain history for {} [{{bar:40.cyan/blue}}] {{pos:>3}}/{{len:3}} ⛽ {{msg}}",
+            &target_tx_hash.to_string()[2..10]
+        );
         console_bar.set_style(
             indicatif::ProgressStyle::with_template(&template)?
                 .progress_chars("🟩🟦⬜")

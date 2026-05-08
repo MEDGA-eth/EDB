@@ -86,11 +86,7 @@ impl SpinnerAnimation {
 
     /// Get the current spinner frame
     pub fn frame(&self) -> &'static str {
-        if !self.active || self.frames.is_empty() {
-            ""
-        } else {
-            self.frames[self.current_frame]
-        }
+        if !self.active || self.frames.is_empty() { "" } else { self.frames[self.current_frame] }
     }
 
     /// Check if the spinner is active
@@ -184,11 +180,7 @@ impl Spinner {
     /// Get the loading display text
     pub fn display_text(&self) -> String {
         if let Some(ref op) = self.operation {
-            if self.waiting {
-                format!("{} {}", self.spinner.frame(), op)
-            } else {
-                op.clone()
-            }
+            if self.waiting { format!("{} {}", self.spinner.frame(), op) } else { op.clone() }
         } else {
             String::new()
         }

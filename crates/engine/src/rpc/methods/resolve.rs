@@ -17,12 +17,12 @@
 use std::sync::Arc;
 
 use alloy_primitives::Address;
-use edb_common::types::{parse_callable_abi_info, CallableAbiInfo, ContractTy};
-use revm::{database::CacheDB, Database, DatabaseCommit, DatabaseRef};
+use edb_common::types::{CallableAbiInfo, ContractTy, parse_callable_abi_info};
+use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 use serde_json::Value;
 use tracing::debug;
 
-use crate::{error_codes, ContextQueryTr, EngineContext, RpcError};
+use crate::{ContextQueryTr, EngineContext, RpcError, error_codes};
 
 pub fn get_contract_abi<DB>(
     context: &Arc<EngineContext<DB>>,

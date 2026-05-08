@@ -17,13 +17,14 @@
 use std::{fmt::Display, path::PathBuf, str::FromStr};
 
 use alloy_primitives::Address;
-use eyre::{bail, eyre, Error, Result};
+use eyre::{Error, Result, bail, eyre};
 use serde::{Deserialize, Serialize};
 
 use crate::normalize_expression;
 
 /// Represents a breakpoint in the debugger with optional location and condition.
-/// A breakpoint can be set at specific code locations and optionally have conditions that must be met to trigger.
+/// A breakpoint can be set at specific code locations and optionally have conditions that must be
+/// met to trigger.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct Breakpoint {
     /// The location where the breakpoint is set (source code or opcode).
@@ -38,11 +39,7 @@ impl Display for Breakpoint {
             write!(f, "@{}", loc.display(None))?;
         }
         if let Some(cond) = &self.condition {
-            if self.loc.is_some() {
-                write!(f, " if {cond}")
-            } else {
-                write!(f, "if {cond}")
-            }
+            if self.loc.is_some() { write!(f, " if {cond}") } else { write!(f, "if {cond}") }
         } else {
             Ok(())
         }
@@ -258,16 +255,18 @@ mod tests {
         assert!(BreakpointLocation::from_str("invalid_address:42").is_err());
 
         // Invalid PC
-        assert!(BreakpointLocation::from_str(
-            "0x1234567890123456789012345678901234567890:not_a_number"
-        )
-        .is_err());
+        assert!(
+            BreakpointLocation::from_str("0x1234567890123456789012345678901234567890:not_a_number")
+                .is_err()
+        );
 
         // Invalid line number
-        assert!(BreakpointLocation::from_str(
-            "0x1234567890123456789012345678901234567890:src/main.rs:not_a_number"
-        )
-        .is_err());
+        assert!(
+            BreakpointLocation::from_str(
+                "0x1234567890123456789012345678901234567890:src/main.rs:not_a_number"
+            )
+            .is_err()
+        );
     }
 
     #[test]

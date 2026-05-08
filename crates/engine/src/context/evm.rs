@@ -18,14 +18,14 @@ use alloy_dyn_abi::{DynSolValue, FunctionExt, JsonAbiExt};
 use alloy_json_abi::Function;
 use alloy_primitives::{Address, Bytes, U256};
 use edb_common::{
-    disable_nonce_check, relax_evm_context_constraints, relax_evm_tx_constraints, DerivedContext,
+    DerivedContext, disable_nonce_check, relax_evm_context_constraints, relax_evm_tx_constraints,
 };
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use revm::{
-    context::{result::ExecutionResult, tx::TxEnvBuilder},
-    database::CacheDB,
     Context, Database, DatabaseCommit, DatabaseRef, ExecuteEvm, MainBuilder, MainContext,
     MainnetEvm,
+    context::{result::ExecutionResult, tx::TxEnvBuilder},
+    database::CacheDB,
 };
 
 use crate::EngineContext;
@@ -51,7 +51,7 @@ where
     ///
     /// Returns a configured EVM instance or None if the snapshot doesn't exist.
     fn create_evm_for_snapshot(&self, snapshot_id: usize)
-        -> Option<MainnetEvm<DerivedContext<DB>>>;
+    -> Option<MainnetEvm<DerivedContext<DB>>>;
 
     /// Send a mock transaction in a derived EVM.
     ///

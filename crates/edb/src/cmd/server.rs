@@ -18,13 +18,13 @@
 
 use alloy_primitives::TxHash;
 use axum::{
+    Router,
     extract::{
-        ws::{Message, WebSocket},
         State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
     },
     response::Response,
     routing::get,
-    Router,
 };
 use edb_common::fork_and_prepare;
 use edb_engine::Engine;
@@ -33,7 +33,7 @@ use futures::{SinkExt, StreamExt};
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use tokio::{
     select,
-    sync::{mpsc, oneshot, Mutex},
+    sync::{Mutex, mpsc, oneshot},
 };
 use tracing::{error, info, warn};
 
@@ -171,17 +171,19 @@ async fn handle_socket(socket: WebSocket, state: ServerState) {
 
         // Send response
         if let Ok(json) = serde_json::to_string(&response)
-            && let Err(e) = sender.send(Message::Text(json.into())).await {
-                error!("Failed to send response: {}", e);
-                break;
-            }
+            && let Err(e) = sender.send(Message::Text(json.into())).await
+        {
+            error!("Failed to send response: {}", e);
+            break;
+        }
 
         // If successful, track this connection and wait for close
         if let ServerResponse::Success { tx_hash, .. } = &response
-            && let Ok(tx_hash) = tx_hash.parse::<TxHash>() {
-                // Keep connection alive and track it
-                track_connection(tx_hash, &state, &mut receiver).await;
-            }
+            && let Ok(tx_hash) = tx_hash.parse::<TxHash>()
+        {
+            // Keep connection alive and track it
+            track_connection(tx_hash, &state, &mut receiver).await;
+        }
     }
 }
 
@@ -304,7 +306,8 @@ async fn track_connection(
     }
 }
 
-/// Represents messages sent to the worker thread for handling operations involving types that are not `Send`.
+/// Represents messages sent to the worker thread for handling operations involving types that are
+/// not `Send`.
 pub enum WorkerMessage {
     Replay {
         tx_hash: TxHash,

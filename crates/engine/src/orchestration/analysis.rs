@@ -24,18 +24,18 @@ use alloy_primitives::{Address, TxHash};
 use edb_common::EdbContext;
 use eyre::Result;
 use revm::{
+    Database, DatabaseCommit, DatabaseRef, InspectEvm, MainBuilder,
     context::{
-        result::{ExecutionResult, HaltReason},
         TxEnv,
+        result::{ExecutionResult, HaltReason},
     },
     database::CacheDB,
-    Database, DatabaseCommit, DatabaseRef, InspectEvm, MainBuilder,
 };
 use tracing::{debug, error, info};
 
 use crate::{
-    analysis::{analyze, AnalysisResult},
     Artifact, CallTracer, CodeTweaker, EngineConfig, TraceReplayResult,
+    analysis::{AnalysisResult, analyze},
 };
 
 /// Replay the target transaction and collect call trace with all touched addresses
@@ -55,9 +55,10 @@ where
         .map_err(|e| eyre::eyre!("Failed to inspect the target transaction: {:?}", e))?;
 
     if let ExecutionResult::Halt { reason, .. } = result
-        && matches!(reason, HaltReason::OutOfGas { .. }) {
-            error!("EDB cannot debug out-of-gas errors. Proceed at your own risk.")
-        }
+        && matches!(reason, HaltReason::OutOfGas { .. })
+    {
+        error!("EDB cannot debug out-of-gas errors. Proceed at your own risk.")
+    }
 
     let result = tracer.into_replay_result();
 
@@ -115,7 +116,10 @@ where
     for (address, recompiled_artifact) in recompiled_artifacts {
         let creation_tx_hash = tweaker.get_creation_tx(address).await?;
         if creation_tx_hash == tx_hash {
-            debug!("Skip tweaking contract {}, since it was created by the transaction under investigation", address);
+            debug!(
+                "Skip tweaking contract {}, since it was created by the transaction under investigation",
+                address
+            );
             contracts_in_tx.push(*address);
             continue;
         }

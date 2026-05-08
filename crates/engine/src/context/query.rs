@@ -17,7 +17,7 @@
 use std::collections::{HashMap, HashSet};
 
 use alloy_primitives::Address;
-use revm::{database::CacheDB, Database, DatabaseCommit, DatabaseRef};
+use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 
 use crate::EngineContext;
 

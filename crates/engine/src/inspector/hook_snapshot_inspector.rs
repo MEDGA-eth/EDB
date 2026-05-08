@@ -28,21 +28,21 @@
 use alloy_dyn_abi::{DynSolType, DynSolValue};
 use alloy_primitives::{Address, Bytes, U256};
 use edb_common::{
-    types::{CallResult, EdbSolValue, ExecutionFrameId, Trace},
     EdbContext, OpcodeTr,
+    types::{CallResult, EdbSolValue, ExecutionFrameId, Trace},
 };
 use eyre::Result;
-use foundry_compilers::{artifacts::Contract, Artifact};
+use foundry_compilers::{Artifact, artifacts::Contract};
 use revm::{
+    Database, DatabaseCommit, DatabaseRef, Inspector,
     bytecode::OpCode,
     context::{ContextTr, CreateScheme, JournalTr},
     database::CacheDB,
     interpreter::{
-        interpreter_types::{InputsTr, Jumps},
         CallInputs, CallOutcome, CreateInputs, CreateOutcome, Interpreter,
+        interpreter_types::{InputsTr, Jumps},
     },
     state::TransientStorage,
-    Database, DatabaseCommit, DatabaseRef, Inspector,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -53,9 +53,9 @@ use std::{
 use tracing::{debug, error};
 
 use crate::{
-    analysis::{dyn_sol_type, AnalysisResult, UserDefinedTypeRef, VariableRef, UVID},
-    inspector::utils::relax_gas_limit_at_callsite,
     USID,
+    analysis::{AnalysisResult, UVID, UserDefinedTypeRef, VariableRef, dyn_sol_type},
+    inspector::utils::relax_gas_limit_at_callsite,
 };
 
 /// Magic number that indicates a snapshot to be taken
@@ -180,11 +180,7 @@ where
             .iter()
             .filter_map(
                 |(frame_id, snapshot)| {
-                    if snapshot.is_some() {
-                        Some(*frame_id)
-                    } else {
-                        None
-                    }
+                    if snapshot.is_some() { Some(*frame_id) } else { None }
                 },
             )
             .collect()
@@ -859,7 +855,8 @@ where
                         usids.iter().rev().take(3).rev().map(|u| u.to_string()).collect();
 
                     if first_few.last() == last_few.first() {
-                        // Handle overlap case (shouldn't happen with take(3) for >10 items, but defensive)
+                        // Handle overlap case (shouldn't happen with take(3) for >10 items, but
+                        // defensive)
                         println!(
                             "          └─ USIDs: \x1b[36m[{} ... {} total]\x1b[0m",
                             first_few.join(", "),
@@ -891,7 +888,8 @@ where
 /// (uint, address, bool, etc.) and user-defined types (structs, enums).
 ///
 /// # Arguments
-/// * `user_defined_types` - Mapping of type IDs to user-defined type references for resolving custom types
+/// * `user_defined_types` - Mapping of type IDs to user-defined type references for resolving
+///   custom types
 /// * `variable` - The variable reference containing the declaration and type information
 /// * `data` - The ABI-encoded variable value as raw bytes
 ///

@@ -77,8 +77,9 @@ impl OpcodeHighlighter {
             (&self.patterns.opcodes, TokenType::Opcode),   // All other opcodes
             (&self.patterns.hex_addresses, TokenType::OpcodeAddress), // Hex addresses (0x...)
             (&self.patterns.hex_data, TokenType::OpcodeData), // Hex data
-            (&self.patterns.stack_positions, TokenType::OpcodeNumber), // Stack positions [0], [1], etc.
-            (&self.patterns.numbers, TokenType::OpcodeNumber),         // Decimal numbers
+            (&self.patterns.stack_positions, TokenType::OpcodeNumber), /* Stack positions [0],
+                                                            * [1], etc. */
+            (&self.patterns.numbers, TokenType::OpcodeNumber), // Decimal numbers
         ];
 
         let mut covered_ranges = Vec::new();

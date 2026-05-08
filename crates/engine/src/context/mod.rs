@@ -64,21 +64,21 @@ use std::{
 
 use alloy_primitives::{Address, TxHash};
 use edb_common::{
-    types::{parse_callable_abi_entries, Trace},
     ForkInfo,
+    types::{Trace, parse_callable_abi_entries},
 };
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use indicatif::ProgressBar;
 use once_cell::sync::OnceCell;
 use revm::{
+    Database, DatabaseCommit, DatabaseRef,
     context::{BlockEnv, CfgEnv, TxEnv},
     database::CacheDB,
-    Database, DatabaseCommit, DatabaseRef,
 };
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
-use crate::{analysis::AnalysisResult, Artifact, SnapshotDetail, Snapshots};
+use crate::{Artifact, SnapshotDetail, Snapshots, analysis::AnalysisResult};
 
 /// Complete debugging context containing all analysis results and state snapshots
 ///
@@ -226,7 +226,10 @@ where
 
         // Actually execute each transaction with revm
         let console_bar = Arc::new(ProgressBar::new(self.snapshots.len() as u64));
-        let template = format!("{{spinner:.green}} 🔮 Finalizing steps for {} [{{bar:40.cyan/blue}}] {{pos:>3}}/{{len:3}} ⛽ {{msg}}", &tx_hash.to_string()[2..10]);
+        let template = format!(
+            "{{spinner:.green}} 🔮 Finalizing steps for {} [{{bar:40.cyan/blue}}] {{pos:>3}}/{{len:3}} ⛽ {{msg}}",
+            &tx_hash.to_string()[2..10]
+        );
         console_bar.set_style(
             indicatif::ProgressStyle::with_template(&template)?
                 .progress_chars("🟩🟦⬜")
@@ -278,9 +281,10 @@ where
 
         for (snapshot_id, states) in results.into_iter() {
             if let Some((_, snapshot)) = self.snapshots.get_mut(snapshot_id)
-                && let SnapshotDetail::Hook(hook_detail) = snapshot.detail_mut() {
-                    hook_detail.state_variables = states;
-                }
+                && let SnapshotDetail::Hook(hook_detail) = snapshot.detail_mut()
+            {
+                hook_detail.state_variables = states;
+            }
         }
 
         console_bar.finish_with_message(format!(

@@ -17,9 +17,9 @@
 use std::{collections::BTreeMap, fmt::Display, sync::Arc};
 
 use crate::{
+    USID, UVID,
     analysis::{SourceAnalysis, StepKind, VariableRef},
     instrumentation::codegen,
-    USID, UVID,
 };
 
 use eyre::Result;
@@ -38,7 +38,8 @@ pub type VersionRef = Arc<Version>;
 /// The collections of modifications on a source file.
 pub struct SourceModifications {
     source_id: u32,
-    /// The modifications on the source file. The key is the location of modification in the original source code.
+    /// The modifications on the source file. The key is the location of modification in the
+    /// original source code.
     modifications: BTreeMap<usize, InstrumentAction>,
 }
 
@@ -74,7 +75,8 @@ impl SourceModifications {
                 loc <= *immediate_next_loc,
                 "modification location overlaps with next modification"
             );
-            // if both of them instrument at the same location, merge them. The later coming modification will be appended after the earlier one.
+            // if both of them instrument at the same location, merge them. The later coming
+            // modification will be appended after the earlier one.
             if *immediate_next_loc == loc {
                 immediate_next.content = if immediate_next.priority >= modification.priority {
                     InstrumentContent::Plain(format!(
@@ -118,18 +120,21 @@ impl SourceModifications {
 pub struct InstrumentAction {
     /// The source ID of the source file to instrument
     pub source_id: u32,
-    /// The location of the code to instrument. This is the offset of the code at which the instrumented code should be inserted.
+    /// The location of the code to instrument. This is the offset of the code at which the
+    /// instrumented code should be inserted.
     pub loc: usize,
     /// The code to instrument
     pub content: InstrumentContent,
-    /// The priority of the instrument action. If two `InstrumentAction`s have the same `loc`, the one with higher priority will be applied first.
+    /// The priority of the instrument action. If two `InstrumentAction`s have the same `loc`, the
+    /// one with higher priority will be applied first.
     pub priority: u8,
 }
 
 /// The content to instrument.
 #[derive(Debug, Clone)]
 pub enum InstrumentContent {
-    /// The code to instrument. The plain code can be directly inserted into the source code as a string.
+    /// The code to instrument. The plain code can be directly inserted into the source code as a
+    /// string.
     Plain(String),
     /// View method for state variables
     ViewMethod {
@@ -145,7 +150,8 @@ pub enum InstrumentContent {
         /// The number of function calls made in the step.
         function_calls: usize,
     },
-    /// A `variable_update` hook. The debugger will record the value of the variable when it is updated.
+    /// A `variable_update` hook. The debugger will record the value of the variable when it is
+    /// updated.
     VariableUpdateHook {
         /// Compiler Version
         version: VersionRef,
@@ -213,7 +219,9 @@ impl SourceModifications {
         }
     }
 
-    /// Collects the modifications to convert a statement to a block. Some control flow structures, such as if/for/while/try/catch/etc., may have their body as a single statement. We need to convert them to a block.
+    /// Collects the modifications to convert a statement to a block. Some control flow structures,
+    /// such as if/for/while/try/catch/etc., may have their body as a single statement. We need to
+    /// convert them to a block.
     fn collect_statement_to_block_modifications(
         &mut self,
         _source: &str,

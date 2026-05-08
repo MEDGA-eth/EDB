@@ -22,7 +22,7 @@
 use alloy_dyn_abi::{DynSolType, DynSolValue, JsonAbiExt};
 use alloy_json_abi::Function;
 use alloy_primitives::{Address, Bytes, FixedBytes, I256, U256};
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use std::collections::BTreeMap;
 
 /// Encode a text-form function call to bytes using the provided function ABI
@@ -36,14 +36,15 @@ use std::collections::BTreeMap;
 ///
 /// # Examples
 /// ```rust
-/// use std::collections::BTreeMap;
 /// use alloy_json_abi::Function;
+/// use std::collections::BTreeMap;
 ///
 /// let mut functions = BTreeMap::new();
 /// // functions.insert("balanceOf".to_string(), vec![balance_of_function]);
 ///
 /// // Basic function call
-/// let encoded = encode_function_call(&functions, "balanceOf(0x742d35Cc6634C0532925a3b8D6Ac6E89e86C6Ad1)")?;
+/// let encoded =
+///     encode_function_call(&functions, "balanceOf(0x742d35Cc6634C0532925a3b8D6Ac6E89e86C6Ad1)")?;
 ///
 /// // Function call with struct syntax (for tuples/structs)
 /// let encoded = encode_function_call(&functions, "submitData({user: 0x123..., amount: 100})")?;
@@ -52,7 +53,8 @@ use std::collections::BTreeMap;
 /// let encoded = encode_function_call(&functions, "submitData((0x123..., 100))")?;
 ///
 /// // Complex nested structures
-/// let encoded = encode_function_call(&functions, "complexCall({data: {nested: [1,2,3]}, value: 456})")?;
+/// let encoded =
+///     encode_function_call(&functions, "complexCall({data: {nested: [1,2,3]}, value: 456})")?;
 /// ```
 pub fn encode_function_call(
     functions: &BTreeMap<String, Vec<Function>>,
@@ -318,30 +320,31 @@ fn extract_type_cast(s: &str) -> Result<(Option<String>, &str)> {
 
     for prefix in &type_prefixes {
         if let Some(after_type) = s.strip_prefix(prefix)
-            && after_type.starts_with('(') {
-                // Find matching closing parenthesis
-                let mut depth = 0;
-                let mut end_idx = None;
+            && after_type.starts_with('(')
+        {
+            // Find matching closing parenthesis
+            let mut depth = 0;
+            let mut end_idx = None;
 
-                for (i, ch) in after_type.chars().enumerate() {
-                    match ch {
-                        '(' => depth += 1,
-                        ')' => {
-                            depth -= 1;
-                            if depth == 0 {
-                                end_idx = Some(i);
-                                break;
-                            }
+            for (i, ch) in after_type.chars().enumerate() {
+                match ch {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end_idx = Some(i);
+                            break;
                         }
-                        _ => {}
                     }
-                }
-
-                if let Some(end) = end_idx {
-                    let value = &after_type[1..end];
-                    return Ok((Some(prefix.to_string()), value));
+                    _ => {}
                 }
             }
+
+            if let Some(end) = end_idx {
+                let value = &after_type[1..end];
+                return Ok((Some(prefix.to_string()), value));
+            }
+        }
     }
 
     Ok((None, s))
@@ -560,11 +563,7 @@ fn parse_struct_syntax(inner_str: &str, types: &[DynSolType]) -> Result<DynSolVa
         let value_str = if element_str.contains(':') {
             // Split on ':' and take the value part
             let parts: Vec<&str> = element_str.splitn(2, ':').collect();
-            if parts.len() == 2 {
-                parts[1].trim()
-            } else {
-                element_str.trim()
-            }
+            if parts.len() == 2 { parts[1].trim() } else { element_str.trim() }
         } else {
             element_str.trim()
         };
@@ -885,7 +884,7 @@ mod tests {
             "batchTransfer(\
                 [0x742d35Cc6634C0532925a3b8D6Ac6E89e86C6Ad1, 0x742d35Cc6634C0532925a3b8D6Ac6E89e86C6Ad2],\
                 [100, 200]\
-            )"
+            )",
         );
         assert!(result.is_ok(), "Array parsing should work: {:?}", result.err());
 
@@ -895,7 +894,7 @@ mod tests {
             "batchTransfer(\
                 [address(0x742d35Cc6634C0532925a3b8D6Ac6E89e86C6Ad1), address(0x742d35Cc6634C0532925a3b8D6Ac6E89e86C6Ad2)],\
                 [uint256(100), uint256(200)]\
-            )"
+            )",
         );
         assert!(result.is_ok(), "Arrays with type casts should work: {:?}", result.err());
     }
@@ -1276,18 +1275,22 @@ mod tests {
         assert!(encode_function_call(&functions, "complex(123, 456)").is_ok());
 
         // Should match uint256, address version
-        assert!(encode_function_call(
-            &functions,
-            "complex(123, 0x742d35Cc6634C0532925a3b8D6Ac6E89e86C6Ad1)"
-        )
-        .is_ok());
+        assert!(
+            encode_function_call(
+                &functions,
+                "complex(123, 0x742d35Cc6634C0532925a3b8D6Ac6E89e86C6Ad1)"
+            )
+            .is_ok()
+        );
 
         // Should match tuple version
-        assert!(encode_function_call(
-            &functions,
-            "complex((123, 0x742d35Cc6634C0532925a3b8D6Ac6E89e86C6Ad1))"
-        )
-        .is_ok());
+        assert!(
+            encode_function_call(
+                &functions,
+                "complex((123, 0x742d35Cc6634C0532925a3b8D6Ac6E89e86C6Ad1))"
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -1337,7 +1340,7 @@ mod tests {
         // Test extreme negative
         let result = encode_function_call(
             &functions,
-            "zeroTest(0, -57896044618658097711785492504343953926634992332820282019728792003956564819968, 0)"
+            "zeroTest(0, -57896044618658097711785492504343953926634992332820282019728792003956564819968, 0)",
         );
         assert!(result.is_ok());
     }

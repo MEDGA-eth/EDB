@@ -20,16 +20,16 @@ use crate::{
     cache::CacheManager,
     health::HealthService,
     metrics::MetricsCollector,
-    providers::{ProviderManager, DEFAULT_MAINNET_RPCS},
+    providers::{DEFAULT_MAINNET_RPCS, ProviderManager},
     registry::EdbRegistry,
     rpc::RpcHandler,
 };
 use axum::{
+    Router,
     extract::State,
     http::{Method, StatusCode},
     response::Json,
     routing::post,
-    Router,
 };
 use eyre::Result;
 use serde_json::Value;
@@ -171,11 +171,7 @@ impl ProxyServerBuilder {
 /// ```no_run
 /// # use edb_rpc_proxy::proxy::ProxyServerBuilder;
 /// # async fn example() -> eyre::Result<()> {
-/// let proxy = ProxyServerBuilder::new()
-///     .max_cache_items(50000)
-///     .grace_period(300)
-///     .build()
-///     .await?;
+/// let proxy = ProxyServerBuilder::new().max_cache_items(50000).grace_period(300).build().await?;
 /// # Ok(())
 /// # }
 /// ```

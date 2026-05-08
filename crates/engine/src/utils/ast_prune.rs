@@ -33,7 +33,6 @@ use foundry_compilers::artifacts::{Ast, Node, NodeType, SourceUnit};
 ///    - Remove the `operations` field
 /// - If the node is an ImportDirective
 ///    - Set the `symbolAliases` as an empty array
-///
 pub struct ASTPruner {}
 
 impl ASTPruner {
@@ -116,31 +115,33 @@ impl ASTPruner {
             serde_json::Value::Object(obj) => {
                 // check for InlineAssembly nodes
                 if let Some(node_type) = obj.get("nodeType")
-                    && node_type.as_str() == Some("InlineAssembly") {
-                        // this means that the InlineAssembly node comes from older versions of
-                        // Solidity
-                        if !obj.contains_key("AST") {
-                            let ast = serde_json::json!({
-                                "nodeType": "YulBlock",
-                                "src": obj.get("src").ok_or_eyre("missing src")?.clone(),
-                                "statements": [],
-                            });
-                            obj.insert("AST".to_string(), ast);
-                        }
-
-                        // we set the externalReferences field to an empty array
-                        obj.insert("externalReferences".to_string(), serde_json::json!([]));
-
-                        // we remove the operations field
-                        obj.remove("operations");
+                    && node_type.as_str() == Some("InlineAssembly")
+                {
+                    // this means that the InlineAssembly node comes from older versions of
+                    // Solidity
+                    if !obj.contains_key("AST") {
+                        let ast = serde_json::json!({
+                            "nodeType": "YulBlock",
+                            "src": obj.get("src").ok_or_eyre("missing src")?.clone(),
+                            "statements": [],
+                        });
+                        obj.insert("AST".to_string(), ast);
                     }
+
+                    // we set the externalReferences field to an empty array
+                    obj.insert("externalReferences".to_string(), serde_json::json!([]));
+
+                    // we remove the operations field
+                    obj.remove("operations");
+                }
 
                 // check for ImportDirective nodes
                 if let Some(node_type) = obj.get("nodeType")
-                    && node_type.as_str() == Some("ImportDirective") {
-                        // we set the symbolAliases field to an empty array
-                        obj.insert("symbolAliases".to_string(), serde_json::json!([]));
-                    }
+                    && node_type.as_str() == Some("ImportDirective")
+                {
+                    // we set the symbolAliases field to an empty array
+                    obj.insert("symbolAliases".to_string(), serde_json::json!([]));
+                }
 
                 // prune documentation
                 for (field, value) in obj.iter_mut() {
@@ -172,17 +173,17 @@ pub(crate) mod test_utils {
 
     use eyre::Result;
     use foundry_compilers::{
+        CompilationError as _,
         artifacts::{
-            output_selection::OutputSelection, EvmVersion, Settings, Severity, SolcInput, Source,
-            SourceUnit, Sources,
+            EvmVersion, Settings, Severity, SolcInput, Source, SourceUnit, Sources,
+            output_selection::OutputSelection,
         },
         solc::SolcLanguage,
-        CompilationError as _,
     };
     use semver::Version;
     use std::path::PathBuf;
 
-    use crate::{find_or_install_solc, ASTPruner};
+    use crate::{ASTPruner, find_or_install_solc};
 
     /// Compile a string as Solidity source code to a SourceUnit
     pub fn compile_contract_source_to_source_unit(
@@ -228,7 +229,7 @@ mod tests {
 
     use alloy_chains::Chain;
     use alloy_primitives::Address;
-    use edb_common::{test_utils::setup_test_environment, CachePath, EdbCachePath};
+    use edb_common::{CachePath, EdbCachePath, test_utils::setup_test_environment};
     use eyre::Result;
     use foundry_block_explorers::Client;
     use semver::Version;

@@ -34,12 +34,18 @@ use paste::paste;
 /// struct MyVisitor;
 ///
 /// impl Visitor for MyVisitor {
-///     fn visit_function_definition(&mut self, _def: &FunctionDefinition) -> Result<VisitorAction> {
+///     fn visit_function_definition(
+///         &mut self,
+///         _def: &FunctionDefinition,
+///     ) -> Result<VisitorAction> {
 ///         // Skip traversing function bodies to improve performance
 ///         Ok(VisitorAction::SkipSubtree)
 ///     }
 ///
-///     fn visit_variable_declaration(&mut self, _decl: &VariableDeclaration) -> Result<VisitorAction> {
+///     fn visit_variable_declaration(
+///         &mut self,
+///         _decl: &VariableDeclaration,
+///     ) -> Result<VisitorAction> {
 ///         // Continue normal traversal
 ///         Ok(VisitorAction::Continue)
 ///     }

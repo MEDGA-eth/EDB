@@ -44,7 +44,7 @@
 use std::collections::HashMap;
 
 use edb_common::types::ExecutionFrameId;
-use revm::{database::CacheDB, Database, DatabaseCommit, DatabaseRef};
+use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 use tracing::error;
 
 use crate::{Snapshot, SnapshotDetail, Snapshots};
@@ -276,11 +276,7 @@ where
         let hook_snapshots: Vec<_> = snapshots
             .iter()
             .filter_map(|s| {
-                if let SnapshotDetail::Hook(ref hook) = s.detail {
-                    Some(hook)
-                } else {
-                    None
-                }
+                if let SnapshotDetail::Hook(ref hook) = s.detail { Some(hook) } else { None }
             })
             .collect();
 
@@ -319,11 +315,7 @@ where
         let opcode_snapshots: Vec<_> = snapshots
             .iter()
             .filter_map(|s| {
-                if let SnapshotDetail::Opcode(ref opcode) = s.detail {
-                    Some(opcode)
-                } else {
-                    None
-                }
+                if let SnapshotDetail::Opcode(ref opcode) = s.detail { Some(opcode) } else { None }
             })
             .collect();
 

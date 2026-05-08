@@ -18,12 +18,12 @@
 //! This module provides types and traits for working with the EVM context.
 
 use revm::{
+    Context, Database, DatabaseCommit, DatabaseRef,
     context::{BlockEnv, CfgEnv, TxEnv},
     database::CacheDB,
     database_interface::DBErrorMarker,
     primitives::{Address, AddressMap, B256, U256},
     state::{Account, AccountInfo, Bytecode},
-    Context, Database, DatabaseCommit, DatabaseRef,
 };
 use std::{fmt, sync::Arc};
 

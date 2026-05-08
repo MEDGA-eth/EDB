@@ -16,8 +16,10 @@
 
 //! Test utilities for integration tests
 
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 /// Path utilities for test resources
 pub mod paths {
@@ -73,7 +75,8 @@ pub mod proxy {
     }
 
     /// Configurable proxy setup based on environment variable
-    /// Set EDB_TEST_PROXY_MODE to "cache-only" to use cache-only mode, otherwise uses normal cache mode
+    /// Set EDB_TEST_PROXY_MODE to "cache-only" to use cache-only mode, otherwise uses normal cache
+    /// mode
     pub async fn setup_test_proxy_configurable(
         grace_period: u64,
     ) -> Result<String, Box<dyn std::error::Error>> {
@@ -202,8 +205,7 @@ pub mod proxy {
 pub mod logging {
     use super::*;
     use tracing::Level;
-    use tracing_subscriber::layer::SubscriberExt;
-    use tracing_subscriber::util::SubscriberInitExt;
+    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
     /// A custom tracing layer that captures error logs
     #[derive(Clone, Default)]

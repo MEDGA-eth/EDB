@@ -57,12 +57,14 @@
 //! }
 //! ```
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 use alloy_dyn_abi::DynSolValue;
 use alloy_primitives::{Address, U256};
-use eyre::{bail, Result};
+use eyre::{Result, bail};
 
 use super::*;
 
@@ -126,11 +128,7 @@ impl SimulationDebugHandler {
 
     /// Get the execution log
     pub fn get_log(&self) -> Vec<String> {
-        if let Ok(log) = self.log.lock() {
-            log.clone()
-        } else {
-            vec![]
-        }
+        if let Ok(log) = self.log.lock() { log.clone() } else { vec![] }
     }
 
     /// Clear the execution log
@@ -143,9 +141,10 @@ impl SimulationDebugHandler {
     /// Log an operation
     fn log_operation(&self, message: String) {
         if self.verbose
-            && let Ok(mut log) = self.log.lock() {
-                log.push(message);
-            }
+            && let Ok(mut log) = self.log.lock()
+        {
+            log.push(message);
+        }
     }
 
     /// Generate a plausible default value for a type hint
@@ -281,10 +280,11 @@ impl VariableHandler for SimulationDebugHandler {
         self.log_operation(format!("get_variable_value: name='{name}', snapshot_id={snapshot_id}"));
 
         if let Ok(vars) = self.variables.lock()
-            && let Some(value) = vars.get(name) {
-                self.log_operation(format!("  -> returning stored value: {value:?}"));
-                return Ok(value.clone());
-            }
+            && let Some(value) = vars.get(name)
+        {
+            self.log_operation(format!("  -> returning stored value: {value:?}"));
+            return Ok(value.clone());
+        }
 
         // Generate a plausible default based on variable name
         let default_value = self.generate_default_value(name);
@@ -343,10 +343,11 @@ impl FunctionCallHandler for SimulationDebugHandler {
         ));
 
         if let Ok(funcs) = self.functions.lock()
-            && let Some(value) = funcs.get(name) {
-                self.log_operation(format!("  -> returning stored value: {value:?}"));
-                return Ok(value.clone());
-            }
+            && let Some(value) = funcs.get(name)
+        {
+            self.log_operation(format!("  -> returning stored value: {value:?}"));
+            return Ok(value.clone());
+        }
 
         // Generate result based on function name
         let result = match name {

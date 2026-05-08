@@ -32,7 +32,7 @@
 //! Provides helper functions to create properly formatted JSON-RPC error
 //! responses with standard error codes and descriptive messages.
 
-use eyre::{eyre, Result};
+use eyre::{Result, eyre};
 use std::net::{SocketAddr, TcpListener};
 use tracing::{debug, info};
 
@@ -75,11 +75,7 @@ pub fn is_port_available(port: u16) -> bool {
 
 /// Get default RPC server port (tries 3000 first, then searches)
 pub fn get_default_rpc_port() -> Result<u16> {
-    if is_port_available(3000) {
-        Ok(3000)
-    } else {
-        find_available_port(3001)
-    }
+    if is_port_available(3000) { Ok(3000) } else { find_available_port(3001) }
 }
 
 /// Parse a socket address, with sensible defaults

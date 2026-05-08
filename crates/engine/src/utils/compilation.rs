@@ -41,9 +41,9 @@ use std::{collections::HashSet, env, path::PathBuf, sync::Mutex, thread, time::D
 use alloy_primitives::Address;
 use edb_common::{Cache, EdbCache};
 use eyre::Result;
-use foundry_block_explorers::{contract::Metadata, errors::EtherscanError, Client};
+use foundry_block_explorers::{Client, contract::Metadata, errors::EtherscanError};
 use foundry_compilers::{
-    artifacts::{output_selection::OutputSelection, Libraries, SolcInput, Source, Sources},
+    artifacts::{Libraries, SolcInput, Source, Sources, output_selection::OutputSelection},
     solc::{Solc, SolcLanguage},
 };
 use itertools::Itertools;
@@ -51,7 +51,7 @@ use once_cell::sync::Lazy;
 use semver::Version;
 use tracing::{debug, error, info, trace};
 
-use crate::{etherscan_rate_limit_guard, Artifact};
+use crate::{Artifact, etherscan_rate_limit_guard};
 
 /// Onchain compiler.
 #[derive(Debug, Clone)]
@@ -89,8 +89,8 @@ impl OnchainCompiler {
                 match etherscan_rate_limit_guard!(etherscan.contract_source_code(addr).await) {
                     Ok(meta) => meta,
                     Err(EtherscanError::ContractCodeNotVerified(_)) => {
-                        // We do not cache the fact that the contract is not verified, since it may be
-                        // verified later.
+                        // We do not cache the fact that the contract is not verified, since it may
+                        // be verified later.
                         info!(address=?addr, "contract is not verified");
                         return Ok(None);
                     }

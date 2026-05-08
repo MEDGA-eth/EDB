@@ -18,8 +18,10 @@
 //!
 //! Provides beautiful rounded borders and dynamic highlighting for focused panels
 
-use ratatui::style::{Color, Style};
-use ratatui::widgets::{Block, BorderType, Borders};
+use ratatui::{
+    style::{Color, Style},
+    widgets::{Block, BorderType, Borders},
+};
 
 /// Enhanced border styles for panels
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

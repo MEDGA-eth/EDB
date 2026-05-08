@@ -418,11 +418,13 @@ impl App {
             vec![String::new()]
         };
 
-        let datasets = vec![Dataset::default()
-            .name("Hit Rate %")
-            .marker(symbols::Marker::Braille)
-            .style(Style::default().fg(Color::Green))
-            .data(&data)];
+        let datasets = vec![
+            Dataset::default()
+                .name("Hit Rate %")
+                .marker(symbols::Marker::Braille)
+                .style(Style::default().fg(Color::Green))
+                .data(&data),
+        ];
 
         let chart = Chart::new(datasets)
             .block(Block::default().borders(Borders::ALL).title("Cache Hit Rate (%)"))
@@ -487,11 +489,13 @@ impl App {
             vec![String::new()]
         };
 
-        let datasets = vec![Dataset::default()
-            .name("Avg Response Time")
-            .marker(symbols::Marker::Braille)
-            .style(Style::default().fg(Color::Cyan))
-            .data(&data)];
+        let datasets = vec![
+            Dataset::default()
+                .name("Avg Response Time")
+                .marker(symbols::Marker::Braille)
+                .style(Style::default().fg(Color::Cyan))
+                .data(&data),
+        ];
 
         let chart = Chart::new(datasets)
             .block(Block::default().borders(Borders::ALL).title("Response Time (ms)"))

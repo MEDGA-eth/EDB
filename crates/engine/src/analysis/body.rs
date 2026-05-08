@@ -34,7 +34,8 @@ impl StatementBody {
     }
 }
 
-/// Creates a source range for a [`BlockOrStatement`]. This function will regulate the range by including the semicolon of statements.
+/// Creates a source range for a [`BlockOrStatement`]. This function will regulate the range by
+/// including the semicolon of statements.
 pub(super) fn block_or_statement_rage(
     source: &str,
     block_or_statement: &BlockOrStatement,
@@ -45,7 +46,8 @@ pub(super) fn block_or_statement_rage(
     }
 }
 
-/// Creates a source range for a [`Statement`]. This function will regulate the range by including the semicolon of statements.
+/// Creates a source range for a [`Statement`]. This function will regulate the range by including
+/// the semicolon of statements.
 pub(super) fn statement_range(source: &str, stmt: &Statement) -> SourceRange {
     macro_rules! expand_to_semicolon {
         ($stmt:expr) => {{
@@ -92,9 +94,10 @@ pub(super) fn statement_range(source: &str, stmt: &Statement) -> SourceRange {
 }
 
 impl Analyzer {
-    /// Collect single statement bodies in [`BlockOrStatement`]. If it is a block or control flow statement, it will be skipped.
-    /// Control flow statements (if/for/while/do-while) are visited separately and collect their own bodies,
-    /// so we don't collect them here to avoid duplicates.
+    /// Collect single statement bodies in [`BlockOrStatement`]. If it is a block or control flow
+    /// statement, it will be skipped. Control flow statements (if/for/while/do-while) are
+    /// visited separately and collect their own bodies, so we don't collect them here to avoid
+    /// duplicates.
     pub(super) fn collect_statement_bodies(&mut self, body: &BlockOrStatement) {
         let range = match body {
             BlockOrStatement::Statement(statement) => match statement {

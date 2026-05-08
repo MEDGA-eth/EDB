@@ -61,11 +61,7 @@ impl DisassemblyInstruction {
     /// Get the size of the immediate data for this instruction
     /// Returns 0 for non-PUSH instructions
     pub fn push_size(&self) -> usize {
-        if self.is_push() {
-            (self.opcode.get() - 0x60 + 1) as usize
-        } else {
-            0
-        }
+        if self.is_push() { (self.opcode.get() - 0x60 + 1) as usize } else { 0 }
     }
 
     /// Get the total instruction size (opcode + immediate data)
@@ -145,7 +141,8 @@ pub fn disassemble(bytecode: &Bytes) -> DisassemblyResult {
     while pc < bytecode.len() {
         let opcode_byte = bytecode[pc];
 
-        // Create the opcode - use new_unchecked for performance since we handle invalid opcodes below
+        // Create the opcode - use new_unchecked for performance since we handle invalid opcodes
+        // below
         let opcode = unsafe { OpCode::new_unchecked(opcode_byte) };
 
         // Handle PUSH instructions (PUSH1 through PUSH32)
@@ -196,7 +193,7 @@ pub fn disassemble(bytecode: &Bytes) -> DisassemblyResult {
 /// let push_inst = DisassemblyInstruction::with_push_data(
 ///     0,
 ///     unsafe { OpCode::new_unchecked(0x60) }, // PUSH1
-///     vec![0x42]
+///     vec![0x42],
 /// );
 /// assert_eq!(extract_push_value(&push_inst), 0x42);
 /// ```
@@ -232,7 +229,7 @@ pub fn extract_push_value(instruction: &DisassemblyInstruction) -> Option<U256> 
 /// let push_inst = DisassemblyInstruction::with_push_data(
 ///     10,
 ///     unsafe { OpCode::new_unchecked(0x61) }, // PUSH2
-///     vec![0x12, 0x34]
+///     vec![0x12, 0x34],
 /// );
 /// let formatted = format_instruction(&push_inst, true);
 /// assert!(formatted.contains("PUSH2"));

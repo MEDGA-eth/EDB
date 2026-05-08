@@ -19,31 +19,33 @@
 //! This panel provides a command-line interface for debugging commands.
 
 use super::{EventResponse, PanelTr, PanelType};
-use crate::data::DataManager;
-use crate::panels::utils;
-use crate::ui::borders::BorderPresets;
-use crate::ui::icons::Icons;
-use crate::ui::status::{ConnectionStatus, ExecutionStatus, StatusBar};
-use crate::ui::syntax::{SyntaxHighlighter, SyntaxType};
-use crate::{Spinner, SpinnerStyles};
+use crate::{
+    Spinner, SpinnerStyles,
+    data::DataManager,
+    panels::utils,
+    ui::{
+        borders::BorderPresets,
+        icons::Icons,
+        status::{ConnectionStatus, ExecutionStatus, StatusBar},
+        syntax::{SyntaxHighlighter, SyntaxType},
+    },
+};
 use alloy_dyn_abi::DynSolValue;
 use alloy_primitives::{Address, U256};
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use edb_common::normalize_expression;
-use edb_common::types::{
-    Breakpoint, BreakpointLocation, Code, SnapshotInfoDetail, SolValueFormatterContext,
+use edb_common::{
+    normalize_expression,
+    types::{Breakpoint, BreakpointLocation, Code, SnapshotInfoDetail, SolValueFormatterContext},
 };
-use eyre::{bail, eyre, Result};
+use eyre::{Result, bail, eyre};
 use ratatui::{
+    Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
-    Frame,
 };
-use std::collections::VecDeque;
-use std::str::FromStr;
-use std::time::Instant;
+use std::{collections::VecDeque, str::FromStr, time::Instant};
 use tracing::debug;
 
 /// Maximum number of terminal lines to keep in history
@@ -601,9 +603,10 @@ impl TerminalPanel {
 
         // Empty command will be treated as the previous command
         if command.trim().is_empty()
-            && let Some(cmd) = self.command_history.back().cloned() {
-                return self.execute_command(cmd.as_str(), dm);
-            }
+            && let Some(cmd) = self.command_history.back().cloned()
+        {
+            return self.execute_command(cmd.as_str(), dm);
+        }
 
         // Add command to terminal history
         self.add_command(command);
@@ -666,7 +669,8 @@ impl TerminalPanel {
         }
 
         if dm.execution.get_execution_status().is_waiting() {
-            // We should notifiy the user that the backend is still waiting, so they should wait as well
+            // We should notifiy the user that the backend is still waiting, so they should wait as
+            // well
             self.add_error("The backend is waiting for an execution request");
             return Ok(());
         }
@@ -1332,10 +1336,11 @@ impl TerminalPanel {
         }
 
         if let Some(pos) = self.history_position
-            && let Some(cmd) = self.command_history.get(pos) {
-                self.input_buffer = cmd.clone();
-                self.cursor_position = self.input_buffer.len();
-            }
+            && let Some(cmd) = self.command_history.get(pos)
+        {
+            self.input_buffer = cmd.clone();
+            self.cursor_position = self.input_buffer.len();
+        }
     }
 
     fn history_down(&mut self) {
@@ -1835,11 +1840,7 @@ impl TerminalPanel {
                 }
 
                 // If no tokens were found, return the original content
-                if spans.is_empty() {
-                    Line::from(content)
-                } else {
-                    Line::from(spans)
-                }
+                if spans.is_empty() { Line::from(content) } else { Line::from(spans) }
             }
             LineType::Error => {
                 // Error lines use error color without syntax highlighting
@@ -2001,7 +2002,8 @@ impl TerminalPanel {
                     styled_line
                 };
 
-                // Apply full-width highlighting to the ListItem if this is the current VIM cursor line
+                // Apply full-width highlighting to the ListItem if this is the current VIM cursor
+                // line
                 let list_item = ListItem::new(scrolled_line);
 
                 // Convert absolute vim_cursor_line to display row (EXACTLY like code panel)
@@ -2218,10 +2220,11 @@ impl PanelTr for TerminalPanel {
             KeyCode::Char('c') if event.modifiers.contains(KeyModifiers::CONTROL) => {
                 let now = Instant::now();
                 if let Some(last_time) = self.last_ctrl_c
-                    && now.duration_since(last_time).as_secs() < 2 {
-                        self.add_system("🚪 Exiting debugger (Ctrl+C double-press)...");
-                        return Ok(EventResponse::Exit);
-                    }
+                    && now.duration_since(last_time).as_secs() < 2
+                {
+                    self.add_system("🚪 Exiting debugger (Ctrl+C double-press)...");
+                    return Ok(EventResponse::Exit);
+                }
                 self.last_ctrl_c = Some(now);
                 if self.mode == TerminalMode::Insert {
                     self.input_buffer.clear();

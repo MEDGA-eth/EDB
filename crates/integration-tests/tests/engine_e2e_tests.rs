@@ -19,19 +19,14 @@
 //! This test suite uses the same analysis functions for both baseline capture and validation,
 //! eliminating any possibility of implementation discrepancies.
 
-use std::collections::HashMap;
-use std::fs;
-use std::io::ErrorKind;
-use std::time::Instant;
+use std::{collections::HashMap, fs, io::ErrorKind, time::Instant};
 
-use edb_integration_tests::rpc_test_utils::get_or_create_fixtures;
-use edb_integration_tests::rpc_test_utils::{
-    create_summary, test_transactions, BaselineMetadata, ComprehensiveBaseline,
-};
-use edb_integration_tests::test_utils::paths;
 use edb_integration_tests::{
-    rpc_test_utils::{analyze_transaction_comprehensive, get_or_create_fixture, BaselineLoader},
-    test_utils::{init, proxy},
+    rpc_test_utils::{
+        BaselineLoader, BaselineMetadata, ComprehensiveBaseline, analyze_transaction_comprehensive,
+        create_summary, get_or_create_fixture, get_or_create_fixtures, test_transactions,
+    },
+    test_utils::{init, paths, proxy},
 };
 use once_cell::sync::Lazy;
 use tokio::sync::Mutex;

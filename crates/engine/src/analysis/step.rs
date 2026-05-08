@@ -15,20 +15,20 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use foundry_compilers::artifacts::{
-    ast::SourceLocation, Expression, FunctionCall, FunctionCallKind, FunctionDefinition,
-    ModifierDefinition, Statement,
+    Expression, FunctionCall, FunctionCallKind, FunctionDefinition, ModifierDefinition, Statement,
+    ast::SourceLocation,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    VisitorAction, Walk,
     analysis::{
-        block_or_stmt_src,
+        Analyzer, AnalyzerSingleStepWalker, FunctionRef, SourceRange, StepHookLocations, UFID,
+        VariableRef, VariableScopeRef, block_or_stmt_src,
         macros::{define_ref, universal_id},
-        Analyzer, AnalyzerSingleStepWalker, FunctionRef, SourceRange, StepHookLocations,
-        VariableRef, VariableScopeRef, UFID,
     },
     find_index_of_first_statement_in_block, find_index_of_first_statement_in_block_or_statement,
-    find_next_index_of_last_statement_in_block, VisitorAction, Walk,
+    find_next_index_of_last_statement_in_block,
 };
 
 universal_id! {
@@ -251,7 +251,8 @@ impl Analyzer {
                     *do_while_statement.clone(),
                     src,
                     StepHookLocations {
-                        // the before step hook should be instrumented after the last statement of the do-while statement
+                        // the before step hook should be instrumented after the last statement of
+                        // the do-while statement
                         before_step: find_next_index_of_last_statement_in_block(
                             &self.source,
                             &do_while_statement.body
@@ -267,7 +268,8 @@ impl Analyzer {
                 let mut single_step_walker = AnalyzerSingleStepWalker { analyzer: self };
                 do_while_statement.condition.walk(&mut single_step_walker)?;
 
-                // end the do-while statement step early and then walk the body of the do-while statement.
+                // end the do-while statement step early and then walk the body of the do-while
+                // statement.
                 self.exit_current_statement_step(statement)?;
                 do_while_statement.body.walk(self)?;
 
@@ -290,11 +292,14 @@ impl Analyzer {
                     StepHookLocations {
                         // the before step hook should be instrumented before the for statement
                         before_step: src.start,
-                        // the after step hook should be instrumented before the first statement of the for statement
-                        after_step: vec![find_index_of_first_statement_in_block_or_statement(
-                            &for_statement.body
-                        )
-                        .expect("for statement first statement location not found")]
+                        // the after step hook should be instrumented before the first statement of
+                        // the for statement
+                        after_step: vec![
+                            find_index_of_first_statement_in_block_or_statement(
+                                &for_statement.body
+                            )
+                            .expect("for statement first statement location not found")
+                        ]
                     },
                     StepKind::OtherStatement
                 );
@@ -335,7 +340,8 @@ impl Analyzer {
                     StepHookLocations {
                         // the before step hook should be instrumented before the if statement
                         before_step: src.start,
-                        // the variable update hook should be instrumented before the first statement of both the true and false bodies
+                        // the variable update hook should be instrumented before the first
+                        // statement of both the true and false bodies
                         after_step: {
                             let mut locs = vec![];
                             let true_loc = find_index_of_first_statement_in_block_or_statement(
@@ -365,7 +371,8 @@ impl Analyzer {
                     self.collect_statement_bodies(false_body);
                 }
 
-                // end the if statement step early and then walk the true and false body of the if statement.
+                // end the if statement step early and then walk the true and false body of the if
+                // statement.
                 self.exit_current_statement_step(statement)?;
                 if_statement.true_body.walk(self)?;
                 if let Some(false_body) = &if_statement.false_body {
@@ -382,8 +389,8 @@ impl Analyzer {
                 //     Placeholder,
                 //     *placeholder_statement.clone(),
                 //     src,
-                //     StepHookLocations { before_step: src.start, after_step: vec![src.next_loc()] },
-                //     StepKind::PlaceholderStatement
+                //     StepHookLocations { before_step: src.start, after_step: vec![src.next_loc()]
+                // },     StepKind::PlaceholderStatement
                 // );
 
                 // // end the placeholder statement step early
@@ -402,7 +409,8 @@ impl Analyzer {
                     StepHookLocations {
                         // the before step hook should be instrumented before the try statement
                         before_step: src.start,
-                        // the variable update hook should be instrumented before the first statement in all catch blocks
+                        // the variable update hook should be instrumented before the first
+                        // statement in all catch blocks
                         after_step: try_statement
                             .clauses
                             .iter()
@@ -442,11 +450,14 @@ impl Analyzer {
                     StepHookLocations {
                         // the before step hook should be instrumented before the while statement
                         before_step: src.start,
-                        // the variable update hook should be instrumented before the first statement of the while statement
-                        after_step: vec![find_index_of_first_statement_in_block_or_statement(
-                            &while_statement.body
-                        )
-                        .expect("while statement first statement location not found")],
+                        // the variable update hook should be instrumented before the first
+                        // statement of the while statement
+                        after_step: vec![
+                            find_index_of_first_statement_in_block_or_statement(
+                                &while_statement.body
+                            )
+                            .expect("while statement first statement location not found")
+                        ],
                     },
                     StepKind::OtherStatement
                 );
@@ -492,9 +503,11 @@ impl Analyzer {
             current_function.ufid(),
             src,
             StepHookLocations {
-                // the before step hook should be instrumented before the first statement of the function
+                // the before step hook should be instrumented before the first statement of the
+                // function
                 before_step: first_stmt_loc,
-                // the variable update hook should be instrumented before the first statement of the function
+                // the variable update hook should be instrumented before the first statement of the
+                // function
                 after_step: vec![first_stmt_loc],
             },
             StepKind::Entry(current_function.clone()),
@@ -555,9 +568,11 @@ impl Analyzer {
             current_function.ufid(),
             src,
             StepHookLocations {
-                // the before step hook should be instrumented before the first statement of the modifier
+                // the before step hook should be instrumented before the first statement of the
+                // modifier
                 before_step: first_stmt_loc,
-                // the variable update hook should be instrumented before the first statement of the modifier
+                // the variable update hook should be instrumented before the first statement of the
+                // modifier
                 after_step: vec![first_stmt_loc],
             },
             StepKind::Entry(current_function.clone()),
@@ -593,39 +608,41 @@ impl Analyzer {
     /// Add a function call to the current step, if we are in a step.
     pub(super) fn add_function_call(&mut self, call: &FunctionCall) -> eyre::Result<()> {
         if let Some(step) = self.current_step.as_mut()
-            && call.kind == FunctionCallKind::FunctionCall {
-                // Determine if this should count as a function call
-                let should_count = {
-                    let step_read = step.read();
+            && call.kind == FunctionCallKind::FunctionCall
+        {
+            // Determine if this should count as a function call
+            let should_count = {
+                let step_read = step.read();
 
-                    // Corner case 1: skip if EmitStatement
-                    // In EmitStatement, an event is also considered as a function call, but we don't count it
-                    let is_emit_statement = matches!(step_read.kind, StepKind::EmitStatement);
-                    if is_emit_statement {
-                        false
+                // Corner case 1: skip if EmitStatement
+                // In EmitStatement, an event is also considered as a function call, but we don't
+                // count it
+                let is_emit_statement = matches!(step_read.kind, StepKind::EmitStatement);
+                if is_emit_statement {
+                    false
+                } else {
+                    // Corner case 2: skip built-in functions
+                    static BUILT_IN_FUNCTIONS: &[&str] = &[
+                        "require",
+                        "assert",
+                        "keccak256",
+                        "sha256",
+                        "ripemd160",
+                        "ecrecover",
+                        "type",
+                    ];
+                    if let Expression::Identifier(ref id) = call.expression {
+                        !BUILT_IN_FUNCTIONS.contains(&id.name.as_str())
                     } else {
-                        // Corner case 2: skip built-in functions
-                        static BUILT_IN_FUNCTIONS: &[&str] = &[
-                            "require",
-                            "assert",
-                            "keccak256",
-                            "sha256",
-                            "ripemd160",
-                            "ecrecover",
-                            "type",
-                        ];
-                        if let Expression::Identifier(ref id) = call.expression {
-                            !BUILT_IN_FUNCTIONS.contains(&id.name.as_str())
-                        } else {
-                            true
-                        }
+                        true
                     }
-                };
-
-                if should_count {
-                    step.write().function_calls += 1;
                 }
+            };
+
+            if should_count {
+                step.write().function_calls += 1;
             }
+        }
         Ok(())
     }
 
@@ -675,20 +692,21 @@ mod tests {
     use std::path::PathBuf;
 
     use foundry_compilers::{
+        CompilationError,
         artifacts::{
-            output_selection::OutputSelection, EvmVersion, Settings, Severity, SolcInput, Source,
-            Sources,
+            EvmVersion, Settings, Severity, SolcInput, Source, Sources,
+            output_selection::OutputSelection,
         },
         solc::SolcLanguage,
-        CompilationError,
     };
     use semver::Version;
 
     use crate::{
+        ASTPruner,
         analysis::analyzer::tests::{
-            compile_and_analyze, TEST_CONTRACT_SOURCE_ID, TEST_CONTRACT_SOURCE_PATH,
+            TEST_CONTRACT_SOURCE_ID, TEST_CONTRACT_SOURCE_PATH, compile_and_analyze,
         },
-        find_or_install_solc, source_string_at_location_unchecked, ASTPruner,
+        find_or_install_solc, source_string_at_location_unchecked,
     };
 
     use super::*;
@@ -949,7 +967,8 @@ contract TestContract {
         let func_entries = analysis.steps.iter().filter(|s| s.is_entry()).count();
         assert_eq!(func_entries, 1);
         let statement_steps = analysis.steps.iter().filter(|s| s.is_statement()).count();
-        // FIXME: when we consider the placeholder statement as a step, the number of steps will be 3
+        // FIXME: when we consider the placeholder statement as a step, the number of steps will be
+        // 3
         assert_eq!(statement_steps, 2);
     }
 
@@ -1437,12 +1456,14 @@ contract TestContract {
         // Should have: modifier entry, before statement, placeholder, after statement,
         // function entry, function statement
         let all_steps = analysis.steps.len();
-        // FIXME: when we consider the placeholder statement as a step, the number of steps will be 6
+        // FIXME: when we consider the placeholder statement as a step, the number of steps will be
+        // 6
         assert_eq!(all_steps, 5);
 
         // Verify placeholder is treated as a statement
         let statement_steps = analysis.steps.iter().filter(|s| s.is_statement()).count();
-        // FIXME: when we consider the placeholder statement as a step, the number of steps will be 4
+        // FIXME: when we consider the placeholder statement as a step, the number of steps will be
+        // 4
         assert_eq!(statement_steps, 3);
     }
 
@@ -1475,10 +1496,13 @@ contract TestContract {
             "Entry step should have exactly one after_step location"
         );
 
-        // The before_step and after_step should both be at the first statement (variable declaration)
-        // They should point to the position right before "uint256 y = x + 1;"
+        // The before_step and after_step should both be at the first statement (variable
+        // declaration) They should point to the position right before "uint256 y = x + 1;"
         let first_stmt_pos = hook_locs.after_step[0];
-        assert_eq!(hook_locs.before_step, first_stmt_pos, "For function entry, before_step and after_step[0] should be at the same position (first statement)");
+        assert_eq!(
+            hook_locs.before_step, first_stmt_pos,
+            "For function entry, before_step and after_step[0] should be at the same position (first statement)"
+        );
 
         // Verify the hook is positioned before the first statement
         let remaining_source = &source_content[first_stmt_pos..];
@@ -1726,9 +1750,11 @@ contract TestContract {
         // If we have a second after_step, it should be in the catch block
         if hook_locs.after_step.len() > 1 {
             let catch_block_snippet = &source_content[hook_locs.after_step[1]..];
-            assert!(catch_block_snippet.trim_start().starts_with("return 0"),
+            assert!(
+                catch_block_snippet.trim_start().starts_with("return 0"),
                 "Second after_step should be positioned before first statement in catch block. Found: {}",
-                &catch_block_snippet[..catch_block_snippet.find('\n').unwrap_or(50).min(50)]);
+                &catch_block_snippet[..catch_block_snippet.find('\n').unwrap_or(50).min(50)]
+            );
         }
     }
 
@@ -1768,7 +1794,8 @@ contract TestContract {
         let hook_locs = do_while_step.hook_locations();
 
         // For do-while, the step is the "while(...)" part
-        // before_step should be after the last statement in the do block (where condition check happens)
+        // before_step should be after the last statement in the do block (where condition check
+        // happens)
         let before_snippet = &source_content[hook_locs.before_step..];
         // The before_step in do-while is positioned after the body, before the while condition
         assert!(

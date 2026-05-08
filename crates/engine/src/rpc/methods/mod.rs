@@ -63,8 +63,8 @@ mod storage;
 mod trace;
 
 use super::types::RpcError;
-use crate::{error_codes, EngineContext};
-use revm::{database::CacheDB, Database, DatabaseCommit, DatabaseRef};
+use crate::{EngineContext, error_codes};
+use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 use std::sync::Arc;
 use tracing::debug;
 

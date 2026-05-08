@@ -302,9 +302,9 @@ mod tests {
             .expect("Failed to deserialize SourceInfo with special paths");
 
         assert_eq!(deserialized.sources.len(), 3);
-        assert!(deserialized
-            .sources
-            .contains_key(&PathBuf::from("contracts/Token with spaces.sol")));
+        assert!(
+            deserialized.sources.contains_key(&PathBuf::from("contracts/Token with spaces.sol"))
+        );
         assert!(deserialized.sources.contains_key(&PathBuf::from("contracts/üñîçødé.sol")));
         assert!(deserialized.sources.contains_key(&PathBuf::from("contracts/../Token.sol")));
     }

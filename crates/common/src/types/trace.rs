@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use alloy_primitives::{hex, Address, Bytes, LogData, U256};
+use alloy_primitives::{Address, Bytes, LogData, U256, hex};
 use auto_impl::auto_impl;
 use revm::{
     context::CreateScheme,
@@ -188,7 +188,8 @@ where
     }
 }
 
-/// Complete execution trace containing all call/creation entries for transaction analysis and debugging
+/// Complete execution trace containing all call/creation entries for transaction analysis and
+/// debugging
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Trace {
     /// Internal vector storing all trace entries in chronological order
@@ -358,11 +359,7 @@ impl Trace {
 
         // Add the branch connector
         let connector = if indent_level > 0 {
-            if is_last {
-                "\x1b[90m└──\x1b[0m "
-            } else {
-                "\x1b[90m├──\x1b[0m "
-            }
+            if is_last { "\x1b[90m└──\x1b[0m " } else { "\x1b[90m├──\x1b[0m " }
         } else {
             ""
         };
@@ -518,7 +515,9 @@ impl Trace {
         let max_depth = self.inner.iter().map(|e| e.depth).max().unwrap_or(0);
 
         println!("\x1b[36mSummary:\x1b[0m");
-        println!("  Total: {total} | \x1b[32mSuccess: {successful}\x1b[0m | \x1b[31mReverts: {reverted}\x1b[0m | \x1b[91mErrors: {errors}\x1b[0m | \x1b[94mCalls: {calls}\x1b[0m | \x1b[93mCreates: {creates}\x1b[0m | Depth: {max_depth}");
+        println!(
+            "  Total: {total} | \x1b[32mSuccess: {successful}\x1b[0m | \x1b[31mReverts: {reverted}\x1b[0m | \x1b[91mErrors: {errors}\x1b[0m | \x1b[94mCalls: {calls}\x1b[0m | \x1b[93mCreates: {creates}\x1b[0m | Depth: {max_depth}"
+        );
 
         if self_destructs > 0 {
             println!("  \x1b[91m💀 Self-destructs: {self_destructs}\x1b[0m");
@@ -546,11 +545,7 @@ impl Trace {
 
 /// Format an address to a shortened display format
 fn format_address_short(addr: Address) -> String {
-    if addr == Address::ZERO {
-        "0x0".to_string()
-    } else {
-        addr.to_checksum(None)
-    }
+    if addr == Address::ZERO { "0x0".to_string() } else { addr.to_checksum(None) }
 }
 
 /// Format data/input bytes to a preview format
@@ -619,7 +614,7 @@ fn format_event(event: &LogData) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy_primitives::{address, Address, Bytes, LogData, B256, U256};
+    use alloy_primitives::{Address, B256, Bytes, LogData, U256, address};
     use revm::{
         context::CreateScheme,
         interpreter::{CallScheme, InstructionResult},

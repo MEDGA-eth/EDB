@@ -212,7 +212,8 @@ pub struct RemoteMetricData {
 }
 
 impl RemoteMetricData {
-    /// Convert historical JSON data from cache and provider metrics into structured metric data points
+    /// Convert historical JSON data from cache and provider metrics into structured metric data
+    /// points
     pub fn from_history_json(cache_history: &[Value], provider_history: &[Value]) -> Vec<Self> {
         let mut metrics = Vec::new();
 

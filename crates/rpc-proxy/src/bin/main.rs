@@ -21,16 +21,15 @@
 //! network overhead for multiple debugging sessions.
 
 use clap::{Parser, Subcommand};
-use edb_common::init_file_only_logging;
-use edb_common::init_logging;
+use edb_common::{init_file_only_logging, init_logging};
 use eyre::Result;
-use std::net::IpAddr;
-use std::net::SocketAddr;
-use std::str::FromStr;
+use std::{
+    net::{IpAddr, SocketAddr},
+    str::FromStr,
+};
 use tracing::{info, warn};
 
-use edb_rpc_proxy::proxy;
-use edb_rpc_proxy::tui;
+use edb_rpc_proxy::{proxy, tui};
 
 use proxy::ProxyServerBuilder;
 
