@@ -68,20 +68,64 @@ cargo install --path crates/tui
 Debug any transaction from mainnet or testnets:
 
 ```bash
-# Debug a transaction with Terminal UI (default)
+# Debug a transaction with the Terminal UI (default)
 edb --rpc-urls <RPC_ENDPOINTS> replay 0x5bedd885ff628e935fe47dacb6065c6ac80514a85ec6444578fd1ba092904096
+
+# …or with the new browser UI
+edb --rpc-urls <RPC_ENDPOINTS> replay --ui=web 0x5bedd885ff628e935fe47dacb6065c6ac80514a85ec6444578fd1ba092904096
 ```
+
 The `RPC_ENDPOINTS` should be a comma-separated list of RPC endpoint URLs.
 EDB will utilize the RPC endpoints to obtain on-chain states to replay the transaction.
 The more RPC endpoints are provided, the faster the replay is.
 __If none is provided, EDB will default to the ten most popular public RPC endpoints, which may be slow and unreliable.__
 
-EDB will by default start a TUI debugger:
+#### Terminal UI (default)
+
+Without any extra flag, EDB launches its TUI:
+
 <p align="center">
-  <img src="resources/edb-tui.png" alt="EDB Demo" width="98%" style="border: 1px solid #ddd; border-radius: 8px;">
+  <img src="resources/edb-tui.png" alt="EDB TUI screenshot" width="98%" style="border: 1px solid #ddd; border-radius: 8px;">
 </p>
 
 Type `?` in the TUI to view the help page.
+
+#### Web UI (`--ui=web`)
+
+Pass `--ui=web` and EDB will start the engine, open your default browser, and serve a React/TypeScript SPA on the same port as the JSON-RPC server. No second listener, no extra binary — everything is bundled into the `edb` binary at compile time.
+
+<p align="center">
+  <img src="resources/edb-web.png" alt="EDB Web UI screenshot (light theme)" width="98%" style="border: 1px solid #ddd; border-radius: 8px;">
+</p>
+
+The web UI ships with:
+
+- A four-panel layout (source / call trace / variables-and-storage / Solidity REPL) with draggable splitters on desktop and a tab fallback on narrow viewports.
+- Snapshot navigation is reflected in the URL hash, so reloads and shared links keep your place.
+- A pastel light theme (`☀️`) plus a dark theme (`🌙`) you can toggle from the top bar — the choice is remembered in `localStorage`.
+- A connection indicator that polls `/health`; if the engine shuts down (`Ctrl+C`), the UI shows a "session ended" overlay instead of failing silently.
+
+<p align="center">
+  <img src="resources/edb-web-dark.png" alt="EDB Web UI screenshot (dark theme)" width="98%" style="border: 1px solid #ddd; border-radius: 8px;">
+</p>
+
+Click `?` in the top-right to see the keybindings and command reference.
+
+##### Hacking on the web UI
+
+The frontend lives in `crates/web/frontend/` (Bun + React 19 + Vite + Tailwind v4). For fast iteration without a real engine:
+
+```bash
+cd crates/web/frontend
+bun install
+bun run dev --mode=mock          # http://127.0.0.1:5173, RPC served from canned fixtures
+bun test src/                    # 94 unit/component tests
+bun run e2e                      # 3 Playwright flows against the mock dev server
+```
+
+To iterate with a real engine instead, run `edb replay <tx>` in another terminal and `bun run dev` (without `--mode=mock`) — the dev server proxies `POST /` and `GET /health` to the engine's port.
+
+If you don't have `bun` installed, set `EDB_SKIP_WEB_BUILD=1` before any `cargo` command to skip the frontend build (the resulting binary will fall back to a placeholder when `--ui=web` is requested).
 
 
 ## Why EDB?
