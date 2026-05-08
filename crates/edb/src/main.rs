@@ -21,7 +21,7 @@
 use std::env;
 
 use alloy_primitives::TxHash;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use edb_engine::EngineConfig;
 use eyre::Result;
 
@@ -70,6 +70,10 @@ pub struct Cli {
     #[command(flatten)]
     pub tui_options: TuiOptions,
 
+    /// User interface to launch after engine startup
+    #[arg(long, value_enum, default_value = "tui")]
+    pub ui: Ui,
+
     /// Command to execute
     #[command(subcommand)]
     pub command: Commands,
@@ -82,6 +86,10 @@ impl Cli {
         if !self.command.enables_tui() && self.tui_options.disable_mouse {
             tracing::warn!("--disable-mouse flag has no effect when not using TUI");
             eprintln!("Warning: --disable-mouse flag has no effect when not using TUI");
+        }
+        if !self.command.enables_tui() && self.ui == Ui::Web {
+            tracing::warn!("--ui=web only applies to commands that launch a UI (replay, test)");
+            eprintln!("Warning: --ui=web has no effect for this command");
         }
     }
 
@@ -128,6 +136,15 @@ impl Commands {
     pub fn enables_tui(&self) -> bool {
         matches!(self, Self::Replay { .. } | Self::Test { .. })
     }
+}
+
+/// Which user interface to use after engine startup
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum Ui {
+    /// Terminal UI (default)
+    Tui,
+    /// Browser UI on the engine's port
+    Web,
 }
 
 #[tokio::main]
