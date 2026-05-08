@@ -1,1 +1,39 @@
-[]
+[
+  {
+    "id": 0,
+    "kind": "CALL",
+    "code_address": "0x000000000022d473030f116ddee9f6b43ac78ba3",
+    "target_address": "0x000000000022d473030f116ddee9f6b43ac78ba3",
+    "children": [
+      {
+        "id": 1,
+        "kind": "STATICCALL",
+        "code_address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "target_address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "children": []
+      },
+      {
+        "id": 2,
+        "kind": "CALL",
+        "code_address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "target_address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "children": [
+          {
+            "id": 3,
+            "kind": "DELEGATECALL",
+            "code_address": "0x43506849d7c04f9138d1a2050bbf3a0c054402dd",
+            "target_address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "kind": "LOG",
+        "code_address": "0x000000000022d473030f116ddee9f6b43ac78ba3",
+        "target_address": "0x000000000022d473030f116ddee9f6b43ac78ba3",
+        "children": []
+      }
+    ]
+  }
+]
