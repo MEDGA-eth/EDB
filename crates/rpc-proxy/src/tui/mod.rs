@@ -53,9 +53,9 @@ where
 
     loop {
         // Handle events
-        if event::poll(Duration::from_millis(0))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
+        if event::poll(Duration::from_millis(0))?
+            && let Event::Key(key) = event::read()?
+                && key.kind == KeyEventKind::Press {
                     match key.code {
                         KeyCode::Char('q') | KeyCode::Esc => break,
                         KeyCode::Char('r') => app.refresh().await,
@@ -70,8 +70,6 @@ where
                         _ => {}
                     }
                 }
-            }
-        }
 
         // Update app state on tick
         if last_tick.elapsed() >= tick_rate {

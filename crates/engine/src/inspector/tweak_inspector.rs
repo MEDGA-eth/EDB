@@ -236,8 +236,8 @@ impl<'a> TweakInspector<'a> {
 
                 // Check if the same K value appears before CODECOPY
                 // CODECOPY typically has pattern: PUSHn <K> ... CODECOPY
-                if let Some(push_before_codecopy) = disasm.instructions.get(j - 2) {
-                    if push_before_codecopy.is_push() {
+                if let Some(push_before_codecopy) = disasm.instructions.get(j - 2)
+                    && push_before_codecopy.is_push() {
                         let Some(k2) = extract_push_value(push_before_codecopy) else { continue };
                         if k2 == k_value {
                             k_candidates.push(k_value);
@@ -245,11 +245,10 @@ impl<'a> TweakInspector<'a> {
                             break;
                         }
                     }
-                }
 
                 // Also check j-1 position for direct PUSH K CODECOPY
-                if let Some(push_before_codecopy) = disasm.instructions.get(j - 1) {
-                    if push_before_codecopy.is_push() {
+                if let Some(push_before_codecopy) = disasm.instructions.get(j - 1)
+                    && push_before_codecopy.is_push() {
                         let Some(k2) = extract_push_value(push_before_codecopy) else { continue };
                         if k2 == k_value {
                             k_candidates.push(k_value);
@@ -257,7 +256,6 @@ impl<'a> TweakInspector<'a> {
                             break;
                         }
                     }
-                }
             }
         }
 
@@ -395,8 +393,8 @@ where
         {
             if outcome.result.is_ok() {
                 // Get the deployed bytecode from the context
-                if let Some(created_address) = outcome.address {
-                    if created_address == self.target_address {
+                if let Some(created_address) = outcome.address
+                    && created_address == self.target_address {
                         // Get deployed code from outcome's output (runtime bytecode)
                         // self.deployed_code =
                         //     context.load_account_code(created_address).map(|c| c.data.clone());
@@ -407,7 +405,6 @@ where
                             outcome.result.output.len()
                         );
                     }
-                }
             } else {
                 error!(
                     "Target deployment failed for {:?}: {:?} ({:?}, Bytes: {}, Address: {:?})",

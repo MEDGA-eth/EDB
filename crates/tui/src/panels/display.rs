@@ -630,20 +630,17 @@ impl DisplayPanel {
         let mut count = 0;
 
         // Check for SSTORE/TSTORE indicator
-        if let Some(current_snapshot) = self.current_execution_snapshot {
-            if let Some(info) = dm.execution.get_snapshot_info(current_snapshot) {
+        if let Some(current_snapshot) = self.current_execution_snapshot
+            && let Some(info) = dm.execution.get_snapshot_info(current_snapshot) {
                 let prev_snapshot_id = info.prev_id();
-                if let Some(prev_info) = dm.execution.get_snapshot_info(prev_snapshot_id) {
-                    if let SnapshotInfoDetail::Opcode(detail) = prev_info.detail() {
-                        if (detail.opcode == 0x55 || detail.opcode == 0x5D)
+                if let Some(prev_info) = dm.execution.get_snapshot_info(prev_snapshot_id)
+                    && let SnapshotInfoDetail::Opcode(detail) = prev_info.detail()
+                        && (detail.opcode == 0x55 || detail.opcode == 0x5D)
                             && !detail.stack.is_empty()
                         {
                             count += 7; // SSTORE/TSTORE operation lines (simpler format)
                         }
-                    }
-                }
             }
-        }
 
         if !self.storage_changes.is_empty() {
             if count > 0 {
@@ -660,18 +657,15 @@ impl DisplayPanel {
         let mut count = 0;
 
         // Check for TSTORE indicator
-        if let Some(current_snapshot) = self.current_execution_snapshot {
-            if let Some(info) = dm.execution.get_snapshot_info(current_snapshot) {
+        if let Some(current_snapshot) = self.current_execution_snapshot
+            && let Some(info) = dm.execution.get_snapshot_info(current_snapshot) {
                 let prev_snapshot_id = info.prev_id();
-                if let Some(prev_info) = dm.execution.get_snapshot_info(prev_snapshot_id) {
-                    if let SnapshotInfoDetail::Opcode(detail) = prev_info.detail() {
-                        if detail.opcode == 0x5D && !detail.stack.is_empty() {
+                if let Some(prev_info) = dm.execution.get_snapshot_info(prev_snapshot_id)
+                    && let SnapshotInfoDetail::Opcode(detail) = prev_info.detail()
+                        && detail.opcode == 0x5D && !detail.stack.is_empty() {
                             count += 5; // TSTORE operation lines (simpler format)
                         }
-                    }
-                }
             }
-        }
 
         if !self.transient_storage.is_empty() {
             if count > 0 {
@@ -1080,8 +1074,8 @@ impl DisplayPanel {
                 }
             }
             DisplayMode::Expressions => {
-                if let Some(entry) = self.expressions.get_mut(self.selected_index) {
-                    if let Some(expr) = &entry.expression {
+                if let Some(entry) = self.expressions.get_mut(self.selected_index)
+                    && let Some(expr) = &entry.expression {
                         // Toggle the multi-line state
                         entry.is_multi_line = !entry.is_multi_line;
 
@@ -1092,7 +1086,6 @@ impl DisplayPanel {
                             self.multi_line_expressions.remove(expr);
                         }
                     }
-                }
             }
             _ => {}
         }

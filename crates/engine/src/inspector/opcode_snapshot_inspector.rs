@@ -766,7 +766,9 @@ fn check_memory_consistency(origin: &[u8], reference: &[u8]) -> bool {
     }
 
     // Check if extra bytes in longer slice are all zeros
-    if let Some((i, &byte)) = longer[shorter.len()..].iter().enumerate().find(|(_, &b)| b != 0) {
+    if let Some((i, &byte)) =
+        longer[shorter.len()..].iter().enumerate().find(|&(_, b)| *b != 0)
+    {
         let absolute_idx = shorter.len() + i;
         debug!(
             "Memory length mismatch at byte {}: expected a padding 0, got {:02x}",

@@ -277,11 +277,10 @@ where
         }
 
         for (snapshot_id, states) in results.into_iter() {
-            if let Some((_, snapshot)) = self.snapshots.get_mut(snapshot_id) {
-                if let SnapshotDetail::Hook(ref mut hook_detail) = snapshot.detail_mut() {
+            if let Some((_, snapshot)) = self.snapshots.get_mut(snapshot_id)
+                && let SnapshotDetail::Hook(hook_detail) = snapshot.detail_mut() {
                     hook_detail.state_variables = states;
                 }
-            }
         }
 
         console_bar.finish_with_message(format!(

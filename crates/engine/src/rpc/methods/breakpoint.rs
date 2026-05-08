@@ -225,11 +225,11 @@ where
         // No location specified in breakpoint, match any
         (_, None) => true,
         (
-            SnapshotDetail::Opcode(ref detail),
+            SnapshotDetail::Opcode(detail),
             Some(BreakpointLocation::Opcode { bytecode_address, pc }),
         ) => detail.bytecode_address == *bytecode_address && detail.pc == *pc,
         (
-            SnapshotDetail::Hook(ref detail),
+            SnapshotDetail::Hook(detail),
             Some(BreakpointLocation::Source { bytecode_address, line_number, file_path }),
         ) => {
             if detail.bytecode_address != *bytecode_address {

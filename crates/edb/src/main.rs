@@ -146,7 +146,11 @@ async fn main() -> Result<()> {
 
     if let Some(cache_dir) = &cli.cache_dir {
         tracing::info!("Using cache directory: {cache_dir}");
-        env::set_var(edb_common::env::EDB_CACHE_DIR, cache_dir);
+        // SAFETY: edition 2024 marks env::set_var as unsafe (RFC 3445); this runs at startup
+        // before any threads that read the env have been spawned.
+        unsafe {
+            env::set_var(edb_common::env::EDB_CACHE_DIR, cache_dir);
+        }
     }
 
     // Set up RPC endpoint (proxy or direct)

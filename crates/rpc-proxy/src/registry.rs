@@ -218,8 +218,8 @@ impl EdbRegistry {
                 }
 
                 // Check if grace period has expired (0 means no auto-shutdown)
-                if grace_period > 0 {
-                    if let Some(start_time) = *grace_start {
+                if grace_period > 0
+                    && let Some(start_time) = *grace_start {
                         let now = SystemTime::now()
                             .duration_since(UNIX_EPOCH)
                             .unwrap_or_default()
@@ -230,7 +230,6 @@ impl EdbRegistry {
                             let _ = self.shutdown_tx.send(());
                         }
                     }
-                }
             }
         }
     }

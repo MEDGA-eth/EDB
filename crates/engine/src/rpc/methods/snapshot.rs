@@ -91,7 +91,7 @@ where
     })?;
 
     let snapshot_info = match snapshot.detail() {
-        SnapshotDetail::Opcode(ref opcode_snapshot) => {
+        SnapshotDetail::Opcode(opcode_snapshot) => {
             // For opcode snapshots, return complete execution state
             SnapshotInfo {
                 id: snapshot.id(),
@@ -120,7 +120,7 @@ where
                 }),
             }
         }
-        SnapshotDetail::Hook(ref hook_snapshot) => {
+        SnapshotDetail::Hook(hook_snapshot) => {
             // For hook snapshots, get source location from analysis results
             let bytecode_address = trace_entry.code_address;
             let usid = hook_snapshot.usid;

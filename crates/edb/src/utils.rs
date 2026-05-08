@@ -53,13 +53,12 @@ pub fn find_binary(name: &str) -> Result<PathBuf> {
     // Try to find it in PATH
     #[cfg(unix)]
     {
-        if let Ok(output) = Command::new("which").arg(name).output() {
-            if output.status.success() {
+        if let Ok(output) = Command::new("which").arg(name).output()
+            && output.status.success() {
                 let path = String::from_utf8(output.stdout)?.trim().to_string();
                 debug!("Found {} in PATH at {}", name, path);
                 return Ok(PathBuf::from(path));
             }
-        }
     }
 
     #[cfg(windows)]

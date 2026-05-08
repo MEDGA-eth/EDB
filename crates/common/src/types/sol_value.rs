@@ -229,7 +229,7 @@ impl SolValueFormatter for DynSolValue {
         ctx: &SolValueFormatterContext,
         indent_level: usize,
     ) -> String {
-        let value_str = match self {
+        match self {
             Self::Bool(b) => b.to_string(),
 
             Self::Int(n, bits) => {
@@ -311,9 +311,7 @@ impl SolValueFormatter for DynSolValue {
                     format_custom_struct(name, prop_names, tuple, ctx, indent_level)
                 }
             }
-        };
-
-        value_str
+        }
     }
 
     fn format_type(&self) -> String {

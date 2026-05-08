@@ -515,11 +515,10 @@ Press '\' to turn off Mouse Mode and re-enable text selection."#;
                     } else {
                         // Find a good break point (prefer breaking at spaces)
                         let mut break_point = content_width;
-                        if let Some(space_pos) = remaining[..content_width].rfind(' ') {
-                            if space_pos > content_width / 2 {
+                        if let Some(space_pos) = remaining[..content_width].rfind(' ')
+                            && space_pos > content_width / 2 {
                                 break_point = space_pos;
                             }
-                        }
 
                         wrapped_lines.push(remaining[..break_point].to_string());
                         remaining = remaining[break_point..].trim_start();
@@ -974,8 +973,8 @@ Press '\' to turn off Mouse Mode and re-enable text selection."#;
         }
 
         // Show intuitive, contextual feedback in terminal
-        if let Some(terminal_panel) = self.panels.get_mut(&PanelType::Terminal) {
-            if let Some(terminal) = terminal_panel.as_any_mut().downcast_mut::<TerminalPanel>() {
+        if let Some(terminal_panel) = self.panels.get_mut(&PanelType::Terminal)
+            && let Some(terminal) = terminal_panel.as_any_mut().downcast_mut::<TerminalPanel>() {
                 let message = match direction {
                     ResizeDirection::Left => format!(
                         "Left panels narrowed to {}% (right panels expanded to {}%)",
@@ -1000,7 +999,6 @@ Press '\' to turn off Mouse Mode and re-enable text selection."#;
                 };
                 terminal.add_system(&message);
             }
-        }
     }
 
     /// Handle terminal resize
@@ -1050,19 +1048,17 @@ Press '\' to turn off Mouse Mode and re-enable text selection."#;
             }
             MouseEventKind::ScrollUp => {
                 // Handle scroll up - move selection up
-                if let Some(panel) = self.panels.get_mut(&self.current_panel) {
-                    if let Err(e) = panel.handle_mouse_event(event, data_manager) {
+                if let Some(panel) = self.panels.get_mut(&self.current_panel)
+                    && let Err(e) = panel.handle_mouse_event(event, data_manager) {
                         self.popup = Some(PopupType::Error(format!("{e}")));
                     }
-                }
             }
             MouseEventKind::ScrollDown => {
                 // Handle scroll down - move selection down
-                if let Some(panel) = self.panels.get_mut(&self.current_panel) {
-                    if let Err(e) = panel.handle_mouse_event(event, data_manager) {
+                if let Some(panel) = self.panels.get_mut(&self.current_panel)
+                    && let Err(e) = panel.handle_mouse_event(event, data_manager) {
                         self.popup = Some(PopupType::Error(format!("{e}")));
                     }
-                }
             }
             _ => {}
         }

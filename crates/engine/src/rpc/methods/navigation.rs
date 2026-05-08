@@ -136,11 +136,11 @@ where
     <DB as Database>::Error: Clone + Send + Sync,
 {
     match snapshot.detail() {
-        SnapshotDetail::Opcode(ref s) => {
+        SnapshotDetail::Opcode(s) => {
             let op = unsafe { OpCode::new_unchecked(s.opcode) };
             Ok(op.is_message_call())
         }
-        SnapshotDetail::Hook(ref s) => {
+        SnapshotDetail::Hook(s) => {
             let usid = s.usid;
             let address = context.get_bytecode_address(s_id).ok_or_else(|| RpcError {
                 code: error_codes::TRACE_ENTRY_NOT_FOUND,

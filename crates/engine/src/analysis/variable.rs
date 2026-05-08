@@ -378,24 +378,20 @@ impl Analyzer {
         fn get_varaiable(this: &Analyzer, expr: &Expression) -> Option<VariableRef> {
             match expr {
                 Expression::Identifier(identifier) => {
-                    if let Some(declaration_id) = &identifier.referenced_declaration {
-                        if declaration_id >= &0 {
-                            if let Some(variable) = this.variables.get(&(*declaration_id as usize))
+                    if let Some(declaration_id) = &identifier.referenced_declaration
+                        && declaration_id >= &0
+                            && let Some(variable) = this.variables.get(&(*declaration_id as usize))
                             {
                                 return Some(variable.clone());
                             }
-                        }
-                    }
                     None
                 }
                 Expression::IndexAccess(index_access) => {
                     if let Some(base_variable) = get_varaiable(this, &index_access.base_expression)
-                    {
-                        if let Some(index) = &index_access.index_expression {
+                        && let Some(index) = &index_access.index_expression {
                             let var = Variable::Index { base: base_variable, index: index.clone() };
                             return Some(var.into());
                         }
-                    }
                     None
                 }
                 Expression::IndexRangeAccess(index_range_access) => {

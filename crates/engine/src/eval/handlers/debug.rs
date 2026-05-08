@@ -142,11 +142,10 @@ impl SimulationDebugHandler {
 
     /// Log an operation
     fn log_operation(&self, message: String) {
-        if self.verbose {
-            if let Ok(mut log) = self.log.lock() {
+        if self.verbose
+            && let Ok(mut log) = self.log.lock() {
                 log.push(message);
             }
-        }
     }
 
     /// Generate a plausible default value for a type hint
@@ -281,12 +280,11 @@ impl VariableHandler for SimulationDebugHandler {
     fn get_variable_value(&self, name: &str, snapshot_id: usize) -> Result<DynSolValue> {
         self.log_operation(format!("get_variable_value: name='{name}', snapshot_id={snapshot_id}"));
 
-        if let Ok(vars) = self.variables.lock() {
-            if let Some(value) = vars.get(name) {
+        if let Ok(vars) = self.variables.lock()
+            && let Some(value) = vars.get(name) {
                 self.log_operation(format!("  -> returning stored value: {value:?}"));
                 return Ok(value.clone());
             }
-        }
 
         // Generate a plausible default based on variable name
         let default_value = self.generate_default_value(name);
@@ -344,12 +342,11 @@ impl FunctionCallHandler for SimulationDebugHandler {
             "call_function: name='{name}', args=[{args_str}], callee={callee_str}, snapshot_id={snapshot_id}"
         ));
 
-        if let Ok(funcs) = self.functions.lock() {
-            if let Some(value) = funcs.get(name) {
+        if let Ok(funcs) = self.functions.lock()
+            && let Some(value) = funcs.get(name) {
                 self.log_operation(format!("  -> returning stored value: {value:?}"));
                 return Ok(value.clone());
             }
-        }
 
         // Generate result based on function name
         let result = match name {
