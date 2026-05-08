@@ -211,4 +211,4 @@ jobs:
 
       - name: Run frontend tests
         working-directory: crates/web/frontend
-        run: bun test --coverage
+        run: bun test src/ --coverage
