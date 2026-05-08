@@ -1,10 +1,11 @@
+//! EDB web build script.
+//
 // EDB - Ethereum Debugger
 // Copyright (C) 2024 Zhuo Zhang and Wuqi Zhang
 //
 // SPDX-License-Identifier: AGPL-3.0-only
 
-#![allow(missing_docs)]
-
+/// Build script entry point — populated in Task 2.
 fn main() {
     // Real implementation in Task 2.
 }
