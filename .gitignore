@@ -125,3 +125,11 @@ logs/
 
 # CLAUDE.md should be tracked
 !CLAUDE.md
+
+# edb-web
+crates/web/frontend/node_modules/
+crates/web/frontend/dist/
+crates/web/frontend/.bun/
+crates/web/frontend/coverage/
+crates/web/frontend/playwright-report/
+crates/web/frontend/test-results/
