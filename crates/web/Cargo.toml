@@ -16,8 +16,8 @@ workspace = true
 
 [dependencies]
 axum = { workspace = true }
-mime_guess = "2"
-rust-embed = "8"
+mime_guess = { workspace = true }
+rust-embed = { workspace = true }
 tower = { workspace = true }
 
 [dev-dependencies]
