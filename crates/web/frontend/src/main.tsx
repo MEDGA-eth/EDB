@@ -8,10 +8,16 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: Infinity, retry: false, refetchOnWindowFocus: false } },
 });
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
-  </StrictMode>,
-);
+const rootEl = document.getElementById('root');
+if (rootEl) {
+  createRoot(rootEl).render(
+    <StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+} else {
+  // eslint-disable-next-line no-console
+  console.error('edb-web: #root element not found; mounting skipped.');
+}

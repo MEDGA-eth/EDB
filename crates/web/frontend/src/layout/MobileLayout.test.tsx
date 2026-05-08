@@ -14,6 +14,8 @@ const snapshot = {
   bytecode_address: '0x' + '0'.repeat(40),
   detail: {
     kind: 'Opcode',
+    id: 0,
+    frame_id: { trace_entry_id: 0, step_id: 0 },
     pc: 0,
     opcode: 0x00,
     memory: [],

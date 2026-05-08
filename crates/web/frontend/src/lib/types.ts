@@ -27,7 +27,12 @@ export const ExecutionFrameId = z.object({
 });
 export type ExecutionFrameId = z.infer<typeof ExecutionFrameId>;
 
+/**
+ * Mirrors `OpcodeSnapshotInfoDetail` in `crates/common/src/types/snapshot.rs`.
+ * The engine emits this for low-level (opcode) snapshots.
+ */
 export const OpcodeSnapshotDetail = z.object({
+  kind: z.literal('Opcode'),
   id: z.number().int().nonnegative(),
   frame_id: ExecutionFrameId,
   pc: z.number().int().nonnegative(),
@@ -37,21 +42,37 @@ export const OpcodeSnapshotDetail = z.object({
   calldata: z.array(z.number()),
   transient_storage: z.record(z.string(), z.string()),
 });
+export type OpcodeSnapshotDetail = z.infer<typeof OpcodeSnapshotDetail>;
 
+/**
+ * Mirrors `HookSnapshotInfoDetail` in `crates/common/src/types/snapshot.rs`.
+ * The engine emits this for source-level (hook) snapshots. Note that
+ * `bytecode_address` lives at the top-level `SnapshotInfo`, NOT here, and
+ * `usid` is not part of the wire format.
+ */
 export const HookSnapshotDetail = z.object({
-  usid: z.union([z.number(), z.bigint(), z.string()]).transform(String),
-  bytecode_address: Address,
-  source_path: z.string().optional(),
-  source_offset: z.number().int().nonnegative().optional(),
-  source_length: z.number().int().nonnegative().optional(),
-  locals: z.unknown().optional(),
-  state_variables: z.unknown().optional(),
+  kind: z.literal('Hook'),
+  id: z.number().int().nonnegative(),
+  frame_id: ExecutionFrameId,
+  /** Source file path where execution is currently positioned. */
+  path: z.string(),
+  /** Character offset within the source file. */
+  offset: z.number().int().nonnegative(),
+  /** Length of the current source code segment. */
+  length: z.number().int().nonnegative(),
+  /** Local variables; engine returns `Option<EdbSolValue>` per name. */
+  locals: z.record(z.string(), z.unknown()),
+  /** State variables at the bytecode address. */
+  state_variables: z.record(z.string(), z.unknown()),
 });
+export type HookSnapshotDetail = z.infer<typeof HookSnapshotDetail>;
 
-export const SnapshotInfoDetail = z.union([
-  z.object({ kind: z.literal('Opcode') }).merge(OpcodeSnapshotDetail.partial()),
-  z.object({ kind: z.literal('Hook') }).merge(HookSnapshotDetail.partial()),
+/** Discriminated union over `kind`. */
+export const SnapshotInfoDetail = z.discriminatedUnion('kind', [
+  OpcodeSnapshotDetail,
+  HookSnapshotDetail,
 ]);
+export type SnapshotInfoDetail = z.infer<typeof SnapshotInfoDetail>;
 
 export const SnapshotInfo = z.object({
   id: z.number().int().nonnegative(),

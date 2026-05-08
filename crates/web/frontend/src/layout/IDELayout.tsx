@@ -17,6 +17,11 @@ import { CommandPalette } from '../components/CommandPalette';
 import { useGlobalKeybinds } from '../hooks/useGlobalKeybinds';
 import { useSession, type ActivityKind } from '../store/session';
 
+/** Subset of dockview's `IDisposable` we care about. */
+interface Disposable {
+  dispose(): void;
+}
+
 const SIDEBAR_WIDTH = 280;
 const ACTIVITY_WIDTH = 48;
 const LAYOUT_KEY = 'edb-web:layout';
@@ -31,6 +36,7 @@ const editorComponents: Record<string, React.FunctionComponent<IDockviewPanelPro
 
 function EditorArea() {
   const apiRef = useRef<DockviewApi | null>(null);
+  const disposablesRef = useRef<Disposable[]>([]);
   const openFiles = useSession((s) => s.openFiles);
   const activeFileId = useSession((s) => s.activeFileId);
   const setActiveFile = useSession((s) => s.setActiveFile);
@@ -38,16 +44,34 @@ function EditorArea() {
 
   const onReady = (event: DockviewReadyEvent) => {
     apiRef.current = event.api;
-    // mirror tab-activations + closes back into the store
-    event.api.onDidActivePanelChange((p) => {
-      if (p) setActiveFile(p.id);
-    });
-    event.api.onDidRemovePanel((p) => {
-      // if dockview removed it via the close button, drop from store too
-      const stillOpen = useSession.getState().openFiles.some((f) => f.id === p.id);
-      if (stillOpen) closeFile(p.id);
-    });
+    // mirror tab-activations + closes back into the store. Capture the
+    // returned disposables so we can detach them on unmount (otherwise
+    // StrictMode-induced double-mounts in dev double-subscribe).
+    disposablesRef.current.push(
+      event.api.onDidActivePanelChange((p) => {
+        if (p) setActiveFile(p.id);
+      }),
+      event.api.onDidRemovePanel((p) => {
+        // if dockview removed it via the close button, drop from store too
+        const stillOpen = useSession.getState().openFiles.some((f) => f.id === p.id);
+        if (stillOpen) closeFile(p.id);
+      }),
+    );
   };
+
+  // Dispose dockview event subscriptions when the EditorArea unmounts.
+  useEffect(() => {
+    return () => {
+      for (const d of disposablesRef.current) {
+        try {
+          d.dispose();
+        } catch {
+          // ignore
+        }
+      }
+      disposablesRef.current = [];
+    };
+  }, []);
 
   // reconcile dockview panels with store openFiles
   useEffect(() => {
@@ -121,6 +145,7 @@ const bottomComponents: Record<string, React.FunctionComponent<IDockviewPanelPro
 
 function BottomArea() {
   const apiRef = useRef<DockviewApi | null>(null);
+  const disposablesRef = useRef<Disposable[]>([]);
   const setLayoutJson = useSession((s) => s.setLayoutJson);
 
   const onReady = (event: DockviewReadyEvent) => {
@@ -138,33 +163,57 @@ function BottomArea() {
       }
     }
     if (!restored) {
-      api.addPanel({ id: 'trace', component: 'trace', title: 'Trace' });
-      api.addPanel({
-        id: 'display',
-        component: 'display',
-        title: 'Display',
-        position: { referencePanel: 'trace', direction: 'within' },
-      });
-      api.addPanel({
-        id: 'terminal',
-        component: 'terminal',
-        title: 'Terminal',
-        position: { referencePanel: 'trace', direction: 'within' },
-      });
+      // Idempotent: under React 19 StrictMode, `onReady` runs twice in dev.
+      // Skip any default panel that already exists from the previous mount.
+      if (!api.getPanel('trace')) {
+        api.addPanel({ id: 'trace', component: 'trace', title: 'Trace' });
+      }
+      if (!api.getPanel('display')) {
+        api.addPanel({
+          id: 'display',
+          component: 'display',
+          title: 'Display',
+          position: { referencePanel: 'trace', direction: 'within' },
+        });
+      }
+      if (!api.getPanel('terminal')) {
+        api.addPanel({
+          id: 'terminal',
+          component: 'terminal',
+          title: 'Terminal',
+          position: { referencePanel: 'trace', direction: 'within' },
+        });
+      }
       // make Trace the visible tab
       api.getPanel('trace')?.api.setActive();
     }
 
-    api.onDidLayoutChange(() => {
-      try {
-        const json = JSON.stringify(api.toJSON());
-        setLayoutJson(json);
-        localStorage.setItem(LAYOUT_KEY, json);
-      } catch {
-        // ignore
-      }
-    });
+    disposablesRef.current.push(
+      api.onDidLayoutChange(() => {
+        try {
+          const json = JSON.stringify(api.toJSON());
+          setLayoutJson(json);
+          localStorage.setItem(LAYOUT_KEY, json);
+        } catch {
+          // ignore
+        }
+      }),
+    );
   };
+
+  // Dispose dockview event subscriptions when BottomArea unmounts.
+  useEffect(() => {
+    return () => {
+      for (const d of disposablesRef.current) {
+        try {
+          d.dispose();
+        } catch {
+          // ignore
+        }
+      }
+      disposablesRef.current = [];
+    };
+  }, []);
 
   return (
     <DockviewReact

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useSession } from '../store/session';
 import { useSnapshotCount } from '../hooks/useSnapshotCount';
 import { ConnectionIndicator } from '../components/ConnectionIndicator';
@@ -9,21 +9,35 @@ export function StatusBar() {
   const id = useSession((s) => s.currentSnapshotId);
   const setId = useSession((s) => s.setSnapshotId);
   const { data: count } = useSnapshotCount();
+  // True while a programmatic hash write is pending, so the resulting
+  // `hashchange` event doesn't echo back into the store.
+  const skipNextHashRef = useRef(false);
 
   // hash <-> store binding (formerly in TopBar)
   useEffect(() => {
     const fromHash = parseInt((window.location.hash ?? '').replace(/^#/, ''), 10);
     if (Number.isFinite(fromHash)) setId(fromHash);
     const onHash = () => {
+      if (skipNextHashRef.current) {
+        // Consume the echo from our own write and stop.
+        skipNextHashRef.current = false;
+        return;
+      }
       const next = parseInt(window.location.hash.replace(/^#/, ''), 10);
-      if (Number.isFinite(next)) setId(next);
+      if (!Number.isFinite(next)) return;
+      // Only update the store if the hash genuinely differs — guards
+      // against rapid-navigation echo loops under StrictMode.
+      if (useSession.getState().currentSnapshotId !== next) setId(next);
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, [setId]);
 
   useEffect(() => {
-    window.location.hash = String(id);
+    const target = String(id);
+    if (window.location.hash.replace(/^#/, '') === target) return;
+    skipNextHashRef.current = true;
+    window.location.hash = target;
   }, [id]);
 
   return (

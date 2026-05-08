@@ -24,6 +24,17 @@ export class SchemaError extends Error {
 let nextId = 1;
 const ENDPOINT = '/';
 
+/**
+ * Raw JSON-RPC call — the response body is **not** validated against any
+ * schema; the caller gets back whatever the server returned, typed as `T`.
+ *
+ * Prefer {@link rpc} for typed flows, which runs a Zod schema on the
+ * response and throws {@link SchemaError} on mismatches. Callers that
+ * intentionally want unvalidated bytes (e.g. the eval terminal, where
+ * the server returns rich SolValues we render opaquely; or the
+ * healthcheck probe, which inspects the raw status field directly)
+ * may use this entrypoint, but they take on the risk of malformed data.
+ */
 export async function rpcRaw<T = unknown>(method: string, params?: unknown[]): Promise<T> {
   let res: Response;
   try {

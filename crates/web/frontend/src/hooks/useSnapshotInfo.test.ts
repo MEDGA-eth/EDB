@@ -10,7 +10,17 @@ const sample = {
   prev_id: 0,
   target_address: '0x' + '0'.repeat(40),
   bytecode_address: '0x' + '0'.repeat(40),
-  detail: { kind: 'Opcode' },
+  detail: {
+    kind: 'Opcode',
+    id: 0,
+    frame_id: { trace_entry_id: 0, step_id: 0 },
+    pc: 0,
+    opcode: 0x60,
+    memory: [],
+    stack: [],
+    calldata: [],
+    transient_storage: {},
+  },
 };
 
 describe('useSnapshotInfo', () => {
