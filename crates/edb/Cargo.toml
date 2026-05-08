@@ -23,6 +23,7 @@ workspace = true
 edb-common.workspace = true
 edb-engine.workspace = true
 edb-tui.workspace = true
+edb-web.workspace = true
 
 # alloy - using individual crates like Foundry does
 alloy-primitives = { workspace = true, features = ["getrandom", "rand"] }
@@ -44,6 +45,9 @@ tokio-tungstenite.workspace = true
 
 # cli
 clap = { workspace = true, features = ["default", "derive", "env"] }
+
+# web
+webbrowser.workspace = true
 
 # misc
 dotenv.workspace = true

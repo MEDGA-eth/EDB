@@ -167,6 +167,9 @@ ratatui = "0.30"
 # cli
 clap = "4"
 
+# web browser
+webbrowser = "1"
+
 # misc
 auto_impl = "1"
 chrono = "0.4"
