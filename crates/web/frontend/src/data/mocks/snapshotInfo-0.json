@@ -7,11 +7,11 @@
   "bytecode_address": "0x000000000022d473030f116ddee9f6b43ac78ba3",
   "detail": {
     "kind": "Hook",
-    "usid": "vault::deposit::3",
-    "bytecode_address": "0x000000000022d473030f116ddee9f6b43ac78ba3",
-    "source_path": "src/Vault.sol",
-    "source_offset": 612,
-    "source_length": 67,
+    "id": 0,
+    "frame_id": { "trace_entry_id": 0, "step_id": 0 },
+    "path": "src/Vault.sol",
+    "offset": 612,
+    "length": 67,
     "locals": {
       "amount": "0x056bc75e2d63100000",
       "supply": "0x152d02c7e14af6800000",
