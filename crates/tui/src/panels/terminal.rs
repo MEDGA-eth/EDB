@@ -362,7 +362,7 @@ impl PendingCommand {
                     .as_ref()
                     .map_err(|e| eyre!("{e}"))?;
 
-                if let DynSolValue::Uint(ref v, _) = &**value {
+                if let DynSolValue::Uint(v, _) = &**value {
                     Ok(utils::format_value_with_decode(v))
                 } else {
                     bail!("Expression evaluation did not return a uint value")
@@ -600,11 +600,10 @@ impl TerminalPanel {
         }
 
         // Empty command will be treated as the previous command
-        if command.trim().is_empty() {
-            if let Some(cmd) = self.command_history.back().cloned() {
+        if command.trim().is_empty()
+            && let Some(cmd) = self.command_history.back().cloned() {
                 return self.execute_command(cmd.as_str(), dm);
             }
-        }
 
         // Add command to terminal history
         self.add_command(command);
@@ -1332,12 +1331,11 @@ impl TerminalPanel {
             _ => return, // Already at the beginning
         }
 
-        if let Some(pos) = self.history_position {
-            if let Some(cmd) = self.command_history.get(pos) {
+        if let Some(pos) = self.history_position
+            && let Some(cmd) = self.command_history.get(pos) {
                 self.input_buffer = cmd.clone();
                 self.cursor_position = self.input_buffer.len();
             }
-        }
     }
 
     fn history_down(&mut self) {
@@ -2219,12 +2217,11 @@ impl PanelTr for TerminalPanel {
             // Ctrl+C double-press for exit (works in both modes)
             KeyCode::Char('c') if event.modifiers.contains(KeyModifiers::CONTROL) => {
                 let now = Instant::now();
-                if let Some(last_time) = self.last_ctrl_c {
-                    if now.duration_since(last_time).as_secs() < 2 {
+                if let Some(last_time) = self.last_ctrl_c
+                    && now.duration_since(last_time).as_secs() < 2 {
                         self.add_system("🚪 Exiting debugger (Ctrl+C double-press)...");
                         return Ok(EventResponse::Exit);
                     }
-                }
                 self.last_ctrl_c = Some(now);
                 if self.mode == TerminalMode::Insert {
                     self.input_buffer.clear();

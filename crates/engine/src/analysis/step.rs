@@ -592,8 +592,8 @@ impl Analyzer {
 
     /// Add a function call to the current step, if we are in a step.
     pub(super) fn add_function_call(&mut self, call: &FunctionCall) -> eyre::Result<()> {
-        if let Some(step) = self.current_step.as_mut() {
-            if call.kind == FunctionCallKind::FunctionCall {
+        if let Some(step) = self.current_step.as_mut()
+            && call.kind == FunctionCallKind::FunctionCall {
                 // Determine if this should count as a function call
                 let should_count = {
                     let step_read = step.read();
@@ -626,7 +626,6 @@ impl Analyzer {
                     step.write().function_calls += 1;
                 }
             }
-        }
         Ok(())
     }
 

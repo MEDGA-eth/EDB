@@ -71,17 +71,13 @@ fn from_abi_info(entry: &CallableAbiEntry) -> Option<DynSolValue> {
 }
 
 fn into_abi_info(value: &DynSolValue) -> Option<CallableAbiEntry> {
-    if let DynSolValue::Tuple(elements) = value {
-        if elements.len() == 2 {
-            if let DynSolValue::String(magic) = &elements[0] {
-                if magic == EDB_EVAL_PLACEHOLDER_MAGIC {
-                    if let DynSolValue::String(serial_abi) = &elements[1] {
+    if let DynSolValue::Tuple(elements) = value
+        && elements.len() == 2
+            && let DynSolValue::String(magic) = &elements[0]
+                && magic == EDB_EVAL_PLACEHOLDER_MAGIC
+                    && let DynSolValue::String(serial_abi) = &elements[1] {
                         return serde_json::from_str(serial_abi).ok();
                     }
-                }
-            }
-        }
-    }
     None
 }
 
@@ -271,11 +267,10 @@ where
         };
 
         for entry in parse_callable_abi_entries(contract) {
-            if entry.name == name && entry.is_state_variable() {
-                if let Some(value) = from_abi_info(&entry) {
+            if entry.name == name && entry.is_state_variable()
+                && let Some(value) = from_abi_info(&entry) {
                     return Ok(value);
                 }
-            }
         }
 
         bail!("No value found for name='{}', snapshot_id={}", name, snapshot_id)

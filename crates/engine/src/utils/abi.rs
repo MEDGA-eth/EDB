@@ -317,8 +317,8 @@ fn extract_type_cast(s: &str) -> Result<(Option<String>, &str)> {
     ];
 
     for prefix in &type_prefixes {
-        if let Some(after_type) = s.strip_prefix(prefix) {
-            if after_type.starts_with('(') {
+        if let Some(after_type) = s.strip_prefix(prefix)
+            && after_type.starts_with('(') {
                 // Find matching closing parenthesis
                 let mut depth = 0;
                 let mut end_idx = None;
@@ -342,7 +342,6 @@ fn extract_type_cast(s: &str) -> Result<(Option<String>, &str)> {
                     return Ok((Some(prefix.to_string()), value));
                 }
             }
-        }
     }
 
     Ok((None, s))

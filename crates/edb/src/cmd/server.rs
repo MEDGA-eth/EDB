@@ -170,20 +170,18 @@ async fn handle_socket(socket: WebSocket, state: ServerState) {
         };
 
         // Send response
-        if let Ok(json) = serde_json::to_string(&response) {
-            if let Err(e) = sender.send(Message::Text(json.into())).await {
+        if let Ok(json) = serde_json::to_string(&response)
+            && let Err(e) = sender.send(Message::Text(json.into())).await {
                 error!("Failed to send response: {}", e);
                 break;
             }
-        }
 
         // If successful, track this connection and wait for close
-        if let ServerResponse::Success { tx_hash, .. } = &response {
-            if let Ok(tx_hash) = tx_hash.parse::<TxHash>() {
+        if let ServerResponse::Success { tx_hash, .. } = &response
+            && let Ok(tx_hash) = tx_hash.parse::<TxHash>() {
                 // Keep connection alive and track it
                 track_connection(tx_hash, &state, &mut receiver).await;
             }
-        }
     }
 }
 

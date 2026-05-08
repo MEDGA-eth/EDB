@@ -141,9 +141,12 @@ pub fn setup_test_environment(use_temp: bool) {
             cache_dir
         };
 
-        // Set the environment variables
-        env::set_var(crate::env::EDB_CACHE_DIR, cache_dir.to_str().expect("Invalid cache path"));
-        env::set_var(crate::env::EDB_ETHERSCAN_CACHE_TTL, format!("{}", u32::MAX));
+        // SAFETY: edition 2024 marks env::set_var as unsafe (RFC 3445); this runs once
+        // during test setup, before threads accessing the env have been spawned.
+        unsafe {
+            env::set_var(crate::env::EDB_CACHE_DIR, cache_dir.to_str().expect("Invalid cache path"));
+            env::set_var(crate::env::EDB_ETHERSCAN_CACHE_TTL, format!("{}", u32::MAX));
+        }
 
         // Return the use_temp value to store in OnceLock
         use_temp

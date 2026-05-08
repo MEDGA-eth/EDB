@@ -115,8 +115,8 @@ impl ASTPruner {
         match value {
             serde_json::Value::Object(obj) => {
                 // check for InlineAssembly nodes
-                if let Some(node_type) = obj.get("nodeType") {
-                    if node_type.as_str() == Some("InlineAssembly") {
+                if let Some(node_type) = obj.get("nodeType")
+                    && node_type.as_str() == Some("InlineAssembly") {
                         // this means that the InlineAssembly node comes from older versions of
                         // Solidity
                         if !obj.contains_key("AST") {
@@ -134,15 +134,13 @@ impl ASTPruner {
                         // we remove the operations field
                         obj.remove("operations");
                     }
-                }
 
                 // check for ImportDirective nodes
-                if let Some(node_type) = obj.get("nodeType") {
-                    if node_type.as_str() == Some("ImportDirective") {
+                if let Some(node_type) = obj.get("nodeType")
+                    && node_type.as_str() == Some("ImportDirective") {
                         // we set the symbolAliases field to an empty array
                         obj.insert("symbolAliases".to_string(), serde_json::json!([]));
                     }
-                }
 
                 // prune documentation
                 for (field, value) in obj.iter_mut() {

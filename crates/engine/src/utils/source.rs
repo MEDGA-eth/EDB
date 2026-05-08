@@ -157,11 +157,10 @@ pub fn mutability_to_str(mutability: &StateMutability) -> &'static str {
 /// The index of the next character immediately after the source location.
 ///
 pub fn find_next_index_of_source_location(src: &SourceLocation) -> Option<usize> {
-    if let Some(start) = src.start {
-        if let Some(length) = src.length {
+    if let Some(start) = src.start
+        && let Some(length) = src.length {
             return Some(start + length);
         }
-    }
     None
 }
 

@@ -783,8 +783,8 @@ impl TracePanelInner {
         }
 
         // Check if it's a Panic(uint256) revert (0x4e487b71)
-        if output.len() >= 4 && output.starts_with(&[0x4e, 0x48, 0x7b, 0x71]) {
-            if let Ok(DynSolValue::Uint(panic_code, _)) =
+        if output.len() >= 4 && output.starts_with(&[0x4e, 0x48, 0x7b, 0x71])
+            && let Ok(DynSolValue::Uint(panic_code, _)) =
                 alloy_dyn_abi::DynSolType::Uint(256).abi_decode(&output[4..])
             {
                 let panic_reason = match panic_code.to_string().as_str() {
@@ -801,7 +801,6 @@ impl TracePanelInner {
                 };
                 return format!("Panic({panic_code}: {panic_reason})");
             }
-        }
 
         // Fallback: show hex data
         if output.len() <= 32 {

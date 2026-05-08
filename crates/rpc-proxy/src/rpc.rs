@@ -221,8 +221,8 @@ impl RpcHandler {
                 } else {
                     debug!("Error response for {}, not caching", method);
                     // Classify error type for metrics
-                    if let Some(error_obj) = resp.get("error") {
-                        if let Some(error_msg) = error_obj.get("message").and_then(|m| m.as_str()) {
+                    if let Some(error_obj) = resp.get("error")
+                        && let Some(error_msg) = error_obj.get("message").and_then(|m| m.as_str()) {
                             let error_msg_lower = error_msg.to_lowercase();
                             if RATE_LIMIT_PATTERNS
                                 .iter()
@@ -238,7 +238,6 @@ impl RpcHandler {
                                 self.metrics_collector.record_error(ErrorType::Other);
                             }
                         }
-                    }
                 }
             }
 
@@ -277,8 +276,8 @@ impl RpcHandler {
         }
 
         // Check JSON error response
-        if let Some(json) = json_response {
-            if let Some(error) = json.get("error") {
+        if let Some(json) = json_response
+            && let Some(error) = json.get("error") {
                 // Check error message
                 if let Some(message) = error.get("message").and_then(|m| m.as_str()) {
                     let msg_lower = message.to_lowercase();
@@ -302,7 +301,6 @@ impl RpcHandler {
                     }
                 }
             }
-        }
 
         false
     }
@@ -548,15 +546,14 @@ impl RpcHandler {
                                         );
 
                                         // If multiple providers return the same error, it's likely legitimate
-                                        if let Some((_, count)) = error_responses.get(&error_hash) {
-                                            if *count >= MAX_MULTIPLE_SAME_ERROR {
+                                        if let Some((_, count)) = error_responses.get(&error_hash)
+                                            && *count >= MAX_MULTIPLE_SAME_ERROR {
                                                 debug!(
                                                     "Multiple providers ({}) returned same error, likely legitimate",
                                                     count
                                                 );
                                                 return Ok(response_json);
                                             }
-                                        }
 
                                         // Mark provider as failed and continue
                                         self.provider_manager
@@ -668,19 +665,16 @@ impl RpcHandler {
                     return true;
                 }
                 // Also check object parameters for block identifiers
-                if let Some(param_obj) = param.as_object() {
-                    if let Some(block_value) = param_obj
+                if let Some(param_obj) = param.as_object()
+                    && let Some(block_value) = param_obj
                         .get("blockNumber")
                         .or_else(|| param_obj.get("toBlock"))
                         .or_else(|| param_obj.get("fromBlock"))
-                    {
-                        if let Some("latest" | "pending" | "earliest" | "safe" | "finalized") =
+                        && let Some("latest" | "pending" | "earliest" | "safe" | "finalized") =
                             block_value.as_str()
                         {
                             return true;
                         }
-                    }
-                }
             }
         }
 

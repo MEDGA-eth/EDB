@@ -177,12 +177,11 @@ pub fn format_compiler_errors(
 
         // If we have a formatted message with context, also include it
         // (as it might have additional information)
-        if let Some(formatted_msg) = &error.formatted_message {
-            if !formatted_msg.trim().is_empty() {
+        if let Some(formatted_msg) = &error.formatted_message
+            && !formatted_msg.trim().is_empty() {
                 formatted.push_str("\n\nCompiler's formatted output:\n");
                 formatted.push_str(formatted_msg);
             }
-        }
 
         // Add secondary locations if any
         if !error.secondary_source_locations.is_empty() {

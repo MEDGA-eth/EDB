@@ -129,11 +129,10 @@ impl HelpOverlay {
             // Section items
             for item in &section.items {
                 // Skip items that are layout-specific and don't match current layout
-                if let Some(specific_layout) = item.layout_specific {
-                    if specific_layout != layout_type {
+                if let Some(specific_layout) = item.layout_specific
+                    && specific_layout != layout_type {
                         continue;
                     }
-                }
 
                 lines.push(Line::from(vec![
                     Span::styled(

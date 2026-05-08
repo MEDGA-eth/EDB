@@ -54,11 +54,10 @@ where
         .inspect_one_tx(tx)
         .map_err(|e| eyre::eyre!("Failed to inspect the target transaction: {:?}", e))?;
 
-    if let ExecutionResult::Halt { reason, .. } = result {
-        if matches!(reason, HaltReason::OutOfGas { .. }) {
+    if let ExecutionResult::Halt { reason, .. } = result
+        && matches!(reason, HaltReason::OutOfGas { .. }) {
             error!("EDB cannot debug out-of-gas errors. Proceed at your own risk.")
         }
-    }
 
     let result = tracer.into_replay_result();
 

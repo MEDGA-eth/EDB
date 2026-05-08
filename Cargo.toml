@@ -11,7 +11,7 @@ resolver = "2"
 
 [workspace.package]
 version = "0.0.2"
-edition = "2021"
+edition = "2024"
 # Remember to update clippy.toml as well
 rust-version = "1.89"
 authors = ["Zhuo Zhang", "Wuqi Zhang"]
