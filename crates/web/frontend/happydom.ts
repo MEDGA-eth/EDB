@@ -1,4 +1,4 @@
-import { GlobalRegistrator } from 'happy-dom/lib/GlobalRegistrator.js';
+import { GlobalRegistrator } from '@happy-dom/global-registrator';
 GlobalRegistrator.register();
 
 import * as matchers from '@testing-library/jest-dom/matchers';
