@@ -6,6 +6,7 @@ members = [
     "crates/rpc-proxy/",
     "crates/common/",
     "crates/integration-tests/",
+    "crates/web/",
 ]
 resolver = "2"
 
@@ -85,6 +86,7 @@ edb-rpc-proxy = { version = "0.0.2", path = "crates/rpc-proxy" }
 edb-integration-tests = { version = "0.0.2", path = "crates/integration-tests" }
 edb-tui = { version = "0.0.2", path = "crates/tui" }
 edb = { version = "0.0.2", path = "crates/edb" }
+edb-web = { version = "0.0.2", path = "crates/web" }
 
 # alloy - aligned with Foundry's current workspace requirements
 alloy-chains = "0.2"
