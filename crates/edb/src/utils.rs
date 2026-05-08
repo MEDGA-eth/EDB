@@ -62,18 +62,18 @@ pub fn find_binary(name: &str) -> Result<PathBuf> {
 
     #[cfg(windows)]
     {
-        if let Ok(output) = Command::new("where").arg(name).output() {
-            if output.status.success() {
-                let path = String::from_utf8(output.stdout)?
-                    .lines()
-                    .next()
-                    .unwrap_or("")
-                    .trim()
-                    .to_string();
-                if !path.is_empty() {
-                    debug!("Found {} in PATH at {}", name, path);
-                    return Ok(PathBuf::from(path));
-                }
+        if let Ok(output) = Command::new("where").arg(name).output()
+            && output.status.success()
+        {
+            let path = String::from_utf8(output.stdout)?
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            if !path.is_empty() {
+                debug!("Found {} in PATH at {}", name, path);
+                return Ok(PathBuf::from(path));
             }
         }
     }
