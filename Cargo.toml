@@ -88,52 +88,52 @@ edb = { version = "0.0.2", path = "crates/edb" }
 
 # alloy - aligned with Foundry's current workspace requirements
 alloy-chains = "0.2"
-alloy-consensus = { version = "2.0.0-rc.0", default-features = false }
-alloy-contract = { version = "2.0.0-rc.0", default-features = false }
+alloy-consensus = { version = "2.0.1", default-features = false }
+alloy-contract = { version = "2.0.1", default-features = false }
 alloy-dyn-abi = { version = "1.5.2", features = ["eip712"] }
-alloy-eips = { version = "2.0.0-rc.0", default-features = false }
-alloy-evm = "0.29.2"
-alloy-genesis = { version = "2.0.0-rc.0", default-features = false }
+alloy-eips = { version = "2.0.1", default-features = false }
+alloy-evm = "0.34.0"
+alloy-genesis = { version = "2.0.1", default-features = false }
 alloy-hardforks = { version = "0.4.7", default-features = false }
 alloy-json-abi = "1.5.2"
-alloy-json-rpc = { version = "2.0.0-rc.0", default-features = false }
-alloy-network = { version = "2.0.0-rc.0", default-features = false }
-alloy-node-bindings = { version = "2.0.0-rc.0", default-features = false }
+alloy-json-rpc = { version = "2.0.1", default-features = false }
+alloy-network = { version = "2.0.1", default-features = false }
+alloy-node-bindings = { version = "2.0.1", default-features = false }
 alloy-primitives = { version = "1.5.2", features = [
     "getrandom",
     "rand",
     "map-fxhash",
     "map-foldhash",
 ] }
-alloy-provider = { version = "2.0.0-rc.0", default-features = false }
-alloy-pubsub = { version = "2.0.0-rc.0", default-features = false }
+alloy-provider = { version = "2.0.1", default-features = false }
+alloy-pubsub = { version = "2.0.1", default-features = false }
 alloy-rlp = "0.3"
-alloy-rpc-client = { version = "2.0.0-rc.0", default-features = false }
-alloy-rpc-types = { version = "2.0.0-rc.0", default-features = true }
-alloy-rpc-types-anvil = { version = "2.0.0-rc.0", default-features = false }
-alloy-rpc-types-engine = { version = "2.0.0-rc.0", default-features = false }
-alloy-rpc-types-trace = { version = "2.0.0-rc.0", default-features = false }
-alloy-serde = { version = "2.0.0-rc.0", default-features = false }
-alloy-signer = { version = "2.0.0-rc.0", default-features = false }
-alloy-signer-local = { version = "2.0.0-rc.0", default-features = false }
+alloy-rpc-client = { version = "2.0.1", default-features = false }
+alloy-rpc-types = { version = "2.0.1", default-features = true }
+alloy-rpc-types-anvil = { version = "2.0.1", default-features = false }
+alloy-rpc-types-engine = { version = "2.0.1", default-features = false }
+alloy-rpc-types-trace = { version = "2.0.1", default-features = false }
+alloy-serde = { version = "2.0.1", default-features = false }
+alloy-signer = { version = "2.0.1", default-features = false }
+alloy-signer-local = { version = "2.0.1", default-features = false }
 alloy-sol-types = "1.5.2"
-alloy-transport = { version = "2.0.0-rc.0", default-features = false }
-alloy-transport-http = { version = "2.0.0-rc.0", default-features = false }
-alloy-transport-ipc = { version = "2.0.0-rc.0", default-features = false }
-alloy-transport-ws = { version = "2.0.0-rc.0", default-features = false }
+alloy-transport = { version = "2.0.1", default-features = false }
+alloy-transport-http = { version = "2.0.1", default-features = false }
+alloy-transport-ipc = { version = "2.0.1", default-features = false }
+alloy-transport-ws = { version = "2.0.1", default-features = false }
 alloy-trie = "0.9"
 
 # foundry - aligned with Foundry's current workspace requirements
-foundry-block-explorers = { version = "0.22.0", default-features = false }
-foundry-compilers = { version = "0.19.14", default-features = false, features = [
+foundry-block-explorers = { version = "0.23.1", default-features = false }
+foundry-compilers = { version = "0.20.0", default-features = false, features = [
     "rustls",
     "svm-solc",
 ] }
 
 # revm - aligned with Foundry's current workspace requirements
-revm = { version = "36.0", default-features = false }
-revm-inspectors = { version = "0.36", features = ["serde"] }
-op-revm = "17.0.0"
+revm = { version = "38.0.0", default-features = false }
+revm-inspectors = { version = "0.39.0", features = ["serde"] }
+op-revm = "19.0.0"
 
 # solang
 solang-parser = { version = "=0.3.9", package = "foundry-solang-parser" }
@@ -170,7 +170,7 @@ auto_impl = "1"
 chrono = "0.4"
 dashmap = "6"
 delegate = "0.13"
-derive_more = "2"
+derive_more = "2.1"
 dirs = "6"
 dirs-next = "2"
 dotenv = { version = "0.15", package = "dotenvy" }
@@ -197,17 +197,3 @@ itertools = "0.14.0"
 assert_cmd = "2.0"
 predicates = "3.0"
 
-[patch.crates-io]
-alloy-consensus = { git = "https://github.com/alloy-rs/alloy", rev = "ffb020e2845321145181089948efe14f074bccd6" }
-alloy-contract = { git = "https://github.com/alloy-rs/alloy", rev = "ffb020e2845321145181089948efe14f074bccd6" }
-alloy-eips = { git = "https://github.com/alloy-rs/alloy", rev = "ffb020e2845321145181089948efe14f074bccd6" }
-alloy-json-rpc = { git = "https://github.com/alloy-rs/alloy", rev = "ffb020e2845321145181089948efe14f074bccd6" }
-alloy-network = { git = "https://github.com/alloy-rs/alloy", rev = "ffb020e2845321145181089948efe14f074bccd6" }
-alloy-provider = { git = "https://github.com/alloy-rs/alloy", rev = "ffb020e2845321145181089948efe14f074bccd6" }
-alloy-rpc-client = { git = "https://github.com/alloy-rs/alloy", rev = "ffb020e2845321145181089948efe14f074bccd6" }
-alloy-rpc-types = { git = "https://github.com/alloy-rs/alloy", rev = "ffb020e2845321145181089948efe14f074bccd6" }
-alloy-rpc-types-engine = { git = "https://github.com/alloy-rs/alloy", rev = "ffb020e2845321145181089948efe14f074bccd6" }
-alloy-serde = { git = "https://github.com/alloy-rs/alloy", rev = "ffb020e2845321145181089948efe14f074bccd6" }
-alloy-signer = { git = "https://github.com/alloy-rs/alloy", rev = "ffb020e2845321145181089948efe14f074bccd6" }
-alloy-transport = { git = "https://github.com/alloy-rs/alloy", rev = "ffb020e2845321145181089948efe14f074bccd6" }
-alloy-transport-http = { git = "https://github.com/alloy-rs/alloy", rev = "ffb020e2845321145181089948efe14f074bccd6" }

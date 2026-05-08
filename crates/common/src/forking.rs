@@ -259,7 +259,7 @@ pub async fn fork_and_prepare(
             match evm.transact_commit(tx_env.clone()) {
                 Ok(result) => match result {
                     ExecutionResult::Success { gas, .. } => {
-                        let gas_used = gas.used();
+                        let gas_used = gas.tx_gas_used();
                         console_bar.set_message(format!("✅ 0x{short_hash}... gas: {gas_used}"));
                         debug!(
                             "Transaction {} executed and committed successfully, gas used: {}",
@@ -268,7 +268,7 @@ pub async fn fork_and_prepare(
                         );
                     }
                     ExecutionResult::Revert { gas, output, .. } => {
-                        let gas_used = gas.used();
+                        let gas_used = gas.tx_gas_used();
                         console_bar.set_message(format!("⚠️  0x{short_hash}... reverted"));
                         debug!(
                             "Transaction {} reverted but committed, gas used: {}, output: {:?}",
@@ -278,7 +278,7 @@ pub async fn fork_and_prepare(
                         );
                     }
                     ExecutionResult::Halt { reason, gas, .. } => {
-                        let gas_used = gas.used();
+                        let gas_used = gas.tx_gas_used();
                         console_bar.set_message(format!("❌ 0x{short_hash}... halted"));
                         debug!(
                             "Transaction {} halted, gas used: {}, reason: {:?}",
