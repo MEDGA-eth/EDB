@@ -50,8 +50,8 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Install nightly toolchain
-        uses: dtolnay/rust-toolchain@nightly
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
 
