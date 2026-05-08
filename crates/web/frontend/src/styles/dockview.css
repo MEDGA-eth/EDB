@@ -1,0 +1,51 @@
+/* dockview base styles bundled with the package */
+@import 'dockview/dist/styles/dockview.css';
+
+/* edb cream/dark theme overrides */
+.dockview-theme-edb {
+  --dv-tabs-and-actions-container-background-color: var(--color-bg);
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-tabs-and-actions-container-height: 32px;
+  --dv-tab-font-size: 12px;
+  --dv-tab-divider-color: var(--color-border);
+
+  --dv-activegroup-visiblepanel-tab-background-color: var(--color-bg-elevated);
+  --dv-activegroup-visiblepanel-tab-color: var(--color-fg);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--color-bg);
+  --dv-activegroup-hiddenpanel-tab-color: var(--color-fg-secondary);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--color-bg-elevated);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--color-fg-secondary);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--color-bg);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--color-fg-tertiary);
+
+  --dv-group-view-background-color: var(--color-bg-elevated);
+  --dv-paneview-active-outline-color: var(--color-accent);
+  --dv-paneview-header-border-color: var(--color-border);
+
+  --dv-separator-border: var(--color-border);
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: var(--color-accent);
+
+  --dv-tabs-container-scrollbar-color: var(--color-fg-tertiary);
+  --dv-icon-hover-background-color: var(--color-bg-hover);
+  --dv-floating-box-shadow: var(--shadow-md);
+  --dv-floating-border: 1px solid var(--color-border-strong);
+  --dv-drag-over-background-color: var(--color-accent-dim);
+  --dv-drag-over-border-color: var(--color-accent);
+
+  --dv-scrollbar-background-color: var(--color-bg-hover);
+  --dv-context-menu-background-color: var(--color-bg-elevated);
+  --dv-context-menu-color: var(--color-fg);
+
+  --dv-tab-border-radius: 0;
+  --dv-tab-margin: 0;
+
+  font-family: var(--font-display);
+  color: var(--color-fg);
+}
+
+/* the watermark dockview shows when a group has no panels */
+.dockview-theme-edb .dv-watermark {
+  background-color: var(--color-bg-elevated);
+  color: var(--color-fg-tertiary);
+}

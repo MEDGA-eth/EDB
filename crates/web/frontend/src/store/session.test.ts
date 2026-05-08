@@ -12,6 +12,10 @@ describe('useSession', () => {
       theme: 'light',
       connection: 'connected',
       sessionEnded: false,
+      activeActivity: 'explorer',
+      openFiles: [],
+      activeFileId: null,
+      layoutJson: null,
     });
   });
   afterEach(() => { localStorage.clear(); });
@@ -63,5 +67,66 @@ describe('useSession', () => {
     expect(useSession.getState().connection).toBe('degraded');
     s.setSessionEnded(true);
     expect(useSession.getState().sessionEnded).toBe(true);
+  });
+
+  test('setActivity changes activity', () => {
+    useSession.getState().setActivity('trace');
+    expect(useSession.getState().activeActivity).toBe('trace');
+  });
+
+  test('openFile adds new file and activates it; idempotent for same path', () => {
+    const s = useSession.getState();
+    const addr = '0x' + 'a'.repeat(40);
+    s.openFile({ addr, path: 'foo.sol' });
+    expect(useSession.getState().openFiles).toHaveLength(1);
+    expect(useSession.getState().activeFileId).toBe(`${addr}::foo.sol`);
+
+    s.openFile({ addr, path: 'foo.sol' });
+    expect(useSession.getState().openFiles).toHaveLength(1);
+
+    s.openFile({ addr, path: 'bar.sol' });
+    expect(useSession.getState().openFiles).toHaveLength(2);
+    expect(useSession.getState().activeFileId).toBe(`${addr}::bar.sol`);
+  });
+
+  test('closeFile removes file and reassigns active when active was closed', () => {
+    const s = useSession.getState();
+    const addr = '0x' + 'a'.repeat(40);
+    s.openFile({ addr, path: 'foo.sol' });
+    s.openFile({ addr, path: 'bar.sol' });
+    s.closeFile(`${addr}::bar.sol`);
+    expect(useSession.getState().openFiles).toHaveLength(1);
+    expect(useSession.getState().activeFileId).toBe(`${addr}::foo.sol`);
+
+    s.closeFile(`${addr}::foo.sol`);
+    expect(useSession.getState().openFiles).toHaveLength(0);
+    expect(useSession.getState().activeFileId).toBeNull();
+  });
+
+  test('setActiveFile changes active file id', () => {
+    const s = useSession.getState();
+    s.setActiveFile('foo');
+    expect(useSession.getState().activeFileId).toBe('foo');
+    s.setActiveFile(null);
+    expect(useSession.getState().activeFileId).toBeNull();
+  });
+
+  test('setLayoutJson stores a layout snapshot', () => {
+    useSession.getState().setLayoutJson('{"foo":1}');
+    expect(useSession.getState().layoutJson).toBe('{"foo":1}');
+  });
+
+  test('persistence excludes per-session fields', () => {
+    const s = useSession.getState();
+    s.setActivity('terminal');
+    s.openFile({ addr: '0x' + 'a'.repeat(40), path: 'p.sol' });
+    s.setLayoutJson('{"l":true}');
+    const raw = localStorage.getItem('edb-web:session')!;
+    const persisted = JSON.parse(raw).state;
+    expect(persisted.activeActivity).toBe('explorer');
+    expect(persisted.openFiles).toEqual([]);
+    expect(persisted.activeFileId).toBeNull();
+    expect(persisted.layoutJson).toBe('{"l":true}');
+    expect(persisted.theme).toBe('light');
   });
 });

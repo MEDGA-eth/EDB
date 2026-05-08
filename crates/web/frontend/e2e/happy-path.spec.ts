@@ -1,12 +1,13 @@
 import { expect, test } from '@playwright/test';
 
-test('boots with all four panels and updates URL on Next', async ({ page }) => {
+test('boots into the IDE shell with bottom panels and updates URL on Next', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByTestId('desktop-layout')).toBeVisible();
-  await expect(page.getByTestId('opcodes-view').or(page.getByTestId('solidity-view'))).toBeVisible();
+  await expect(page.getByTestId('ide-layout')).toBeVisible();
+  await expect(page.getByTestId('activity-bar')).toBeVisible();
+  await expect(page.getByTestId('side-bar')).toBeVisible();
+  await expect(page.getByTestId('status-bar')).toBeVisible();
+  // Bottom panel area renders trace + display + terminal as dockview tabs
   await expect(page.getByTestId('trace-panel')).toBeVisible();
-  await expect(page.getByTestId('display-tab-vars')).toBeVisible();
-  await expect(page.getByTestId('terminal-panel')).toBeVisible();
 
   // Step the snapshot id forward 3 times by writing the URL hash directly.
   for (let i = 0; i < 3; i++) {
