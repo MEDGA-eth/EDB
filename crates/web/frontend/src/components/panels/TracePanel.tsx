@@ -255,13 +255,19 @@ function TracePanelInner() {
               type="button"
               data-testid={`trace-filter-${f}`}
               data-active={active ? 'true' : undefined}
+              data-pressed={active ? 'true' : 'false'}
+              // aria-pressed reflects the *enabled* axis: when filter is on,
+              // the chip is "pressed" (its calls are visible). When off, the
+              // chip is in the released state — visually dimmed + line-through
+              // to make the disabled axis obvious at a glance.
               aria-pressed={active}
               onClick={() => toggleFilter(f)}
+              title={active ? `Hide ${f} calls` : `Show ${f} calls (currently hidden)`}
               className={
                 'rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide transition ' +
                 (active
-                  ? 'border-(--color-accent)/60 bg-(--color-accent-dim) text-(--color-fg)'
-                  : 'border-(--color-border) bg-(--color-bg-elevated) text-(--color-fg-tertiary) hover:text-(--color-fg)')
+                  ? 'border-(--color-accent)/60 bg-(--color-bg-active) text-(--color-fg) shadow-inner'
+                  : 'border-(--color-border) bg-(--color-bg-elevated)/50 text-(--color-fg-tertiary) line-through opacity-60 hover:opacity-100')
               }
             >
               {f}
