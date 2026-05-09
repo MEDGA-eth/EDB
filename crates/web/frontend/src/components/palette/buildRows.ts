@@ -1,10 +1,10 @@
-import { COMMANDS, type Command, type CommandCtx } from '../../lib/commands';
+import { COMMANDS, type Command, type CommandCtx, type CommandGroup } from '../../lib/commands';
 import { rankBy } from '../../lib/fuzzyMatch';
 import { PALETTE_RESULT_CAP } from '../../lib/constants';
 import type { AvailableFile } from '../../hooks/useAvailableFiles';
 
 export type PaletteRow =
-  | { kind: 'command'; id: string; label: string; hint?: string; group?: string; run(): void }
+  | { kind: 'command'; id: string; label: string; hint?: string; group?: CommandGroup; run(): void }
   | { kind: 'file'; id: string; label: string; hint?: string; run(): void }
   | { kind: 'snapshot'; id: string; label: string; hint?: string; run(): void }
   | { kind: 'address'; id: string; label: string; hint?: string; run(): void };

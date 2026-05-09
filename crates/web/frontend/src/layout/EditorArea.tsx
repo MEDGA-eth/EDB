@@ -136,7 +136,7 @@ function EditorEmpty() {
     >
       <div className="text-center">
         <div className="font-display text-sm font-semibold">edb</div>
-        <div className="mt-1 text-xs">Pick a contract from the Explorer to start.</div>
+        <div className="mt-1 text-xs">Open a contract from the Explorer to view its source.</div>
       </div>
     </div>
   );

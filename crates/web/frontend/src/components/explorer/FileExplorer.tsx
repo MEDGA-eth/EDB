@@ -164,7 +164,7 @@ function FileExplorerInner() {
   if (addresses.length === 0)
     return (
       <div className="px-3 py-2 text-xs text-(--color-fg-tertiary)" data-testid="explorer-empty">
-        No contracts in trace.
+        No trace yet — run <code className="font-mono">edb replay --ui=web &lt;tx&gt;</code> to load one.
       </div>
     );
 
