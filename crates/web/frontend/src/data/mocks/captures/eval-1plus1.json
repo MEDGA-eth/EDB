@@ -1,0 +1,9 @@
+{
+  "Ok": {
+    "type": "Uint",
+    "value": {
+      "bits": 256,
+      "value": "0x2"
+    }
+  }
+}

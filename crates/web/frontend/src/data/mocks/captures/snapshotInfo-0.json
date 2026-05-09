@@ -1,0 +1,25 @@
+{
+  "bytecode_address": "0x7a250d5630b4cf539739df2c5dacb4c659f2488d",
+  "detail": {
+    "Hook": {
+      "frame_id": [
+        0,
+        0
+      ],
+      "id": 0,
+      "length": 31,
+      "locals": {},
+      "offset": 9164,
+      "path": "Contract",
+      "state_variables": {}
+    }
+  },
+  "frame_id": [
+    0,
+    0
+  ],
+  "id": 0,
+  "next_id": 1,
+  "prev_id": 0,
+  "target_address": "0x7a250d5630b4cf539739df2c5dacb4c659f2488d"
+}
