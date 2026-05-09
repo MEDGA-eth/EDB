@@ -11,13 +11,14 @@ describe('<StatusBar />', () => {
   });
   afterEach(cleanup);
 
-  test('renders snapshot id and count', async () => {
+  test('renders snapshot id (1-based) and count', async () => {
     mockRpc({ edb_getSnapshotCount: () => 7 });
     useSession.getState().setSnapshotId(3);
     const { wrapper } = makeWrapper();
     render(<StatusBar />, { wrapper });
     const label = screen.getByTestId('snapshot-label');
-    expect(label.textContent).toContain('snapshot 3');
+    // Display is 1-based: store id 3 → label '4'.
+    expect(label.textContent).toContain('snapshot 4');
     await waitFor(() => expect(label.textContent).toContain('/ 7'));
   });
 

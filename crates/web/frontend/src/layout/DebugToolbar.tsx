@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronsRight,
   CornerDownRight,
   CornerUpRight,
+  LayoutGrid,
   Pause,
   Play,
   RotateCcw,
@@ -19,6 +21,7 @@ import { useNextCall } from '../hooks/useNextCall';
 import { usePrevCall } from '../hooks/usePrevCall';
 import { useSnapshotCount } from '../hooks/useSnapshotCount';
 import { useSession } from '../store/session';
+import { ensureFixedPanel, getDockviewApi } from '../lib/dockviewBridge';
 
 interface ToolbarItem {
   id: string;
@@ -42,16 +45,10 @@ const ITEMS: ToolbarItem[] = [
     shortcut: 'F5',
     Icon: Play,
   },
-  // Conventional VSCode-style trio. Tooltips spell out the semantics
-  // because "Step Over" vs "Step Into" is the single most common
-  // source of confusion for new debugger users.
-  {
-    id: 'nav.step-over',
-    label: 'Step Over',
-    hint: 'Advance one snapshot; skip the inside of any CALL / CREATE — same call depth',
-    shortcut: 'F10',
-    Icon: StepForward,
-  },
+  // Order: Step Into → Step Out → Step Over. Step Over is the least
+  // stable of the trio at the moment (the engine occasionally skips
+  // hooks across CALL boundaries it shouldn't), so it sits last to
+  // discourage muscle-memory clicking.
   {
     id: 'nav.next',
     label: 'Step Into',
@@ -65,6 +62,13 @@ const ITEMS: ToolbarItem[] = [
     hint: 'Run forward until the current frame returns — one call level shallower',
     shortcut: '⇧F11',
     Icon: CornerUpRight,
+  },
+  {
+    id: 'nav.step-over',
+    label: 'Step Over',
+    hint: 'Advance one snapshot; skip the inside of any CALL / CREATE — same call depth (BETA)',
+    shortcut: 'F10',
+    Icon: StepForward,
   },
   {
     id: 'nav.restart',
@@ -189,11 +193,77 @@ export function DebugToolbar() {
           </span>
         );
       })}
-      {disabled && (
-        <span className="ml-auto inline-flex items-center gap-1 text-xs text-(--color-fg-tertiary)">
-          <Pause size={12} aria-hidden /> disconnected
-        </span>
-      )}
+      <span className="ml-auto inline-flex items-center gap-2">
+        <ReopenMenu />
+        {disabled && (
+          <span className="inline-flex items-center gap-1 text-[12px] text-(--color-fg-tertiary)">
+            <Pause size={14} aria-hidden /> disconnected
+          </span>
+        )}
+      </span>
     </div>
+  );
+}
+
+/**
+ * "Reopen" menu — surfaces every fixed panel the user has closed so they
+ * can recover from an accidental ⨯ click without remembering to open the
+ * command palette. Reading the live dockview api on click keeps the list
+ * accurate even after layout changes the user may have made.
+ */
+function ReopenMenu() {
+  const [open, setOpen] = useState(false);
+  const api = getDockviewApi();
+
+  // Compute closed-panel list lazily on each render — cheap, and avoids
+  // wiring up dockview event subscribers in this small component.
+  const closed: Array<{ id: 'display' | 'terminal'; label: string }> = [];
+  if (!api?.getPanel('display')) closed.push({ id: 'display', label: 'Display' });
+  if (!api?.getPanel('terminal')) closed.push({ id: 'terminal', label: 'Terminal' });
+
+  if (closed.length === 0) return null;
+
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        data-testid="reopen-menu"
+        onClick={() => setOpen((o) => !o)}
+        title={`Reopen ${closed.length} closed panel${closed.length === 1 ? '' : 's'}`}
+        className="inline-flex items-center gap-1.5 rounded border border-(--color-border) bg-(--color-bg) px-2 py-1 text-[12px] text-(--color-fg-secondary) hover:bg-(--color-bg-hover) hover:text-(--color-fg)"
+      >
+        <LayoutGrid size={14} aria-hidden />
+        <span>Reopen</span>
+        <span className="rounded-full bg-(--color-accent) px-1.5 py-px font-mono text-[10px] text-white">
+          {closed.length}
+        </span>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          // Click anywhere else: capture-phase mousedown closes via stopPropagation
+          // pattern (we rely on the parent capturing). For simplicity, just
+          // close on the next click anywhere via window listener.
+          onMouseDown={(e) => e.stopPropagation()}
+          className="absolute right-0 top-[calc(100%+4px)] z-50 min-w-[180px] rounded border border-(--color-border-strong) bg-(--color-bg-elevated) py-1 shadow-[var(--shadow-md)]"
+        >
+          {closed.map((c) => (
+            <button
+              key={c.id}
+              role="menuitem"
+              type="button"
+              data-testid={`reopen-${c.id}`}
+              onClick={() => {
+                ensureFixedPanel(c.id, c.label);
+                setOpen(false);
+              }}
+              className="block w-full px-3 py-1.5 text-left text-[13px] text-(--color-fg) hover:bg-(--color-bg-hover)"
+            >
+              {c.label} panel
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
   );
 }

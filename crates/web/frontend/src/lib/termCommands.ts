@@ -70,15 +70,25 @@ export function runTermCommand(input: string, ctx: TermCommandCtx): TermCommandR
   }
 
   // ---- goto <n> ----
+  // Snapshot ids are presented as 1-based everywhere in the UI ("snapshot
+  // 1 / 196"). The internal store is still 0-indexed, so subtract 1 here
+  // and fold the user's input back to a 0-based id. `goto 0` is treated
+  // as "go to the first snapshot" for usability — a tiny ergonomic gift
+  // for users who haven't internalised 1-vs-0 yet.
   if (verb === 'goto' || verb === 'g') {
     const n = parseInt(tail, 10);
     if (!Number.isFinite(n) || n < 0) {
-      return { handled: true, message: 'usage: `goto <snapshot-id>`' };
+      return { handled: true, message: 'usage: `goto <snapshot-#>` (1-based)' };
     }
     const max = Math.max(0, ctx.snapshotCount - 1);
-    const target = Math.min(n, max);
+    const requested0 = n === 0 ? 0 : n - 1;
+    const target = Math.min(requested0, max);
     useSession.getState().setSnapshotId(target);
-    return { handled: true, message: `→ snapshot ${target}${target !== n ? ` (clamped from ${n})` : ''}` };
+    const display = target + 1;
+    return {
+      handled: true,
+      message: `→ snapshot **${display}**${requested0 !== target ? ` _(clamped from ${n})_` : ''}`,
+    };
   }
 
   // ---- bp / break / unbreak ----

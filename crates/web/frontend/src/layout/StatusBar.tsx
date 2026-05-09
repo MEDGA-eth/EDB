@@ -106,7 +106,11 @@ export function StatusBar() {
         </span>
         <span className="text-(--color-fg-secondary)" data-testid="snapshot-label">
           snapshot{' '}
-          <span className="font-mono text-(--color-fg)">{id}</span>{' '}
+          {/* Display as 1-based — internal store/URL/RPC stay 0-indexed.
+              The "first snapshot is #1" framing matches what users see in
+              every other debugger and avoids the off-by-one rake when
+              quoting positions in conversation. */}
+          <span className="font-mono text-(--color-fg)">{id + 1}</span>{' '}
           <span className="text-(--color-fg-tertiary)">/</span>{' '}
           <span className="font-mono text-(--color-fg-secondary)">{count ?? '…'}</span>
         </span>

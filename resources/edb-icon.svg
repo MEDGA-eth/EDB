@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="120" height="120">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#fdfaf3"/>
@@ -18,49 +18,13 @@
       <stop offset="100%" stop-color="#34d399" stop-opacity="0"/>
     </radialGradient>
   </defs>
-
-  <!-- card -->
   <rect width="64" height="64" rx="14" fill="url(#bg)" stroke="#d6cdb6" stroke-width="1"/>
-
-  <!-- soft halo behind the play glyph -->
   <circle cx="32" cy="32" r="22" fill="url(#halo)"/>
-
-  <!-- code brackets framing the glyph: < … > — speaks "source-level debugger" -->
-  <path
-    d="M 14 22 L 9 32 L 14 42"
-    stroke="url(#bracket)"
-    stroke-width="2.4"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-    fill="none"
-  />
-  <path
-    d="M 50 22 L 55 32 L 50 42"
-    stroke="url(#bracket)"
-    stroke-width="2.4"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-    fill="none"
-  />
-
-  <!-- play / step-forward triangle with a soft inner highlight -->
-  <path
-    d="M 24 19 L 24 45 L 46 32 Z"
-    fill="url(#play)"
-    stroke="#065f46"
-    stroke-width="1.2"
-    stroke-linejoin="round"
-  />
-  <path
-    d="M 27 25 L 27 39 L 39 32 Z"
-    fill="#a7f3d0"
-    opacity="0.55"
-  />
-
-  <!-- breakpoint dot — universal IDE tell -->
+  <path d="M 14 22 L 9 32 L 14 42" stroke="url(#bracket)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M 50 22 L 55 32 L 50 42" stroke="url(#bracket)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M 24 19 L 24 45 L 46 32 Z" fill="url(#play)" stroke="#065f46" stroke-width="1.2" stroke-linejoin="round"/>
+  <path d="M 27 25 L 27 39 L 39 32 Z" fill="#a7f3d0" opacity="0.55"/>
   <circle cx="14" cy="14" r="4.2" fill="#dc2626" stroke="#fdfaf3" stroke-width="1.4"/>
-
-  <!-- tiny snapshot ticks along the bottom: stop / step / step / step -->
   <g transform="translate(16 56)">
     <circle r="1.7" fill="#047857"/>
     <circle cx="6" r="1.3" fill="#047857" opacity="0.7"/>

@@ -28,12 +28,17 @@ describe('runTermCommand', () => {
     expect(runTermCommand('   ', freshCtx()).handled).toBe(false);
   });
 
-  test('goto sets snapshot id and clamps', () => {
+  test('goto is 1-based and clamps to last snapshot', () => {
+    // `goto 7` lands on the 7th snapshot — internal id 6.
     runTermCommand('goto 7', freshCtx());
-    expect(useSession.getState().currentSnapshotId).toBe(7);
+    expect(useSession.getState().currentSnapshotId).toBe(6);
+    // Out-of-range clamps to the highest available id (snapshotCount=100 → 99).
     const r = runTermCommand('goto 9999', freshCtx());
-    expect(useSession.getState().currentSnapshotId).toBe(99); // snapshotCount=100 → clamp to 99
+    expect(useSession.getState().currentSnapshotId).toBe(99);
     expect(r.message).toContain('clamped');
+    // `goto 0` is forgiving: lands on snapshot id 0 (the first one).
+    runTermCommand('goto 0', freshCtx());
+    expect(useSession.getState().currentSnapshotId).toBe(0);
   });
 
   test('goto with non-numeric prints usage', () => {

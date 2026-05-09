@@ -123,18 +123,18 @@ function VarList({ entries }: { entries: [string, SolValue | null][] }) {
           <li
             key={k}
             data-testid={`var-row-${k}`}
-            className="rounded border border-(--color-border) bg-(--color-bg-elevated)/60 px-2.5 py-1.5 hover:border-(--color-border-strong) transition"
+            className="rounded-md border border-(--color-border) bg-(--color-bg-elevated)/60 px-3 py-2 hover:border-(--color-border-strong) transition"
           >
             <div className="flex items-baseline justify-between gap-2">
               <span
-                className="break-all font-display text-[13px] font-semibold text-(--color-fg)"
+                className="break-all font-display text-[14px] font-semibold text-(--color-fg)"
                 title={k}
               >
                 {k}
               </span>
               {t && (
                 <span
-                  className="shrink-0 rounded-full px-1.5 py-px font-mono text-[10px] tracking-wide"
+                  className="shrink-0 rounded-full px-2 py-0.5 font-mono text-[11px] tracking-wide"
                   style={{
                     color: typeChipColour(t),
                     backgroundColor: 'var(--color-bg)',
@@ -145,7 +145,7 @@ function VarList({ entries }: { entries: [string, SolValue | null][] }) {
                 </span>
               )}
             </div>
-            <div className="mt-1 font-mono text-[12px] text-(--color-fg-secondary) leading-relaxed">
+            <div className="mt-1.5 font-mono text-[13px] text-(--color-fg) leading-relaxed">
               <SolValueCell value={v} />
             </div>
           </li>

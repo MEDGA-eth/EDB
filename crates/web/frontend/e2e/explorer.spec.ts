@@ -26,7 +26,7 @@ test('explorer lists every traced address and opens a file tab on click', async 
   await expect(fileBtn).toBeVisible();
   await fileBtn.click();
 
-  await expect(page.getByTestId('editor-area')).toBeVisible();
+  await expect(page.getByTestId('main-area')).toBeVisible();
   await expect(
     page.locator('.dv-tab').filter({ hasText: /Contract|\(disassembly\)/ }).first(),
   ).toBeVisible({ timeout: 10_000 });
