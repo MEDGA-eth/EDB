@@ -1,7 +1,21 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronRight, FileCode2, Hash, Play, Search } from 'lucide-react';
+import {
+  ChevronRight,
+  FileCode2,
+  Hash,
+  Layers,
+  Eye,
+  Network,
+  Settings2,
+  Terminal,
+  Circle,
+  CornerDownLeft,
+  HelpCircle,
+  Search,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import type { CommandGroup } from '../lib/commands';
 import { useSession } from '../store/session';
 import { useSnapshotCount } from '../hooks/useSnapshotCount';
 import { useNextCall } from '../hooks/useNextCall';
@@ -48,11 +62,26 @@ function pushRecent(id: string) {
   }
 }
 
-function iconFor(kind: PaletteRow['kind']): LucideIcon {
-  if (kind === 'file') return FileCode2;
-  if (kind === 'snapshot') return Hash;
-  if (kind === 'address') return Hash;
-  return Play;
+/** Map a CommandGroup to a representative Lucide icon. */
+function iconForGroup(group: CommandGroup | undefined): LucideIcon {
+  switch (group) {
+    case 'Navigation': return CornerDownLeft;
+    case 'View':       return Eye;
+    case 'Trace':      return Network;
+    case 'Terminal':   return Terminal;
+    case 'Breakpoints':return Circle;
+    case 'Layout':     return Layers;
+    case 'Help':       return HelpCircle;
+    default:           return Settings2;
+  }
+}
+
+function iconFor(row: PaletteRow): LucideIcon {
+  if (row.kind === 'file') return FileCode2;
+  if (row.kind === 'snapshot') return Hash;
+  if (row.kind === 'address') return Hash;
+  // command
+  return iconForGroup(row.group);
 }
 
 export function CommandPalette() {
@@ -178,11 +207,19 @@ function CommandPaletteInner() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKey}
-            placeholder="Type a file name, > for commands, : for snapshots…"
+            placeholder="Search files & commands"
             className="flex-1 bg-transparent font-mono text-sm outline-none placeholder:text-(--color-fg-tertiary)"
           />
           <kbd className="font-mono text-[10px] text-(--color-fg-tertiary)">esc</kbd>
         </div>
+        {query.length === 0 && (
+          <div
+            data-testid="palette-syntax-hint"
+            className="border-b border-(--color-border) px-3 py-1 font-mono text-[11px] text-(--color-fg-tertiary)"
+          >
+            Type <kbd>&gt;</kbd> for commands, <kbd>:</kbd> or <kbd>#</kbd> for snapshots.
+          </div>
+        )}
         <ul data-testid="palette-list" className="flex-1 overflow-auto py-1">
           {rows.length === 0 && (
             <li className="px-4 py-6 text-center text-xs text-(--color-fg-tertiary)">
@@ -215,7 +252,10 @@ function PaletteRowView({
   onMouseEnter(): void;
   onClick(): void;
 }) {
-  const Icon = iconFor(row.kind);
+  const Icon = iconFor(row);
+  // The label sits in the primary `--color-fg` token so it pops even on
+  // an inactive row; the hint stays in `--color-fg-tertiary` so the eye
+  // can scan labels without the hint competing.
   return (
     <li>
       <button
@@ -226,13 +266,17 @@ function PaletteRowView({
         data-active={active || undefined}
         className={
           'flex w-full items-center gap-3 px-3 py-1.5 text-left text-sm ' +
-          (active ? 'bg-(--color-bg-active) text-(--color-fg)' : 'text-(--color-fg-secondary) hover:bg-(--color-bg-hover)')
+          (active ? 'bg-(--color-bg-active)' : 'hover:bg-(--color-bg-hover)')
         }
       >
         <Icon size={14} className="shrink-0 text-(--color-fg-tertiary)" />
-        <span className="truncate font-mono">{row.label}</span>
+        <span className={`truncate ${row.kind === 'address' ? 'font-mono' : 'font-display'} text-(--color-fg)`}>
+          {row.label}
+        </span>
         {row.hint && (
-          <span className="ml-auto truncate font-mono text-[11px] text-(--color-fg-tertiary)">{row.hint}</span>
+          <span className="ml-auto truncate font-mono text-[11px] text-(--color-fg-tertiary)">
+            {row.kind === 'snapshot' ? `Navigation · ${row.hint}` : row.hint}
+          </span>
         )}
         {active && <ChevronRight size={12} className="shrink-0 text-(--color-fg-tertiary)" />}
       </button>

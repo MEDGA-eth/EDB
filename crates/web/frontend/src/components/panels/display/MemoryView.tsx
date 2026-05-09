@@ -3,6 +3,41 @@ import type { SnapshotInfo } from '../../../lib/types';
 import { formatMemory } from './formatMemory';
 
 /**
+ * Render `formatMemory` output as two grid columns (offset, hex). Falls
+ * back to a single `<pre>` if the output isn't recognisable as
+ * `XXXXXX: hexbytes` rows.
+ */
+function MemoryGrid({ formatted }: { formatted: string }) {
+  if (!formatted) return null;
+  const lines = formatted.split('\n');
+  const rows: { offset: string; hex: string }[] = [];
+  for (const line of lines) {
+    const ix = line.indexOf(': ');
+    if (ix < 0) {
+      // Non-conforming line — bail to plain pre to avoid mangling output.
+      return <pre>{formatted}</pre>;
+    }
+    rows.push({ offset: line.slice(0, ix), hex: line.slice(ix + 2) });
+  }
+  return (
+    <div className="grid grid-cols-[auto_1fr] gap-x-3 font-mono">
+      {rows.map((r, i) => (
+        <FragmentRow key={i} offset={r.offset} hex={r.hex} />
+      ))}
+    </div>
+  );
+}
+
+function FragmentRow({ offset, hex }: { offset: string; hex: string }) {
+  return (
+    <>
+      <span className="text-(--color-fg-tertiary)">{offset}:</span>
+      <span className="break-all">{hex}</span>
+    </>
+  );
+}
+
+/**
  * For a 16 KB memory image we'd render ~512 rows of hex; the synchronous
  * formatting can stutter paint. Default to the first 4 KB and let the user
  * opt into the full dump.
@@ -41,7 +76,7 @@ export function MemoryView({ snap }: { snap: SnapshotInfo | undefined }) {
           </button>
         </div>
       )}
-      <pre>{formatted}</pre>
+      <MemoryGrid formatted={formatted} />
     </div>
   );
 }

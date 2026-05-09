@@ -69,6 +69,8 @@ html, body, #root {
   color: var(--color-fg);
   background: var(--color-bg-root);
   -webkit-font-smoothing: antialiased;
+  /* soften the light/dark flip — feels less jarring than an instant snap */
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
 *, *::before, *::after { box-sizing: border-box; }

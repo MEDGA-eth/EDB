@@ -38,13 +38,13 @@ export function ActivityBar() {
             aria-pressed={isActive}
             data-testid={`activity-${key}`}
             className={`relative flex h-12 items-center justify-center text-(--color-fg-secondary) transition hover:text-(--color-fg) ${
-              isActive ? 'text-(--color-fg)' : ''
+              isActive ? 'text-(--color-fg) bg-(--color-accent)/10' : ''
             }`}
           >
             {isActive && (
               <span
                 aria-hidden
-                className="absolute top-0 bottom-0 left-0 w-0.5 bg-(--color-accent)"
+                className="absolute top-0 bottom-0 left-0 w-[3px] bg-(--color-accent)"
               />
             )}
             <Icon size={20} />

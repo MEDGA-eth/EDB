@@ -94,8 +94,9 @@ export function IDELayout() {
           role="status"
           className="flex items-center justify-center border-b border-(--color-border) bg-(--color-bg-elevated) px-4 py-2 font-display text-xs text-(--color-fg-secondary)"
         >
-          No trace loaded — start with{' '}
+          No trace yet — run{' '}
           <code className="mx-1 font-mono">edb replay --ui=web &lt;tx&gt;</code>
+          {' '}to load one.
         </div>
       )}
       <div className="flex flex-1 overflow-hidden">

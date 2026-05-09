@@ -99,15 +99,40 @@ export function StatusBar() {
     >
       <div className="flex items-center gap-3">
         <span className="font-bold text-(--color-fg-secondary)">edb</span>
-        <span className="text-(--color-fg-tertiary)" data-testid="snapshot-label">
+        <span className="text-(--color-fg-secondary)" data-testid="snapshot-label">
           snapshot {id} / {count ?? '…'}
         </span>
       </div>
       <div className="flex items-center gap-3">
+        <PaletteHint />
         <ConnectionIndicator />
         <ThemeToggle />
         <HelpOverlay />
       </div>
     </footer>
+  );
+}
+
+/** Detect macOS once per page load — doesn't change between renders. */
+const IS_MAC =
+  typeof navigator !== 'undefined' &&
+  typeof navigator.platform === 'string' &&
+  navigator.platform.toLowerCase().includes('mac');
+
+/**
+ * Small `kbd`-styled hint reminding users of the command-palette shortcut.
+ * Sits in the status bar so it's always visible without ever stealing focus.
+ */
+function PaletteHint() {
+  return (
+    <span
+      data-testid="palette-hint"
+      aria-hidden
+      className="hidden items-center gap-1 text-(--color-fg-tertiary) sm:inline-flex"
+    >
+      <kbd className="rounded border border-(--color-border) bg-(--color-bg-elevated) px-1 font-mono text-[10px]">
+        {IS_MAC ? '⌘' : 'Ctrl'}P
+      </kbd>
+    </span>
   );
 }

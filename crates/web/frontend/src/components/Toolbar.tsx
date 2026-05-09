@@ -56,8 +56,9 @@ export function ToolbarButton({
       data-testid={testid}
       className={
         'flex h-6 w-6 items-center justify-center rounded-[var(--radius)] ' +
-        'text-(--color-fg-secondary) transition ' +
+        'text-(--color-fg-secondary) transition-transform duration-75 ' +
         'hover:bg-(--color-bg-hover) hover:text-(--color-fg) ' +
+        'active:scale-95 ' +
         'disabled:opacity-40 disabled:cursor-not-allowed ' +
         (active ? 'bg-(--color-bg-active) text-(--color-fg) ' : '') +
         (className ?? '')
