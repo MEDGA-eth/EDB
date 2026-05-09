@@ -132,4 +132,73 @@ describe('command registry', () => {
     const state = qc.getQueryState(['snapshot', 0]);
     expect(state?.isInvalidated).toBe(true);
   });
+
+  test('nav.step-over jumps to current.next_id when cached', () => {
+    const qc = new QueryClient();
+    qc.setQueryData(['snapshot', 0], { id: 0, frame_id: [0, 0], next_id: 7, prev_id: 0 });
+    getCommand('nav.step-over')!.run(ctx({ queryClient: qc }));
+    expect(useSession.getState().currentSnapshotId).toBe(7);
+  });
+
+  test('nav.step-over falls back to currentId+1 when cache misses', () => {
+    const qc = new QueryClient();
+    // No cached snapshot. step-over should fallback to currentId+1.
+    useSession.setState({ currentSnapshotId: 2 });
+    // enabled() requires cached neighbour; bypass by calling run() directly,
+    // simulating a hotkey press that fires regardless.
+    getCommand('nav.step-over')!.run(ctx({ queryClient: qc }));
+    expect(useSession.getState().currentSnapshotId).toBe(3);
+  });
+
+  test('nav.step-over disabled at end of trace (next_id === id)', () => {
+    const qc = new QueryClient();
+    qc.setQueryData(['snapshot', 4], { id: 4, frame_id: [0, 0], next_id: 4, prev_id: 3 });
+    useSession.setState({ currentSnapshotId: 4 });
+    expect(getCommand('nav.step-over')!.enabled?.(ctx({ queryClient: qc }))).toBe(false);
+  });
+
+  test('nav.reverse-step-over jumps to prev_id', () => {
+    const qc = new QueryClient();
+    qc.setQueryData(['snapshot', 5], { id: 5, frame_id: [0, 0], next_id: 6, prev_id: 2 });
+    useSession.setState({ currentSnapshotId: 5 });
+    getCommand('nav.reverse-step-over')!.run(ctx({ queryClient: qc }));
+    expect(useSession.getState().currentSnapshotId).toBe(2);
+  });
+
+  test('nav.reverse-step-over disabled at id 0', () => {
+    const qc = new QueryClient();
+    useSession.setState({ currentSnapshotId: 0 });
+    expect(getCommand('nav.reverse-step-over')!.enabled?.(ctx({ queryClient: qc }))).toBe(false);
+  });
+
+  test('nav.step-out walks next_id until frame_id[0] differs', () => {
+    const qc = new QueryClient();
+    // 0 → 1 → 2 (still frame 0) → 3 (frame 1)
+    qc.setQueryData(['snapshot', 0], { id: 0, frame_id: [0, 0], next_id: 1, prev_id: 0 });
+    qc.setQueryData(['snapshot', 1], { id: 1, frame_id: [0, 0], next_id: 2, prev_id: 0 });
+    qc.setQueryData(['snapshot', 2], { id: 2, frame_id: [0, 0], next_id: 3, prev_id: 1 });
+    qc.setQueryData(['snapshot', 3], { id: 3, frame_id: [1, 0], next_id: 4, prev_id: 2 });
+    useSession.setState({ currentSnapshotId: 0 });
+    getCommand('nav.step-out')!.run(ctx({ queryClient: qc }));
+    expect(useSession.getState().currentSnapshotId).toBe(3);
+  });
+
+  test('nav.step-out is a no-op when chain runs out without frame change', () => {
+    const qc = new QueryClient();
+    qc.setQueryData(['snapshot', 0], { id: 0, frame_id: [0, 0], next_id: 1, prev_id: 0 });
+    qc.setQueryData(['snapshot', 1], { id: 1, frame_id: [0, 0], next_id: 1, prev_id: 0 });
+    useSession.setState({ currentSnapshotId: 0 });
+    getCommand('nav.step-out')!.run(ctx({ queryClient: qc }));
+    expect(useSession.getState().currentSnapshotId).toBe(0);
+  });
+
+  test('nav.reverse-step-out walks prev_id until frame_id[0] differs', () => {
+    const qc = new QueryClient();
+    qc.setQueryData(['snapshot', 3], { id: 3, frame_id: [1, 0], next_id: 4, prev_id: 2 });
+    qc.setQueryData(['snapshot', 2], { id: 2, frame_id: [1, 0], next_id: 3, prev_id: 1 });
+    qc.setQueryData(['snapshot', 1], { id: 1, frame_id: [0, 0], next_id: 2, prev_id: 0 });
+    useSession.setState({ currentSnapshotId: 3 });
+    getCommand('nav.reverse-step-out')!.run(ctx({ queryClient: qc }));
+    expect(useSession.getState().currentSnapshotId).toBe(1);
+  });
 });
