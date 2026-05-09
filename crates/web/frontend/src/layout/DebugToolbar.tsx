@@ -23,6 +23,9 @@ import { useSession } from '../store/session';
 interface ToolbarItem {
   id: string;
   label: string;
+  /** Verbose tooltip — explains what each Step variant actually does so
+   *  users can pick the right one without consulting docs. */
+  hint: string;
   shortcut: string;
   Icon: LucideIcon;
   /** override commands.ts when needed (e.g. restart resets snapshot id) */
@@ -32,17 +35,41 @@ interface ToolbarItem {
 }
 
 const ITEMS: ToolbarItem[] = [
-  { id: 'nav.continue', label: 'Continue', shortcut: 'F5', Icon: Play },
-  // "Step" is the most-asked-for button. Aliased to Step Over because that's
-  // the snapshot-level "advance one line, do not descend into a CALL" — the
-  // mental model 90% of debugger users start with. Step Into / Step Out
-  // are still right there for the cases where the call boundary matters.
-  { id: 'nav.step-over', label: 'Step', shortcut: 'F10', Icon: StepForward },
-  { id: 'nav.next', label: 'Step Into', shortcut: 'F11', Icon: CornerDownRight },
-  { id: 'nav.step-out', label: 'Step Out', shortcut: '⇧F11', Icon: CornerUpRight },
+  {
+    id: 'nav.continue',
+    label: 'Continue',
+    hint: 'Run forward to the next breakpoint (or end of trace if none)',
+    shortcut: 'F5',
+    Icon: Play,
+  },
+  // Conventional VSCode-style trio. Tooltips spell out the semantics
+  // because "Step Over" vs "Step Into" is the single most common
+  // source of confusion for new debugger users.
+  {
+    id: 'nav.step-over',
+    label: 'Step Over',
+    hint: 'Advance one snapshot; skip the inside of any CALL / CREATE — same call depth',
+    shortcut: 'F10',
+    Icon: StepForward,
+  },
+  {
+    id: 'nav.next',
+    label: 'Step Into',
+    hint: 'Advance exactly one snapshot; descend into the callee if next op is a CALL',
+    shortcut: 'F11',
+    Icon: CornerDownRight,
+  },
+  {
+    id: 'nav.step-out',
+    label: 'Step Out',
+    hint: 'Run forward until the current frame returns — one call level shallower',
+    shortcut: '⇧F11',
+    Icon: CornerUpRight,
+  },
   {
     id: 'nav.restart',
     label: 'Restart',
+    hint: 'Jump back to the very first snapshot (snapshot 0)',
     shortcut: '⇧⌘F5',
     Icon: RotateCcw,
     groupBreak: true,
@@ -51,17 +78,43 @@ const ITEMS: ToolbarItem[] = [
   // Without a live debugger session to halt, "Stop" parks at the last
   // snapshot — same intuition as "run to end". Wired in fire() since it
   // needs `snapshotCount` from the toolbar's render scope.
-  { id: 'nav.stop', label: 'Stop', shortcut: '⇧F5', Icon: Square },
+  {
+    id: 'nav.stop',
+    label: 'Stop',
+    hint: 'Park at the last snapshot in the trace (no live process to halt)',
+    shortcut: '⇧F5',
+    Icon: Square,
+  },
   {
     id: 'nav.reverse-continue',
     label: 'Reverse Continue',
+    hint: 'Run backwards to the previous breakpoint (or start of trace)',
     shortcut: '⌥F5',
     Icon: Undo2,
     groupBreak: true,
   },
-  { id: 'nav.reverse-step-over', label: 'Reverse Step', shortcut: '⌥F10', Icon: ChevronsRight },
-  { id: 'nav.prev-call', label: 'Prev Call', shortcut: '⌥←', Icon: SkipBack, groupBreak: true },
-  { id: 'nav.next-call', label: 'Next Call', shortcut: '⌥→', Icon: SkipForward },
+  {
+    id: 'nav.reverse-step-over',
+    label: 'Reverse Step',
+    hint: 'Step backwards — the inverse of Step Over',
+    shortcut: '⌥F10',
+    Icon: ChevronsRight,
+  },
+  {
+    id: 'nav.prev-call',
+    label: 'Prev Call',
+    hint: 'Jump to the previous CALL / DELEGATECALL / CREATE frame',
+    shortcut: '⌥←',
+    Icon: SkipBack,
+    groupBreak: true,
+  },
+  {
+    id: 'nav.next-call',
+    label: 'Next Call',
+    hint: 'Jump to the next CALL / DELEGATECALL / CREATE frame',
+    shortcut: '⌥→',
+    Icon: SkipForward,
+  },
 ];
 
 export function DebugToolbar() {
@@ -123,8 +176,8 @@ export function DebugToolbar() {
               data-testid={`tb-${item.id}`}
               onClick={() => fire(item)}
               disabled={!enabled}
-              title={`${item.label} (${item.shortcut})`}
-              aria-label={`${item.label}, shortcut ${item.shortcut}`}
+              title={`${item.label} — ${item.hint} (${item.shortcut})`}
+              aria-label={`${item.label}, shortcut ${item.shortcut}. ${item.hint}`}
               className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-sm text-(--color-fg-secondary) transition enabled:hover:bg-(--color-bg-hover) enabled:hover:text-(--color-fg) disabled:opacity-40"
             >
               <item.Icon size={16} aria-hidden />
