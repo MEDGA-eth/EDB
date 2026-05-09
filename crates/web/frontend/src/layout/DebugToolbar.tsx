@@ -208,15 +208,21 @@ export function DebugToolbar() {
 /**
  * "Reopen" menu — surfaces every fixed panel the user has closed so they
  * can recover from an accidental ⨯ click without remembering to open the
- * command palette. Reading the live dockview api on click keeps the list
- * accurate even after layout changes the user may have made.
+ * command palette.
+ *
+ * Subscribes to `layoutJson` in the session store so the affordance pops
+ * the moment a tab is closed. (MainArea writes layoutJson on every
+ * dockview onDidLayoutChange.) Without that subscription, this component
+ * only re-rendered on snapshot changes, so the button looked broken
+ * until the user happened to step.
  */
 function ReopenMenu() {
   const [open, setOpen] = useState(false);
+  // The actual panels live on the live DockviewApi; we only need
+  // layoutJson as a *signal* — re-render every time the layout mutates.
+  useSession((s) => s.layoutJson);
   const api = getDockviewApi();
 
-  // Compute closed-panel list lazily on each render — cheap, and avoids
-  // wiring up dockview event subscribers in this small component.
   const closed: Array<{ id: 'display' | 'terminal'; label: string }> = [];
   if (!api?.getPanel('display')) closed.push({ id: 'display', label: 'Display' });
   if (!api?.getPanel('terminal')) closed.push({ id: 'terminal', label: 'Terminal' });
