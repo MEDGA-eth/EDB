@@ -149,7 +149,7 @@ export function HelpOverlay() {
           aria-modal="true"
           aria-labelledby="help-title"
           data-testid="help-overlay"
-          className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-(--color-bg-root)/90 px-4 py-10"
+          className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-(--color-bg-root)/92 px-4 py-10 backdrop-blur-sm"
           onClick={() => setOpen(false)}
         >
           <div

@@ -112,9 +112,19 @@ function typeChipColour(t: string): string {
  * breathing room, surfaces the type with a coloured chip, and lets long
  * values wrap underneath the name without truncating the column.
  */
-function VarList({ entries }: { entries: [string, SolValue | null][] }) {
+function VarList({
+  entries,
+  emptyHint,
+}: {
+  entries: [string, SolValue | null][];
+  emptyHint?: string;
+}) {
   if (entries.length === 0)
-    return <div className="px-1 py-2 text-[12px] italic text-(--color-fg-tertiary)">(none)</div>;
+    return (
+      <div className="rounded border border-dashed border-(--color-border) px-3 py-2 text-[12px] italic text-(--color-fg-tertiary)">
+        {emptyHint ?? '(none)'}
+      </div>
+    );
   return (
     <ul className="flex flex-col gap-1.5" role="list">
       {entries.map(([k, v]) => {
@@ -175,16 +185,22 @@ export function VarsView({ snap }: { snap: SnapshotInfo | undefined }) {
         {path} · offset {offset} · length {length}
       </div>
       <section>
-        <h3 className="mb-1 text-xs font-semibold tracking-wide text-(--color-fg-secondary) uppercase">
+        <h3 className="mb-1.5 text-[12px] font-semibold tracking-wide text-(--color-fg-secondary) uppercase">
           Locals
         </h3>
-        <VarList entries={localEntries} />
+        <VarList
+          entries={localEntries}
+          emptyHint="No locals bound at this snapshot. Local variables appear as the function body assigns them — step forward (F11) to watch them populate."
+        />
       </section>
       <section>
-        <h3 className="mb-1 text-xs font-semibold tracking-wide text-(--color-fg-secondary) uppercase">
+        <h3 className="mb-1.5 text-[12px] font-semibold tracking-wide text-(--color-fg-secondary) uppercase">
           State Variables
         </h3>
-        <VarList entries={stateEntries} />
+        <VarList
+          entries={stateEntries}
+          emptyHint="This contract exposes no Solidity-visible state at this snapshot, or storage decoding hasn't been registered for it."
+        />
       </section>
     </div>
   );
