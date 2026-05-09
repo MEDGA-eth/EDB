@@ -2,33 +2,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#064e3b"/>
-      <stop offset="100%" stop-color="#0c4a6e"/>
+      <stop offset="0%" stop-color="#fdfaf3"/>
+      <stop offset="100%" stop-color="#efe7d5"/>
     </linearGradient>
     <linearGradient id="play" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#a7f3d0"/>
-      <stop offset="55%" stop-color="#34d399"/>
-      <stop offset="100%" stop-color="#10b981"/>
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#047857"/>
     </linearGradient>
     <linearGradient id="bracket" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#67e8f9"/>
-      <stop offset="100%" stop-color="#22d3ee"/>
+      <stop offset="0%" stop-color="#0e7490"/>
+      <stop offset="100%" stop-color="#0c4a6e"/>
     </linearGradient>
     <radialGradient id="halo" cx="0.5" cy="0.5" r="0.55">
-      <stop offset="0%" stop-color="#34d399" stop-opacity="0.45"/>
+      <stop offset="0%" stop-color="#34d399" stop-opacity="0.25"/>
       <stop offset="100%" stop-color="#34d399" stop-opacity="0"/>
     </radialGradient>
   </defs>
 
-  <!-- Rounded square in deep teal/forest. Reads on both light and dark
-       browser tabs (white tabs no longer wash the glyph out; dark tabs
-       see contrast against the deep base). -->
-  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <!-- light cream rounded square — the user prefers a light backdrop -->
+  <rect width="64" height="64" rx="14" fill="url(#bg)" stroke="#d6cdb6" stroke-width="1"/>
 
-  <!-- soft glow behind the play arrow -->
+  <!-- soft emerald glow behind the play arrow -->
   <circle cx="32" cy="32" r="22" fill="url(#halo)"/>
 
-  <!-- code brackets — "source-level" half of the metaphor -->
+  <!-- code brackets framing the glyph -->
   <path
     d="M 13 20 L 6 32 L 13 44"
     stroke="url(#bracket)"
@@ -44,25 +41,30 @@
     stroke-linejoin="round"
   />
 
-  <!-- play / step-forward triangle -->
+  <!-- play / step-forward triangle with a soft inner highlight -->
   <path
     d="M 23 17 L 23 47 L 47 32 Z"
     fill="url(#play)"
-    stroke="#a7f3d0"
-    stroke-width="1.2"
+    stroke="#065f46"
+    stroke-width="1.4"
     stroke-linejoin="round"
+  />
+  <path
+    d="M 27 23 L 27 41 L 41 32 Z"
+    fill="#a7f3d0"
+    opacity="0.5"
   />
 
   <!-- breakpoint dot -->
-  <circle cx="14" cy="11" r="4.4" fill="#fb7185" stroke="#ffffff" stroke-width="1.6"/>
+  <circle cx="14" cy="11" r="4.4" fill="#dc2626" stroke="#fdfaf3" stroke-width="1.4"/>
 
   <!-- snapshot ticks fading off — debugger's "trail of crumbs" -->
   <g transform="translate(17 56)">
-    <circle r="1.8" fill="#a7f3d0"/>
-    <circle cx="6" r="1.4" fill="#a7f3d0" opacity="0.7"/>
-    <circle cx="12" r="1.4" fill="#a7f3d0" opacity="0.55"/>
-    <circle cx="18" r="1.4" fill="#a7f3d0" opacity="0.4"/>
-    <circle cx="24" r="1.4" fill="#a7f3d0" opacity="0.25"/>
-    <circle cx="30" r="1.4" fill="#a7f3d0" opacity="0.13"/>
+    <circle r="1.8" fill="#047857"/>
+    <circle cx="6" r="1.4" fill="#047857" opacity="0.7"/>
+    <circle cx="12" r="1.4" fill="#047857" opacity="0.55"/>
+    <circle cx="18" r="1.4" fill="#047857" opacity="0.4"/>
+    <circle cx="24" r="1.4" fill="#047857" opacity="0.25"/>
+    <circle cx="30" r="1.4" fill="#047857" opacity="0.13"/>
   </g>
 </svg>
