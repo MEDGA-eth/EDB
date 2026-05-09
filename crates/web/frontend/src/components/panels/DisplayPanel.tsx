@@ -15,9 +15,19 @@ import { StackView } from './display/StackView';
 import { MemoryView } from './display/MemoryView';
 import { StorageView } from './display/StorageView';
 import { TransientView } from './display/TransientView';
+import { CalldataView } from './display/CalldataView';
+import { OutputView } from './display/OutputView';
 import { formatMemory } from './display/formatMemory';
 
-type Tab = 'vars' | 'watch' | 'stack' | 'memory' | 'storage' | 'transient';
+type Tab =
+  | 'vars'
+  | 'watch'
+  | 'stack'
+  | 'memory'
+  | 'storage'
+  | 'transient'
+  | 'calldata'
+  | 'output';
 const TABS: { key: Tab; label: string }[] = [
   { key: 'vars', label: 'Variables' },
   { key: 'watch', label: 'Watch' },
@@ -25,6 +35,8 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'memory', label: 'Memory' },
   { key: 'storage', label: 'Storage' },
   { key: 'transient', label: 'Transient' },
+  { key: 'calldata', label: 'Calldata' },
+  { key: 'output', label: 'Output' },
 ];
 
 export function DisplayPanel() {
@@ -67,6 +79,14 @@ function DisplayPanelInner() {
       text = Object.entries(opcode?.transient_storage ?? {})
         .map(([k, v]) => `${k}=${v}`)
         .join('\n');
+    else if (tab === 'calldata') text = opcode?.calldata ?? '';
+    else if (tab === 'output') {
+      // Best-effort: pull from the rendered DOM since the trace entry is
+      // resolved inside <OutputView />. If the user copies "output" without
+      // the panel being visible, this falls back to empty.
+      const el = document.querySelector('[data-testid="output-full"]') as HTMLElement | null;
+      text = el?.innerText ?? '';
+    }
     if (navigator.clipboard?.writeText) {
       void navigator.clipboard.writeText(text);
     }
@@ -133,6 +153,8 @@ function DisplayPanelInner() {
             memory: <MemoryView snap={snap} />,
             storage: <StorageView id={id} />,
             transient: <TransientView snap={snap} />,
+            calldata: <CalldataView snap={snap} />,
+            output: <OutputView snap={snap} />,
           }[tab as Exclude<Tab, 'watch'>]
         )}
       </div>

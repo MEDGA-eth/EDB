@@ -13,10 +13,21 @@ import { useEffect, useRef } from 'react';
  */
 export const edbHighlight = HighlightStyle.define([
   { tag: t.keyword, color: 'var(--color-syn-keyword)', fontWeight: '600' },
+  // Control-flow vs definition keywords get distinctive colours so the eye
+  // can tell `if/else/return` from `function/contract/struct`.
+  { tag: t.controlKeyword, color: 'var(--color-syn-control)', fontWeight: '600' },
+  { tag: t.definitionKeyword, color: 'var(--color-syn-keyword)', fontWeight: '700' },
+  { tag: t.modifier, color: 'var(--color-syn-modifier)' },
+  { tag: t.self, color: 'var(--color-syn-self)' },
   { tag: [t.string, t.special(t.string)], color: 'var(--color-syn-string)' },
+  { tag: t.escape, color: 'var(--color-syn-escape)' },
   { tag: [t.number, t.bool, t.null], color: 'var(--color-syn-number)' },
+  { tag: [t.bool, t.null, t.atom], color: 'var(--color-syn-atom)' },
+  { tag: t.constant(t.variableName), color: 'var(--color-syn-constant)' },
   { tag: t.comment, color: 'var(--color-syn-comment)', fontStyle: 'italic' },
+  { tag: t.docComment, color: 'var(--color-syn-doc)', fontStyle: 'italic' },
   { tag: [t.typeName, t.className, t.namespace], color: 'var(--color-syn-type)' },
+  { tag: t.standard(t.typeName), color: 'var(--color-syn-type-std)' },
   {
     tag: [t.function(t.variableName), t.function(t.propertyName)],
     color: 'var(--color-syn-func)',
@@ -24,6 +35,7 @@ export const edbHighlight = HighlightStyle.define([
   { tag: [t.operator, t.operatorKeyword], color: 'var(--color-fg)' },
   { tag: t.variableName, color: 'var(--color-fg)' },
   { tag: t.propertyName, color: 'var(--color-fg-secondary)' },
+  { tag: t.bracket, color: 'var(--color-fg-tertiary)' },
   { tag: t.punctuation, color: 'var(--color-fg-tertiary)' },
 ]);
 

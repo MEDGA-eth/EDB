@@ -22,6 +22,14 @@ describe('useSession', () => {
       traceExpandTick: 0,
       traceCollapseTick: 0,
       watchExpressions: [],
+      traceCallFilters: [
+        'CALL',
+        'STATICCALL',
+        'DELEGATECALL',
+        'CALLCODE',
+        'CREATE',
+        'CREATE2',
+      ],
     });
   });
   afterEach(() => { localStorage.clear(); });
@@ -195,6 +203,26 @@ describe('useSession', () => {
     expect(useSession.getState().watchExpressions).toEqual(['balanceOf(this)']);
     s.clearWatchExpressions();
     expect(useSession.getState().watchExpressions).toEqual([]);
+  });
+
+  test('toggleTraceCallFilter flips on/off and resetTraceCallFilters restores all', () => {
+    const s = useSession.getState();
+    s.toggleTraceCallFilter('CALL');
+    expect(useSession.getState().traceCallFilters).not.toContain('CALL');
+    s.toggleTraceCallFilter('CALL');
+    expect(useSession.getState().traceCallFilters).toContain('CALL');
+    // Toggle off twice in a row without flicker.
+    s.toggleTraceCallFilter('STATICCALL');
+    s.toggleTraceCallFilter('DELEGATECALL');
+    s.resetTraceCallFilters();
+    expect(useSession.getState().traceCallFilters).toEqual([
+      'CALL',
+      'STATICCALL',
+      'DELEGATECALL',
+      'CALLCODE',
+      'CREATE',
+      'CREATE2',
+    ]);
   });
 
   test('watchExpressions persist across rehydration', () => {

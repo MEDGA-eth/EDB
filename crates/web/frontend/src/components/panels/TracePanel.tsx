@@ -10,7 +10,11 @@ import {
 } from 'lucide-react';
 import { useTrace } from '../../hooks/useTrace';
 import { useSnapshotInfo } from '../../hooks/useSnapshotInfo';
-import { useSession } from '../../store/session';
+import {
+  useSession,
+  ALL_TRACE_CALL_FILTERS,
+  type TraceCallFilter,
+} from '../../store/session';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { ErrorCard } from '../ErrorCard';
 import { Toolbar, ToolbarButton, ToolbarDivider } from '../Toolbar';
@@ -46,6 +50,20 @@ function buildTree(entries: TraceEntry[]): TreeNode[] {
     }
   }
   return roots;
+}
+
+/**
+ * Drop tree nodes whose call-type label is not in `keep`. Subtrees of
+ * dropped nodes also disappear, mirroring the user's expectation that
+ * filtering hides "the call and its descendants".
+ */
+function filterTree(roots: TreeNode[], keep: Set<TraceCallFilter>): TreeNode[] {
+  function recur(n: TreeNode): TreeNode | null {
+    const label = callTypeLabel(n.entry.call_type) as TraceCallFilter;
+    if (!keep.has(label)) return null;
+    return { entry: n.entry, children: n.children.map(recur).filter(Boolean) as TreeNode[] };
+  }
+  return roots.map(recur).filter(Boolean) as TreeNode[];
 }
 
 /** Render a `CallType` to a short uppercase label for the trace view. */
@@ -114,6 +132,12 @@ function TracePanelInner() {
   const currentId = useSession((s) => s.currentSnapshotId);
   const { data: currentSnap } = useSnapshotInfo(currentId);
   const currentFrameId = currentSnap ? traceEntryIdOf(currentSnap.frame_id) : null;
+  const filters = useSession((s) => s.traceCallFilters);
+  const toggleFilter = useSession((s) => s.toggleTraceCallFilter);
+  const filterSet = useMemo(
+    () => new Set<TraceCallFilter>(filters as TraceCallFilter[]),
+    [filters],
+  );
   const qc = useQueryClient();
   const containerRef = useRef<HTMLDivElement | null>(null);
   /** "force open" version pulses to expand-all; "force close" pulses to collapse-all */
@@ -128,6 +152,10 @@ function TracePanelInner() {
   }, [collapseTick]);
 
   const roots = useMemo(() => buildTree(data?.inner ?? []), [data]);
+  const filteredRoots = useMemo(
+    () => filterTree(roots, filterSet),
+    [roots, filterSet],
+  );
 
   function scrollToCurrent() {
     if (!containerRef.current) return;
@@ -214,6 +242,34 @@ function TracePanelInner() {
         />
       </Toolbar>
       <div
+        role="group"
+        aria-label="Trace call-type filters"
+        data-testid="trace-filter-bar"
+        className="flex flex-wrap items-center gap-1 border-b border-(--color-border) bg-(--color-bg) px-2 py-1"
+      >
+        {ALL_TRACE_CALL_FILTERS.map((f) => {
+          const active = filterSet.has(f);
+          return (
+            <button
+              key={f}
+              type="button"
+              data-testid={`trace-filter-${f}`}
+              data-active={active ? 'true' : undefined}
+              aria-pressed={active}
+              onClick={() => toggleFilter(f)}
+              className={
+                'rounded-full border px-2 py-0.5 font-mono text-[10px] tracking-wide transition ' +
+                (active
+                  ? 'border-(--color-accent)/60 bg-(--color-accent-dim) text-(--color-fg)'
+                  : 'border-(--color-border) bg-(--color-bg-elevated) text-(--color-fg-tertiary) hover:text-(--color-fg)')
+              }
+            >
+              {f}
+            </button>
+          );
+        })}
+      </div>
+      <div
         ref={containerRef}
         data-testid="trace-panel"
         role="tree"
@@ -221,7 +277,7 @@ function TracePanelInner() {
         onKeyDown={onKey}
         className="flex-1 overflow-auto p-2 font-mono text-sm"
       >
-        {roots.map((n) => (
+        {filteredRoots.map((n) => (
           <TraceNode
             key={n.entry.id}
             node={n}
