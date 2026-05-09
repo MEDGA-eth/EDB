@@ -33,7 +33,11 @@ interface ToolbarItem {
 
 const ITEMS: ToolbarItem[] = [
   { id: 'nav.continue', label: 'Continue', shortcut: 'F5', Icon: Play },
-  { id: 'nav.step-over', label: 'Step Over', shortcut: 'F10', Icon: StepForward },
+  // "Step" is the most-asked-for button. Aliased to Step Over because that's
+  // the snapshot-level "advance one line, do not descend into a CALL" — the
+  // mental model 90% of debugger users start with. Step Into / Step Out
+  // are still right there for the cases where the call boundary matters.
+  { id: 'nav.step-over', label: 'Step', shortcut: 'F10', Icon: StepForward },
   { id: 'nav.next', label: 'Step Into', shortcut: 'F11', Icon: CornerDownRight },
   { id: 'nav.step-out', label: 'Step Out', shortcut: '⇧F11', Icon: CornerUpRight },
   {

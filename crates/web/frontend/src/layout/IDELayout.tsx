@@ -2,8 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityBar } from './ActivityBar';
 import { StatusBar } from './StatusBar';
 import { DebugToolbar } from './DebugToolbar';
-import { EditorArea } from './EditorArea';
-import { BottomArea } from './BottomArea';
+import { MainArea } from './MainArea';
 import { FileExplorer } from '../components/explorer/FileExplorer';
 import { BreakpointsView } from '../components/explorer/BreakpointsView';
 import { TraceSidebar } from '../components/explorer/TraceSidebar';
@@ -13,17 +12,18 @@ import { useSnapshotCount } from '../hooks/useSnapshotCount';
 import { useTrace } from '../hooks/useTrace';
 import { useSession, type ActivityKind } from '../store/session';
 import { ACTIVITY_WIDTH_PX, SIDEBAR_WIDTH_PX } from '../lib/constants';
+import { VariablesAndWatchSidebar } from '../components/explorer/VariablesAndWatchSidebar';
 
 /* ── side bar ─────────────────────────────────────────────── */
 
-function SideBar({ activity }: { activity: ActivityKind }) {
+function SideBar({ activity, width }: { activity: ActivityKind; width: number }) {
   return (
     <aside
       className="flex h-full flex-col overflow-hidden border-r border-(--color-border) bg-(--color-bg)"
-      style={{ width: SIDEBAR_WIDTH_PX }}
+      style={{ width }}
       data-testid="side-bar"
     >
-      <header className="flex h-8 items-center border-b border-(--color-border) px-3 font-display text-[11px] font-semibold tracking-wide text-(--color-fg-secondary) uppercase">
+      <header className="flex h-9 items-center border-b border-(--color-border) px-3 font-display text-[12px] font-semibold tracking-wide text-(--color-fg-secondary) uppercase">
         {activity}
       </header>
       <div className="flex-1 overflow-auto" data-testid={`side-bar-${activity}`}>
@@ -33,6 +33,8 @@ function SideBar({ activity }: { activity: ActivityKind }) {
           <BreakpointsView />
         ) : activity === 'trace' ? (
           <TraceSidebar />
+        ) : activity === 'variables' ? (
+          <VariablesAndWatchSidebar />
         ) : (
           <SidePlaceholder activity={activity} />
         )}
@@ -90,42 +92,40 @@ export function IDELayout() {
   const noSnapshots = snapshotCountQ.isSuccess && snapshotCountQ.data === 0;
   const showEmptyBanner = traceIsEmpty && noSnapshots;
 
-  const mainRef = useRef<HTMLDivElement | null>(null);
-  // Bottom-region height as a fraction of the main split (0–1). Persisted to
-  // localStorage so the user's resize sticks across reloads.
-  const [bottomFrac, setBottomFrac] = useState<number>(() => {
-    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('edb-web:bottom-frac') : null;
-    const n = raw ? parseFloat(raw) : NaN;
-    return Number.isFinite(n) && n > 0.05 && n < 0.9 ? n : 0.32;
+  const shellRef = useRef<HTMLDivElement | null>(null);
+  // Sidebar width in CSS pixels — drag-resizable from its right edge,
+  // clamped to a usable range and persisted between reloads.
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('edb-web:sidebar-width') : null;
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n >= 180 && n <= 640 ? n : SIDEBAR_WIDTH_PX;
   });
+  const sidebarWidthRef = useRef(sidebarWidth);
+  useEffect(() => { sidebarWidthRef.current = sidebarWidth; }, [sidebarWidth]);
 
-  const onSplitterDown = useCallback((startEvt: React.PointerEvent<HTMLDivElement>) => {
-    const main = mainRef.current;
-    if (!main) return;
+  const onSidebarSplitterDown = useCallback((startEvt: React.PointerEvent<HTMLDivElement>) => {
+    const shell = shellRef.current;
+    if (!shell) return;
     startEvt.preventDefault();
-    const rect = main.getBoundingClientRect();
+    const rect = shell.getBoundingClientRect();
     const target = startEvt.currentTarget;
     target.setPointerCapture(startEvt.pointerId);
     const onMove = (e: PointerEvent) => {
-      const top = e.clientY - rect.top;
-      const frac = 1 - Math.min(Math.max(top / rect.height, 0.1), 0.85);
-      setBottomFrac(frac);
+      const x = e.clientX - rect.left - ACTIVITY_WIDTH_PX;
+      const w = Math.min(Math.max(x, 180), Math.max(180, rect.width - 280));
+      setSidebarWidth(w);
     };
     const onUp = (e: PointerEvent) => {
       target.releasePointerCapture(e.pointerId);
       target.removeEventListener('pointermove', onMove);
       target.removeEventListener('pointerup', onUp);
       target.removeEventListener('pointercancel', onUp);
-      try { localStorage.setItem('edb-web:bottom-frac', String(bottomFracRef.current)); } catch { /* ignore */ }
+      try { localStorage.setItem('edb-web:sidebar-width', String(sidebarWidthRef.current)); } catch { /* ignore */ }
     };
     target.addEventListener('pointermove', onMove);
     target.addEventListener('pointerup', onUp);
     target.addEventListener('pointercancel', onUp);
   }, []);
-
-  // Mirror current frac into a ref so onUp can persist without depending on state.
-  const bottomFracRef = useRef(bottomFrac);
-  useEffect(() => { bottomFracRef.current = bottomFrac; }, [bottomFrac]);
 
   return (
     <div className="flex h-full flex-col bg-(--color-bg-root)" data-testid="ide-layout">
@@ -141,39 +141,30 @@ export function IDELayout() {
         </div>
       )}
       <DebugToolbar />
-      <div className="flex flex-1 overflow-hidden">
+      <div ref={shellRef} className="flex flex-1 overflow-hidden">
         {/* activity bar (left) */}
         <div style={{ width: ACTIVITY_WIDTH_PX }} className="shrink-0">
           <ActivityBar />
         </div>
         {/* sidebar */}
-        <SideBar activity={activity} />
-        {/* main split: editor (top) + bottom panel */}
-        <div ref={mainRef} className="flex flex-1 flex-col overflow-hidden">
-          <div className="overflow-hidden" data-testid="editor-region" style={{ flex: `1 1 ${(1 - bottomFrac) * 100}%`, minHeight: 80 }}>
-            {/*
-              The editor area stays mounted across window resizes — dockview
-              observes its container and handles its own layout. Re-mounting
-              on every resize was pathological under drag (60fps).
-            */}
-            <EditorArea />
-          </div>
-          <div
-            role="separator"
-            aria-orientation="horizontal"
-            aria-label="Resize bottom panel"
-            data-testid="bottom-splitter"
-            onPointerDown={onSplitterDown}
-            className="group relative h-1.5 shrink-0 cursor-row-resize bg-(--color-border) transition hover:bg-(--color-accent) active:bg-(--color-accent)"
-          >
-            <span
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 -top-1 -bottom-1 group-hover:bg-(--color-accent)/20"
-            />
-          </div>
-          <div className="overflow-hidden" data-testid="bottom-region" style={{ flex: `0 0 ${bottomFrac * 100}%`, minHeight: 120 }}>
-            <BottomArea />
-          </div>
+        <SideBar activity={activity} width={sidebarWidth} />
+        {/* sidebar resize handle */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          data-testid="sidebar-splitter"
+          onPointerDown={onSidebarSplitterDown}
+          className="group relative w-1 shrink-0 cursor-col-resize bg-(--color-border) transition hover:bg-(--color-accent) active:bg-(--color-accent)"
+        >
+          <span aria-hidden className="pointer-events-none absolute inset-y-0 -left-1 -right-1 group-hover:bg-(--color-accent)/20" />
+        </div>
+        {/* unified working area: a single dockview that hosts file tabs +
+            the display / terminal panels so users can drag tabs across the
+            whole working area, VSCode-style. The editor / bottom split is
+            now managed by dockview's own sash. */}
+        <div className="flex-1 overflow-hidden">
+          <MainArea />
         </div>
       </div>
       <StatusBar />

@@ -28,8 +28,11 @@ export const PALETTE_RESULT_CAP = 60;
  * History:
  *   1: initial bottom-panel layout (Trace + Display + Terminal tabs).
  *   2: Trace moved to the sidebar; bottom defaults to Display + Terminal only.
+ *   3: Editor and bottom area unified into a single dockview so tabs can be
+ *      dragged anywhere (e.g. terminal next to code). Persisted layouts
+ *      from versions 1-2 are dropped on load and re-seeded.
  */
-export const LAYOUT_VERSION = 2;
+export const LAYOUT_VERSION = 3;
 
 /** Width of the activity bar (icon column on the left), in CSS pixels. */
 export const ACTIVITY_WIDTH_PX = 64;

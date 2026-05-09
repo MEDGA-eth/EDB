@@ -4,9 +4,9 @@
 /* edb cream/dark theme overrides */
 .dockview-theme-edb {
   --dv-tabs-and-actions-container-background-color: var(--color-bg);
-  --dv-tabs-and-actions-container-font-size: 12px;
-  --dv-tabs-and-actions-container-height: 32px;
-  --dv-tab-font-size: 12px;
+  --dv-tabs-and-actions-container-font-size: 13px;
+  --dv-tabs-and-actions-container-height: 34px;
+  --dv-tab-font-size: 13px;
   --dv-tab-divider-color: var(--color-border);
 
   --dv-activegroup-visiblepanel-tab-background-color: var(--color-bg-elevated);

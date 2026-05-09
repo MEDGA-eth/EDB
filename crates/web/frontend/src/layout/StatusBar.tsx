@@ -94,7 +94,7 @@ export function StatusBar() {
 
   return (
     <footer
-      className="flex h-[22px] items-center justify-between border-t border-(--color-border) bg-(--color-bg) px-3 font-display text-xs"
+      className="flex h-6 items-center justify-between border-t border-(--color-border) bg-(--color-bg) px-3 font-display text-[12px]"
       data-testid="status-bar"
     >
       <div className="flex items-center gap-3">
