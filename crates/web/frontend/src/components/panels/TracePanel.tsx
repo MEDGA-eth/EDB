@@ -13,7 +13,7 @@ import { useSession } from '../../store/session';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { ErrorCard } from '../ErrorCard';
 import { Toolbar, ToolbarButton, ToolbarDivider } from '../Toolbar';
-import type { CallType, TraceEntry } from '../../lib/types';
+import type { CallType, LogData, TraceEntry } from '../../lib/types';
 
 interface TreeNode {
   entry: TraceEntry;
@@ -58,8 +58,40 @@ export function callTypeLabel(ct: CallType): string {
   return 'CREATE';
 }
 
+/**
+ * Pick a CSS color token for a `CallType` label. Mutating call schemes
+ * (`DelegateCall`, `CallCode`) get the warning token to flag that they run
+ * in the caller's storage context; `StaticCall` is dimmed because it can't
+ * mutate state. `CREATE`/`CREATE2` use the success token. Plain `CALL`
+ * keeps the default keyword color.
+ */
+export function callTypeColorVar(ct: CallType): string {
+  if (ct.kind === 'Create') return 'var(--color-success)';
+  switch (ct.scheme) {
+    case 'DelegateCall':
+    case 'CallCode':
+      return 'var(--color-warn)';
+    case 'StaticCall':
+      return 'var(--color-fg-secondary)';
+    case 'Call':
+    default:
+      return 'var(--color-syn-keyword)';
+  }
+}
+
+/** True if this call's result represents a failure (revert / halt / error). */
+export function isCallFailure(entry: TraceEntry): boolean {
+  if (!entry.result) return false;
+  return entry.result.kind === 'Revert' || entry.result.kind === 'Error';
+}
+
 function shortAddr(a: string): string {
   return a.length > 10 ? `${a.slice(0, 8)}…${a.slice(-4)}` : a;
+}
+
+function shortHex(h: string, head = 10, tail = 4): string {
+  if (h.length <= head + tail + 1) return h;
+  return `${h.slice(0, head)}…${h.slice(-tail)}`;
 }
 
 export function TracePanel() {
@@ -197,6 +229,47 @@ function TracePanelInner() {
   );
 }
 
+/**
+ * Render the inline events list for a single trace entry. Collapsed by
+ * default (a `📡 N events` summary); on expand, each event prints its
+ * topic[0] and data hex truncated. Decoding the event signature is left
+ * for a future feature — we don't currently ship a 4byte database.
+ */
+function EventsList({ events, indent }: { events: LogData[]; indent: number }) {
+  const [open, setOpen] = useState(false);
+  if (events.length === 0) return null;
+  return (
+    <div
+      className="flex w-full flex-col"
+      style={{ paddingLeft: `${indent + 24}px` }}
+      data-testid="trace-events"
+    >
+      <button
+        type="button"
+        data-testid="trace-events-toggle"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="text-left text-(--color-fg-tertiary) hover:text-(--color-fg)"
+      >
+        📡 {events.length} event{events.length === 1 ? '' : 's'}
+        <span className="ml-1 text-(--color-fg-tertiary)">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <ul className="mt-1 list-none space-y-0.5 text-xs text-(--color-fg-secondary)">
+          {events.map((ev, i) => (
+            <li key={i} data-testid={`trace-event-${i}`}>
+              <span className="text-(--color-syn-type)">
+                {ev.topics[0] ? shortHex(ev.topics[0]) : '(no topic)'}
+              </span>
+              <span className="ml-2">data: {shortHex(ev.data, 14, 6)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // TODO(perf): virtualize for traces with thousands of entries.
 // Real mainnet traces are typically <500 entries; this rendering
 // pattern handles them fine. Revisit with @tanstack/react-virtual
@@ -232,13 +305,16 @@ function TraceNode({
   const isCurrent = targetSnapshotId === currentId;
   const hasKids = node.children.length > 0;
   const label = callTypeLabel(entry.call_type);
+  const labelColor = callTypeColorVar(entry.call_type);
   const target = entry.target_label ?? shortAddr(entry.target);
+  const failed = isCallFailure(entry);
+  const indent = depth * 16 + 4;
 
   return (
     <>
       <div
         className="flex w-full items-center"
-        style={{ paddingLeft: `${depth * 16 + 4}px` }}
+        style={{ paddingLeft: `${indent}px` }}
         role="treeitem"
         aria-expanded={hasKids ? open : undefined}
         aria-selected={isCurrent}
@@ -260,19 +336,31 @@ function TraceNode({
         <button
           type="button"
           data-testid={`trace-entry-${entry.id}`}
+          data-failed={failed ? 'true' : undefined}
           onClick={() => setSnap(targetSnapshotId)}
-          aria-label={`Go to trace entry ${entry.id} (${label})`}
+          aria-label={`Go to trace entry ${entry.id} (${label})${failed ? ' — reverted/errored' : ''}`}
           aria-pressed={isCurrent}
           className={
             'flex-1 rounded px-2 py-0.5 text-left hover:bg-(--color-bg-hover) ' +
-            (isCurrent ? 'bg-(--color-accent-dim) text-(--color-fg)' : '')
+            (isCurrent ? 'bg-(--color-accent-dim) text-(--color-fg)' : '') +
+            (failed ? ' text-(--color-danger)' : '')
           }
         >
-          <span className="text-(--color-syn-keyword)">[{label}]</span>{' '}
+          <span style={{ color: labelColor }}>[{label}]</span>{' '}
           <span className="text-(--color-fg-secondary)">→</span>{' '}
           <span className="text-(--color-syn-type)">{target}</span>
+          {failed && (
+            <span
+              className="ml-1 text-(--color-danger)"
+              title={`${entry.result?.kind ?? 'Failure'}: ${entry.result?.result ?? ''}`}
+              aria-label="Reverted or errored"
+            >
+              ⚠
+            </span>
+          )}
         </button>
       </div>
+      <EventsList events={entry.events} indent={indent} />
       {open &&
         node.children.map((c) => (
           <TraceNode
