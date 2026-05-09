@@ -5,21 +5,22 @@ import { useSnapshotInfo } from './useSnapshotInfo';
 
 const sample = {
   id: 0,
-  frame_id: { trace_entry_id: 0, step_id: 0 },
+  frame_id: [0, 0],
   next_id: 1,
   prev_id: 0,
   target_address: '0x' + '0'.repeat(40),
   bytecode_address: '0x' + '0'.repeat(40),
   detail: {
-    kind: 'Opcode',
-    id: 0,
-    frame_id: { trace_entry_id: 0, step_id: 0 },
-    pc: 0,
-    opcode: 0x60,
-    memory: [],
-    stack: [],
-    calldata: [],
-    transient_storage: {},
+    Opcode: {
+      id: 0,
+      frame_id: [0, 0],
+      pc: 0,
+      opcode: 0x60,
+      memory: [],
+      stack: [],
+      calldata: '0x',
+      transient_storage: {},
+    },
   },
 };
 
@@ -38,6 +39,8 @@ describe('useSnapshotInfo', () => {
     const { result } = renderHook(() => useSnapshotInfo(7), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(received).toEqual([7]);
+    // The transform pulls the inner Opcode payload up to `kind: 'Opcode'`.
+    expect(result.current.data?.detail.kind).toBe('Opcode');
   });
 
   test('surfaces RPC error code', async () => {

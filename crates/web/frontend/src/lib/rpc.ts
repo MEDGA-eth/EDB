@@ -78,9 +78,16 @@ export async function rpcRaw<T = unknown>(
   return json.result as T;
 }
 
+/**
+ * Typed JSON-RPC call. The schema may be a plain `z.ZodType<T>` or a
+ * transforming schema (e.g. `z.object(...).transform(...)`) whose input
+ * shape differs from its output — that's why the schema parameter accepts
+ * any Zod schema with `output = T` rather than `z.ZodType<T>`, which
+ * implicitly requires `input == output`.
+ */
 export async function rpc<T>(
   method: string,
-  schema: z.ZodType<T>,
+  schema: z.ZodSchema<T, z.ZodTypeDef, unknown>,
   params?: unknown[],
   opts?: RpcOptions,
 ): Promise<T> {

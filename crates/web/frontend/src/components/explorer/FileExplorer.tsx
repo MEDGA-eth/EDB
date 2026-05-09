@@ -5,23 +5,14 @@ import { useAvailableFiles } from '../../hooks/useAvailableFiles';
 import { useSession } from '../../store/session';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { DISASM_PATH } from '../../layout/FileTabPanel';
-
-interface TraceEntry {
-  id: number;
-  kind: string;
-  code_address: string;
-  target_address: string;
-  children?: TraceEntry[];
-}
+import type { TraceEntry } from '../../lib/types';
 
 function collectAddresses(trace: TraceEntry[] | undefined): string[] {
   if (!trace) return [];
   const out = new Set<string>();
-  const walk = (e: TraceEntry) => {
+  for (const e of trace) {
     if (e.code_address) out.add(e.code_address.toLowerCase());
-    e.children?.forEach(walk);
-  };
-  trace.forEach(walk);
+  }
   return Array.from(out);
 }
 
@@ -48,7 +39,7 @@ type Row =
 
 function FileExplorerInner() {
   const { data: trace, isLoading } = useTrace();
-  const addresses = useMemo(() => collectAddresses(trace as TraceEntry[] | undefined), [trace]);
+  const addresses = useMemo(() => collectAddresses(trace?.inner), [trace]);
   const { perAddress } = useAvailableFiles();
   const open = useSession((s) => s.openFile);
 

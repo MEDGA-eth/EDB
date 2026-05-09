@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ChevronDown,
@@ -13,13 +13,53 @@ import { useSession } from '../../store/session';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { ErrorCard } from '../ErrorCard';
 import { Toolbar, ToolbarButton, ToolbarDivider } from '../Toolbar';
+import type { CallType, TraceEntry } from '../../lib/types';
 
-interface Entry {
-  id: number;
-  kind: string;
-  code_address: string;
-  target_address: string;
-  children?: Entry[];
+interface TreeNode {
+  entry: TraceEntry;
+  children: TreeNode[];
+}
+
+/**
+ * Rebuild a parent → children tree from the flat `TraceEntry[]` returned by
+ * `edb_getTrace`. Uses the engine-assigned `id` field (also the array
+ * index) to wire children to their parents in O(n).
+ */
+function buildTree(entries: TraceEntry[]): TreeNode[] {
+  if (entries.length === 0) return [];
+  const nodes = new Map<number, TreeNode>();
+  for (const e of entries) nodes.set(e.id, { entry: e, children: [] });
+  const roots: TreeNode[] = [];
+  for (const e of entries) {
+    const node = nodes.get(e.id)!;
+    if (e.parent_id === null) {
+      roots.push(node);
+    } else {
+      const parent = nodes.get(e.parent_id);
+      if (parent) parent.children.push(node);
+      else roots.push(node); // orphan — surface at root rather than dropping silently
+    }
+  }
+  return roots;
+}
+
+/** Render a `CallType` to a short uppercase label for the trace view. */
+export function callTypeLabel(ct: CallType): string {
+  if (ct.kind === 'Call') {
+    switch (ct.scheme) {
+      case 'Call': return 'CALL';
+      case 'CallCode': return 'CALLCODE';
+      case 'DelegateCall': return 'DELEGATECALL';
+      case 'StaticCall': return 'STATICCALL';
+    }
+  }
+  if (typeof ct.scheme === 'string') return 'CREATE';
+  if (ct.scheme && typeof ct.scheme === 'object' && 'Create2' in ct.scheme) return 'CREATE2';
+  return 'CREATE';
+}
+
+function shortAddr(a: string): string {
+  return a.length > 10 ? `${a.slice(0, 8)}…${a.slice(-4)}` : a;
 }
 
 export function TracePanel() {
@@ -47,6 +87,8 @@ function TracePanelInner() {
   useEffect(() => {
     if (collapseTick > 0) setForceClose((n) => n + 1);
   }, [collapseTick]);
+
+  const roots = useMemo(() => buildTree(data?.inner ?? []), [data]);
 
   function scrollToCurrent() {
     if (!containerRef.current) return;
@@ -140,10 +182,10 @@ function TracePanelInner() {
         onKeyDown={onKey}
         className="flex-1 overflow-auto p-2 font-mono text-sm"
       >
-        {(data as Entry[]).map((e) => (
+        {roots.map((n) => (
           <TraceNode
-            key={e.id}
-            entry={e}
+            key={n.entry.id}
+            node={n}
             depth={0}
             forceOpen={forceOpen}
             forceClose={forceClose}
@@ -160,19 +202,19 @@ function TracePanelInner() {
 // pattern handles them fine. Revisit with @tanstack/react-virtual
 // if a pathological trace shows up.
 function TraceNode({
-  entry,
+  node,
   depth,
   forceOpen,
   forceClose,
   currentId,
 }: {
-  entry: Entry;
+  node: TreeNode;
   depth: number;
   forceOpen: number;
   forceClose: number;
   currentId: number;
 }) {
-  const setId = useSession((s) => s.setSnapshotId);
+  const setSnap = useSession((s) => s.setSnapshotId);
   const [open, setOpen] = useState(true);
 
   useEffect(() => {
@@ -182,8 +224,16 @@ function TraceNode({
     if (forceClose > 0) setOpen(false);
   }, [forceClose]);
 
-  const isCurrent = entry.id === currentId;
-  const hasKids = (entry.children?.length ?? 0) > 0;
+  const entry = node.entry;
+  // Selecting a trace entry jumps to its first snapshot. The engine guarantees
+  // every executed entry has a non-null first_snapshot_id; CREATE failures
+  // can be null, in which case we fall back to the trace id (rare).
+  const targetSnapshotId = entry.first_snapshot_id ?? entry.id;
+  const isCurrent = targetSnapshotId === currentId;
+  const hasKids = node.children.length > 0;
+  const label = callTypeLabel(entry.call_type);
+  const target = entry.target_label ?? shortAddr(entry.target);
+
   return (
     <>
       <div
@@ -210,24 +260,24 @@ function TraceNode({
         <button
           type="button"
           data-testid={`trace-entry-${entry.id}`}
-          onClick={() => setId(entry.id)}
-          aria-label={`Go to trace entry ${entry.id} (${entry.kind})`}
+          onClick={() => setSnap(targetSnapshotId)}
+          aria-label={`Go to trace entry ${entry.id} (${label})`}
           aria-pressed={isCurrent}
           className={
             'flex-1 rounded px-2 py-0.5 text-left hover:bg-(--color-bg-hover) ' +
             (isCurrent ? 'bg-(--color-accent-dim) text-(--color-fg)' : '')
           }
         >
-          <span className="text-(--color-syn-keyword)">[{entry.kind}]</span>{' '}
+          <span className="text-(--color-syn-keyword)">[{label}]</span>{' '}
           <span className="text-(--color-fg-secondary)">→</span>{' '}
-          <span className="text-(--color-syn-type)">{entry.target_address.slice(0, 10)}…</span>
+          <span className="text-(--color-syn-type)">{target}</span>
         </button>
       </div>
       {open &&
-        entry.children?.map((c) => (
+        node.children.map((c) => (
           <TraceNode
-            key={c.id}
-            entry={c}
+            key={c.entry.id}
+            node={c}
             depth={depth + 1}
             forceOpen={forceOpen}
             forceClose={forceClose}

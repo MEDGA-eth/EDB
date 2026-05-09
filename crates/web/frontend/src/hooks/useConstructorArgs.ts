@@ -1,13 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
-import { z } from 'zod';
 import { rpc } from '../lib/rpc';
+import { ConstructorArgs } from '../lib/types';
 
-const Schema = z.array(z.unknown());
-
+/**
+ * `edb_getConstructorArgs` returns `Option<Bytes>` — a single hex string
+ * holding the ABI-encoded constructor argument blob, or `null` if the
+ * artifact didn't capture deploy-time arguments.
+ */
 export function useConstructorArgs(addr: string | undefined) {
   return useQuery({
     queryKey: ['ctor', addr] as const,
-    queryFn: () => rpc('edb_getConstructorArgs', Schema, [addr]),
+    queryFn: () => rpc('edb_getConstructorArgs', ConstructorArgs, [addr]),
     enabled: !!addr,
   });
 }

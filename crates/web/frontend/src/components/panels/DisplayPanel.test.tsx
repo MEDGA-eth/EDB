@@ -7,24 +7,25 @@ import { useSession } from '../../store/session';
 
 const sample = {
   id: 0,
-  frame_id: { trace_entry_id: 0, step_id: 0 },
+  frame_id: [0, 0],
   next_id: 1,
   prev_id: 0,
   target_address: '0x' + '0'.repeat(40),
   bytecode_address: '0x' + '0'.repeat(40),
   detail: {
-    kind: 'Opcode',
-    id: 0,
-    frame_id: { trace_entry_id: 0, step_id: 0 },
-    pc: 0,
-    opcode: 0x60,
-    memory: [
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      1,
-    ],
-    stack: ['0x1', '0x2'],
-    calldata: [],
-    transient_storage: {},
+    Opcode: {
+      id: 0,
+      frame_id: [0, 0],
+      pc: 0,
+      opcode: 0x60,
+      memory: [
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        1,
+      ],
+      stack: ['0x1', '0x2'],
+      calldata: '0x',
+      transient_storage: {},
+    },
   },
 };
 
@@ -32,7 +33,7 @@ describe('<DisplayPanel />', () => {
   afterEach(cleanup);
 
   test('renders all 5 tabs and switches', async () => {
-    mockRpc({ edb_getSnapshotInfo: () => sample, edb_getStorageDiff: () => [] });
+    mockRpc({ edb_getSnapshotInfo: () => sample, edb_getStorageDiff: () => ({}) });
     useSession.getState().setSnapshotId(0);
     const { wrapper } = makeWrapper();
     render(<DisplayPanel />, { wrapper });
@@ -44,7 +45,7 @@ describe('<DisplayPanel />', () => {
   });
 
   test('memory tab renders 32-byte rows', async () => {
-    mockRpc({ edb_getSnapshotInfo: () => sample, edb_getStorageDiff: () => [] });
+    mockRpc({ edb_getSnapshotInfo: () => sample, edb_getStorageDiff: () => ({}) });
     useSession.getState().setSnapshotId(0);
     const { wrapper } = makeWrapper();
     render(<DisplayPanel />, { wrapper });
@@ -56,7 +57,13 @@ describe('<DisplayPanel />', () => {
   test('storage tab renders diff rows', async () => {
     mockRpc({
       edb_getSnapshotInfo: () => sample,
-      edb_getStorageDiff: () => [{ slot: '0x0', before: '0x0', after: '0x1' }],
+      // StorageDiff is now a map: slot -> [before, after].
+      edb_getStorageDiff: () => ({
+        '0x0000000000000000000000000000000000000000000000000000000000000000': [
+          '0x0000000000000000000000000000000000000000000000000000000000000000',
+          '0x0000000000000000000000000000000000000000000000000000000000000001',
+        ],
+      }),
     });
     useSession.getState().setSnapshotId(0);
     const { wrapper } = makeWrapper();

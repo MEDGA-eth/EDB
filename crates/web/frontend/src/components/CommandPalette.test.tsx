@@ -7,6 +7,28 @@ import { makeWrapper, mockRpc } from '../hooks/_test-utils';
 
 const ADDR_A = '0x' + 'a'.repeat(40);
 
+function entry(id: number, parent: number | null, addr: string) {
+  return {
+    id,
+    parent_id: parent,
+    depth: parent === null ? 0 : 1,
+    call_type: { Call: 'Call' },
+    caller: '0x' + '1'.repeat(40),
+    target: addr,
+    code_address: addr,
+    input: '0x',
+    value: '0x0',
+    result: { Success: { output: '0x', result: 'Stop' } },
+    created_contract: false,
+    create_scheme: null,
+    bytecode: '0x6080',
+    target_label: null,
+    self_destruct: null,
+    events: [],
+    first_snapshot_id: id,
+  };
+}
+
 beforeEach(() => {
   localStorage.clear();
   useSession.setState({
@@ -25,16 +47,12 @@ beforeEach(() => {
   });
   mockRpc({
     edb_getSnapshotCount: () => 4,
-    edb_getTrace: () => [
-      { id: 0, kind: 'CALL', code_address: ADDR_A, target_address: ADDR_A, children: [] },
-    ],
+    edb_getTrace: () => ({ inner: [entry(0, null, ADDR_A)] }),
     edb_getCodeByAddress: () => ({
-      kind: 'Source',
-      entry: 'X.sol',
-      files: [
-        { path: 'X.sol', content: '' },
-        { path: 'Y.sol', content: '' },
-      ],
+      Source: {
+        bytecode_address: ADDR_A,
+        sources: { 'X.sol': '', 'Y.sol': '' },
+      },
     }),
     edb_getNextCall: () => 0,
     edb_getPrevCall: () => 0,

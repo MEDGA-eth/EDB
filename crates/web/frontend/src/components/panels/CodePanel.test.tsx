@@ -4,11 +4,17 @@ import { CodePanel } from './CodePanel';
 import { makeWrapper, mockRpc } from '../../hooks/_test-utils';
 import { useSession } from '../../store/session';
 
+const ADDR = '0x' + '1'.repeat(40);
+
 describe('<CodePanel />', () => {
   afterEach(cleanup);
 
-  test('renders opcodes view for Opcodes payload', async () => {
-    mockRpc({ edb_getCode: () => ({ kind: 'Opcodes', disasm: 'PUSH1 0x60' }) });
+  test('renders opcodes view for Opcode payload', async () => {
+    mockRpc({
+      edb_getCode: () => ({
+        Opcode: { bytecode_address: ADDR, codes: { '0': 'PUSH1 0x60' } },
+      }),
+    });
     useSession.getState().setSnapshotId(0);
     const { wrapper } = makeWrapper();
     render(<CodePanel />, { wrapper });
@@ -18,9 +24,10 @@ describe('<CodePanel />', () => {
   test('renders solidity view for Source payload', async () => {
     mockRpc({
       edb_getCode: () => ({
-        kind: 'Source',
-        entry: 'a.sol',
-        files: [{ path: 'a.sol', content: 'contract X{}' }],
+        Source: {
+          bytecode_address: ADDR,
+          sources: { 'a.sol': 'contract X{}' },
+        },
       }),
     });
     useSession.getState().setSnapshotId(0);

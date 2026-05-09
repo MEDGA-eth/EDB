@@ -10,7 +10,11 @@ describe('<TerminalPanel />', () => {
   afterEach(cleanup);
 
   test('appends input + result on submit', async () => {
-    mockRpc({ edb_evalOnSnapshot: (params) => ({ value: 42, params }) });
+    mockRpc({
+      edb_evalOnSnapshot: () => ({
+        Ok: { type: 'Uint', value: { bits: 256, value: '42' } },
+      }),
+    });
     const { wrapper } = makeWrapper();
     render(<TerminalPanel />, { wrapper });
     const input = screen.getByTestId('terminal-input');

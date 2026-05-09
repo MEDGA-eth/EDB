@@ -8,6 +8,7 @@ import { ErrorBoundary } from '../ErrorBoundary';
 import { ErrorCard } from '../ErrorCard';
 import { Toolbar, ToolbarButton, ToolbarDivider } from '../Toolbar';
 import type { SnapshotInfo } from '../../lib/types';
+import { storageDiffRows } from '../../lib/types';
 import { VarsView } from './display/VarsView';
 import { StackView } from './display/StackView';
 import { MemoryView } from './display/MemoryView';
@@ -32,12 +33,6 @@ export function DisplayPanel() {
   );
 }
 
-interface StorageRow {
-  slot: string;
-  before: string | null;
-  after: string | null;
-}
-
 function DisplayPanelInner() {
   const id = useSession((s) => s.currentSnapshotId);
   const { data, error, refetch } = useSnapshotInfo(id);
@@ -54,8 +49,7 @@ function DisplayPanelInner() {
       />
     );
 
-  // `useSnapshotInfo` is currently schema-less (z.unknown), so we narrow defensively.
-  const snap = data as SnapshotInfo | undefined;
+  const snap: SnapshotInfo | undefined = data;
   const opcode = snap?.detail?.kind === 'Opcode' ? snap.detail : undefined;
 
   function copyActive() {
@@ -64,8 +58,8 @@ function DisplayPanelInner() {
     else if (tab === 'stack') text = (opcode?.stack ?? []).join('\n');
     else if (tab === 'memory') text = formatMemory(opcode?.memory ?? []);
     else if (tab === 'storage')
-      text = (storageData ?? [])
-        .map((d: StorageRow) => `${d.slot}\t${d.before ?? ''}\t${d.after ?? ''}`)
+      text = storageDiffRows(storageData ?? {})
+        .map((d) => `${d.slot}\t${d.before}\t${d.after}`)
         .join('\n');
     else if (tab === 'transient')
       text = Object.entries(opcode?.transient_storage ?? {})
