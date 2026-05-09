@@ -6,6 +6,22 @@ import { useSession } from '../../store/session';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { Toolbar, ToolbarButton, ToolbarDivider } from '../Toolbar';
 
+/**
+ * Pretty-print an RPC eval result without losing numeric precision.
+ *
+ * The engine encodes uint256 / int256 / hash values as decimal or hex
+ * strings (so a JS number can never silently truncate them). However, in
+ * case a future build accidentally returns a `bigint` literal in JSON,
+ * we add a replacer that stringifies it so `JSON.stringify` doesn't throw.
+ */
+export function prettyJson(value: unknown): string {
+  return JSON.stringify(
+    value,
+    (_k, v) => (typeof v === 'bigint' ? v.toString() : v),
+    2,
+  );
+}
+
 export function TerminalPanel() {
   return (
     <ErrorBoundary label="TerminalPanel">
@@ -36,7 +52,7 @@ function TerminalPanelInner() {
     const last = [...history].reverse().find((h) => h.kind === 'result' || h.kind === 'error');
     if (!last) return;
     let text = '';
-    if (last.kind === 'result') text = `${last.expr} → ${JSON.stringify(last.value, null, 2)}`;
+    if (last.kind === 'result') text = `${last.expr} → ${prettyJson(last.value)}`;
     else if (last.kind === 'error') text = `${last.expr} ⨯ ${last.message} (${last.code})`;
     if (!navigator.clipboard?.writeText) {
       append({
@@ -140,7 +156,7 @@ function TerminalLine({ entry }: { entry: import('../../store/session').Terminal
     );
   return (
     <div data-testid="term-result">
-      <ReactMarkdown>{`\`${entry.expr}\` →\n\n\`\`\`\n${JSON.stringify(entry.value, null, 2)}\n\`\`\``}</ReactMarkdown>
+      <ReactMarkdown>{`\`${entry.expr}\` →\n\n\`\`\`\n${prettyJson(entry.value)}\n\`\`\``}</ReactMarkdown>
     </div>
   );
 }

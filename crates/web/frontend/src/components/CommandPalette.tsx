@@ -8,9 +8,9 @@ import { useNextCall } from '../hooks/useNextCall';
 import { usePrevCall } from '../hooks/usePrevCall';
 import { useAvailableFiles } from '../hooks/useAvailableFiles';
 import { useDebounced } from '../hooks/useDebounced';
-import { COMMANDS, type Command, type CommandCtx } from '../lib/commands';
-import { rankBy } from '../lib/fuzzyMatch';
-import { PALETTE_RECENT_LIMIT, PALETTE_RESULT_CAP } from '../lib/constants';
+import { type CommandCtx } from '../lib/commands';
+import { PALETTE_RECENT_LIMIT } from '../lib/constants';
+import { buildRows, type PaletteRow } from './palette/buildRows';
 
 /**
  * How long to wait after the user stops typing before rebuilding the
@@ -20,12 +20,6 @@ import { PALETTE_RECENT_LIMIT, PALETTE_RESULT_CAP } from '../lib/constants';
 const PALETTE_QUERY_DEBOUNCE_MS = 60;
 
 const RECENT_KEY = 'edb-web:palette-recent';
-
-type PaletteRow =
-  | { kind: 'command'; id: string; label: string; hint?: string; group?: string; run(): void }
-  | { kind: 'file'; id: string; label: string; hint?: string; run(): void }
-  | { kind: 'snapshot'; id: string; label: string; hint?: string; run(): void }
-  | { kind: 'address'; id: string; label: string; hint?: string; run(): void };
 
 function loadRecent(): string[] {
   if (typeof localStorage === 'undefined') return [];
@@ -49,10 +43,6 @@ function pushRecent(id: string) {
   } catch {
     // ignore
   }
-}
-
-function shortAddr(a: string): string {
-  return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
 
 function iconFor(kind: PaletteRow['kind']): LucideIcon {
@@ -116,73 +106,19 @@ function CommandPaletteInner() {
     };
   }, []);
 
-  /* ---------- build the row set ---------- */
-
-  const rows = useMemo<PaletteRow[]>(() => {
-    const trimmed = debouncedQuery.trim();
-    const isCommandMode = trimmed.startsWith('>');
-    const isSnapshotMode = trimmed.startsWith(':') || trimmed.startsWith('#');
-    const stripped = isCommandMode || isSnapshotMode ? trimmed.slice(1).trim() : trimmed;
-
-    /* commands */
-    const enabledCommands = COMMANDS.filter((c) => (c.enabled ? c.enabled(ctx) : true));
-    const commandRows: PaletteRow[] = enabledCommands.map((c) => commandToRow(c, ctx));
-
-    /* snapshots — only generate at most 50 to avoid huge lists */
-    const snapshotRows: PaletteRow[] = [];
-    if (snapshotCount > 0) {
-      const limit = Math.min(snapshotCount, 50);
-      for (let i = 0; i < limit; i += 1) {
-        snapshotRows.push({
-          kind: 'snapshot',
-          id: `snap:${i}`,
-          label: `Go to snapshot ${i}`,
-          hint: `${i} / ${snapshotCount}`,
-          run: () => setSnap(i),
-        });
-      }
-    }
-
-    /* files */
-    const fileRows: PaletteRow[] = files.map((f) => ({
-      kind: 'file',
-      id: `file:${f.addr}::${f.path}`,
-      label: f.path === '<disasm>' ? `disasm @ ${shortAddr(f.addr)}` : (f.path.split('/').pop() ?? f.path),
-      hint: `${shortAddr(f.addr)} · ${f.path}`,
-      run: () => openFile({ addr: f.addr, path: f.path }),
-    }));
-
-    /* addresses */
-    const addressRows: PaletteRow[] = addresses.map((addr) => ({
-      kind: 'address',
-      id: `addr:${addr}`,
-      label: shortAddr(addr),
-      hint: addr,
-      run: () => {
-        // jumping to an address doesn't change snapshot — we open its disasm/source as fallback
-        const file = files.find((f) => f.addr === addr);
-        if (file) openFile({ addr: file.addr, path: file.path });
-      },
-    }));
-
-    /* prefix routing */
-    let pool: PaletteRow[];
-    if (isCommandMode) pool = commandRows;
-    else if (isSnapshotMode) pool = snapshotRows;
-    else pool = [...fileRows, ...addressRows, ...commandRows];
-
-    /* empty input → recent first */
-    if (!stripped) {
-      const recent = new Set(loadRecent());
-      const recentRows = pool.filter((r) => recent.has(r.id));
-      const rest = pool.filter((r) => !recent.has(r.id));
-      return [...recentRows, ...rest].slice(0, PALETTE_RESULT_CAP);
-    }
-
-    return rankBy(pool, stripped, (r) => `${r.label} ${r.hint ?? ''}`)
-      .slice(0, PALETTE_RESULT_CAP)
-      .map((r) => r.item);
-  }, [debouncedQuery, ctx, snapshotCount, files, addresses, openFile, setSnap]);
+  const rows = useMemo<PaletteRow[]>(
+    () =>
+      buildRows(debouncedQuery, {
+        ctx,
+        snapshotCount,
+        files,
+        addresses,
+        openFile,
+        setSnap,
+        loadRecent,
+      }),
+    [debouncedQuery, ctx, snapshotCount, files, addresses, openFile, setSnap],
+  );
 
   /* keep activeIdx in range */
   useEffect(() => {
@@ -299,15 +235,4 @@ function PaletteRowView({
       </button>
     </li>
   );
-}
-
-function commandToRow(c: Command, ctx: CommandCtx): PaletteRow {
-  return {
-    kind: 'command',
-    id: `cmd:${c.id}`,
-    label: c.label,
-    hint: c.hint ? c.hint : c.group,
-    group: c.group,
-    run: () => c.run(ctx),
-  };
 }
