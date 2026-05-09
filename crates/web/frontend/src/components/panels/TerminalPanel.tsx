@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { ArrowDownToLine, Copy, Trash2, X } from 'lucide-react';
+import { ArrowDownToLine, Copy, Eye, Trash2, X } from 'lucide-react';
 import { useEvalExpr } from '../../hooks/useEvalExpr';
 import { formatSolValue, type EvalResult } from '../../lib/types';
 import { useSession } from '../../store/session';
@@ -63,6 +63,7 @@ function TerminalPanelInner() {
   const history = useSession((s) => s.terminalHistory);
   const append = useSession((s) => s.appendTerminal);
   const clear = useSession((s) => s.clearTerminal);
+  const addWatch = useSession((s) => s.addWatchExpression);
   const evalExpr = useEvalExpr();
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -126,6 +127,19 @@ function TerminalPanelInner() {
         message: `Clipboard write failed: ${err.message ?? String(e)}`,
       });
     }
+  }
+
+  function lastInputText(): string | null {
+    for (let i = history.length - 1; i >= 0; i -= 1) {
+      const h = history[i];
+      if (h.kind === 'input') return h.text;
+    }
+    return null;
+  }
+
+  function saveLastAsWatch() {
+    const last = lastInputText();
+    if (last) addWatch(last);
   }
 
   function cancelLatest() {
@@ -200,6 +214,13 @@ function TerminalPanelInner() {
           testid="terminal-copy-last"
           onClick={() => void copyLast()}
           disabled={history.length === 0}
+        />
+        <ToolbarButton
+          icon={Eye}
+          label="Save last input as watch expression"
+          testid="terminal-save-watch"
+          onClick={saveLastAsWatch}
+          disabled={lastInputText() === null}
         />
         <ToolbarDivider />
         <ToolbarButton

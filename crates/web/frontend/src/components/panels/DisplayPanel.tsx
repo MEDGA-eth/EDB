@@ -10,15 +10,17 @@ import { Toolbar, ToolbarButton, ToolbarDivider } from '../Toolbar';
 import type { SnapshotInfo } from '../../lib/types';
 import { storageDiffRows } from '../../lib/types';
 import { VarsView } from './display/VarsView';
+import { WatchView } from './display/WatchView';
 import { StackView } from './display/StackView';
 import { MemoryView } from './display/MemoryView';
 import { StorageView } from './display/StorageView';
 import { TransientView } from './display/TransientView';
 import { formatMemory } from './display/formatMemory';
 
-type Tab = 'vars' | 'stack' | 'memory' | 'storage' | 'transient';
+type Tab = 'vars' | 'watch' | 'stack' | 'memory' | 'storage' | 'transient';
 const TABS: { key: Tab; label: string }[] = [
   { key: 'vars', label: 'Variables' },
+  { key: 'watch', label: 'Watch' },
   { key: 'stack', label: 'Stack' },
   { key: 'memory', label: 'Memory' },
   { key: 'storage', label: 'Storage' },
@@ -120,7 +122,9 @@ function DisplayPanelInner() {
         data-testid={`display-tab-content-${tab}`}
         className="flex-1 overflow-auto p-3 font-mono text-sm"
       >
-        {!data ? (
+        {tab === 'watch' ? (
+          <WatchView snapshotId={id} />
+        ) : !data ? (
           <span className="text-(--color-fg-tertiary)">Loading…</span>
         ) : (
           {
@@ -129,7 +133,7 @@ function DisplayPanelInner() {
             memory: <MemoryView snap={snap} />,
             storage: <StorageView id={id} />,
             transient: <TransientView snap={snap} />,
-          }[tab]
+          }[tab as Exclude<Tab, 'watch'>]
         )}
       </div>
     </div>

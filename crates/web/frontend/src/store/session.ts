@@ -50,6 +50,8 @@ export interface SessionState {
   /** trace expand/collapse "epoch" — bumping forces panels to re-evaluate */
   traceExpandTick: number;
   traceCollapseTick: number;
+  /** persisted list of watch expressions (auto-evaluated each snapshot) */
+  watchExpressions: string[];
 
   setSnapshotId(id: number): void;
   nextSnapshot(max: number): void;
@@ -83,6 +85,10 @@ export interface SessionState {
   toggleLineNumbers(): void;
   bumpTraceExpand(): void;
   bumpTraceCollapse(): void;
+
+  addWatchExpression(expr: string): void;
+  removeWatchExpression(expr: string): void;
+  clearWatchExpressions(): void;
 }
 
 function fileId(addr: string, path: string): string {
@@ -112,6 +118,7 @@ export const useSession = create<SessionState>()(
       showLineNumbers: true,
       traceExpandTick: 0,
       traceCollapseTick: 0,
+      watchExpressions: [],
 
       setSnapshotId: (id) => set({ currentSnapshotId: Math.max(0, id) }),
       nextSnapshot: (max) =>
@@ -186,6 +193,17 @@ export const useSession = create<SessionState>()(
       toggleLineNumbers: () => set({ showLineNumbers: !get().showLineNumbers }),
       bumpTraceExpand: () => set({ traceExpandTick: get().traceExpandTick + 1 }),
       bumpTraceCollapse: () => set({ traceCollapseTick: get().traceCollapseTick + 1 }),
+
+      addWatchExpression: (expr) => {
+        const trimmed = expr.trim();
+        if (!trimmed) return;
+        const cur = get().watchExpressions;
+        if (cur.includes(trimmed)) return;
+        set({ watchExpressions: [...cur, trimmed] });
+      },
+      removeWatchExpression: (expr) =>
+        set({ watchExpressions: get().watchExpressions.filter((e) => e !== expr) }),
+      clearWatchExpressions: () => set({ watchExpressions: [] }),
     }),
     {
       name: PERSIST_KEY,
