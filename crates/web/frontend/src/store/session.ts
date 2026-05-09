@@ -57,6 +57,10 @@ export interface SessionState {
   addBreakpoint(bp: Breakpoint): void;
   removeBreakpoint(idx: number): void;
   clearBreakpoints(): void;
+  setBreakpointCondition(idx: number, condition: string | null): void;
+  setBreakpointEnabled(idx: number, enabled: boolean): void;
+  enableAllBreakpoints(): void;
+  disableAllBreakpoints(): void;
   appendTerminal(entry: TerminalEntry): void;
   clearTerminal(): void;
   setPanelTab(tab: PanelTab): void;
@@ -113,10 +117,35 @@ export const useSession = create<SessionState>()(
       nextSnapshot: (max) =>
         set({ currentSnapshotId: Math.min(get().currentSnapshotId + 1, Math.max(0, max - 1)) }),
       prevSnapshot: () => set({ currentSnapshotId: Math.max(0, get().currentSnapshotId - 1) }),
-      addBreakpoint: (bp) => set({ breakpoints: [...get().breakpoints, bp] }),
+      addBreakpoint: (bp) =>
+        set({
+          breakpoints: [
+            ...get().breakpoints,
+            // ensure `enabled` is always populated (defaults to true) — the
+            // schema accepts a missing field but the runtime needs an explicit
+            // boolean so toggle semantics stay deterministic.
+            { ...bp, enabled: bp.enabled ?? true },
+          ],
+        }),
       removeBreakpoint: (idx) =>
         set({ breakpoints: get().breakpoints.filter((_, i) => i !== idx) }),
       clearBreakpoints: () => set({ breakpoints: [] }),
+      setBreakpointCondition: (idx, condition) =>
+        set({
+          breakpoints: get().breakpoints.map((bp, i) =>
+            i === idx ? { ...bp, condition } : bp,
+          ),
+        }),
+      setBreakpointEnabled: (idx, enabled) =>
+        set({
+          breakpoints: get().breakpoints.map((bp, i) =>
+            i === idx ? { ...bp, enabled } : bp,
+          ),
+        }),
+      enableAllBreakpoints: () =>
+        set({ breakpoints: get().breakpoints.map((bp) => ({ ...bp, enabled: true })) }),
+      disableAllBreakpoints: () =>
+        set({ breakpoints: get().breakpoints.map((bp) => ({ ...bp, enabled: false })) }),
       appendTerminal: (entry) => set({ terminalHistory: [...get().terminalHistory, entry] }),
       clearTerminal: () => set({ terminalHistory: [] }),
       setPanelTab: (tab) => set({ panelTab: tab }),

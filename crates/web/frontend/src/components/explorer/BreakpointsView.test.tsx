@@ -59,4 +59,46 @@ describe('<BreakpointsView />', () => {
     await userEvent.click(screen.getByTestId('bp-clear-all'));
     expect(useSession.getState().breakpoints).toHaveLength(0);
   });
+
+  test('toggle button flips the enabled flag', async () => {
+    useSession.getState().addBreakpoint({
+      loc: { kind: 'Opcode', bytecode_address: ADDR, pc: 1 },
+      condition: null,
+    });
+    const { wrapper } = makeWrapper();
+    render(<BreakpointsView />, { wrapper });
+    expect(useSession.getState().breakpoints[0].enabled).toBe(true);
+    await userEvent.click(screen.getByTestId('bp-toggle-0'));
+    expect(useSession.getState().breakpoints[0].enabled).toBe(false);
+  });
+
+  test('disable-all and enable-all flip every breakpoint', async () => {
+    useSession.getState().addBreakpoint({
+      loc: { kind: 'Opcode', bytecode_address: ADDR, pc: 1 },
+      condition: null,
+    });
+    useSession.getState().addBreakpoint({
+      loc: { kind: 'Opcode', bytecode_address: ADDR, pc: 2 },
+      condition: null,
+    });
+    const { wrapper } = makeWrapper();
+    render(<BreakpointsView />, { wrapper });
+    await userEvent.click(screen.getByTestId('bp-disable-all'));
+    expect(useSession.getState().breakpoints.every((bp) => bp.enabled === false)).toBe(true);
+    await userEvent.click(screen.getByTestId('bp-enable-all'));
+    expect(useSession.getState().breakpoints.every((bp) => bp.enabled === true)).toBe(true);
+  });
+
+  test('typing into the condition input commits on blur', async () => {
+    useSession.getState().addBreakpoint({
+      loc: { kind: 'Opcode', bytecode_address: ADDR, pc: 1 },
+      condition: null,
+    });
+    const { wrapper } = makeWrapper();
+    render(<BreakpointsView />, { wrapper });
+    const input = screen.getByTestId('bp-condition-0') as HTMLInputElement;
+    await userEvent.type(input, 'x > 0');
+    await userEvent.tab(); // blur
+    await waitFor(() => expect(useSession.getState().breakpoints[0].condition).toBe('x > 0'));
+  });
 });
