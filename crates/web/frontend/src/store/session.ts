@@ -79,6 +79,8 @@ function fileId(addr: string, path: string): string {
   return `${addr}::${path}`;
 }
 
+const PERSIST_KEY = 'edb-web:session';
+
 export const useSession = create<SessionState>()(
   persist<SessionState>(
     (set, get) => ({
@@ -151,7 +153,7 @@ export const useSession = create<SessionState>()(
       bumpTraceCollapse: () => set({ traceCollapseTick: get().traceCollapseTick + 1 }),
     }),
     {
-      name: 'edb-web:session',
+      name: PERSIST_KEY,
       storage: createJSONStorage(() => localStorage),
       partialize: (s): SessionState => ({
         ...s,
@@ -171,3 +173,16 @@ export const useSession = create<SessionState>()(
     },
   ),
 );
+
+// Cross-tab sync: when another tab writes to our persist key, rehydrate.
+// This keeps theme + layout consistent across tabs without a refresh. We
+// guard against `addEventListener` not existing under server-side renders.
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('storage', (e: StorageEvent) => {
+    if (e.key !== PERSIST_KEY) return;
+    // `useSession.persist.rehydrate()` re-reads the storage and merges the
+    // persisted slice into the live store. Per the zustand docs, this is
+    // the canonical way to reflect external mutations to the persist key.
+    void useSession.persist.rehydrate();
+  });
+}

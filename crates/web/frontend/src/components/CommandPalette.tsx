@@ -7,9 +7,17 @@ import { useSnapshotCount } from '../hooks/useSnapshotCount';
 import { useNextCall } from '../hooks/useNextCall';
 import { usePrevCall } from '../hooks/usePrevCall';
 import { useAvailableFiles } from '../hooks/useAvailableFiles';
+import { useDebounced } from '../hooks/useDebounced';
 import { COMMANDS, type Command, type CommandCtx } from '../lib/commands';
 import { rankBy } from '../lib/fuzzyMatch';
 import { PALETTE_RECENT_LIMIT, PALETTE_RESULT_CAP } from '../lib/constants';
+
+/**
+ * How long to wait after the user stops typing before rebuilding the
+ * filtered row pool. Short enough to feel snappy; long enough to skip
+ * the intermediate edit states when typing fast.
+ */
+const PALETTE_QUERY_DEBOUNCE_MS = 60;
 
 const RECENT_KEY = 'edb-web:palette-recent';
 
@@ -80,17 +88,38 @@ function CommandPaletteInner() {
   );
 
   const [query, setQuery] = useState('');
+  // Debounced query — used only for the (potentially expensive) row build,
+  // so the input stays synchronously responsive while typing.
+  const debouncedQuery = useDebounced(query, PALETTE_QUERY_DEBOUNCE_MS);
   const [activeIdx, setActiveIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // Element that owned focus before the palette opened. Restored on close
+  // so keystrokes don't leak into a backgrounded editor.
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
+    // Capture and blur the previously-focused element, then move focus to
+    // the palette input. The blur is important — without it, keystrokes
+    // can race the palette open/close and bleed into the editor below.
+    const prev = document.activeElement as HTMLElement | null;
+    previouslyFocusedRef.current = prev && prev !== document.body ? prev : null;
+    if (previouslyFocusedRef.current && typeof previouslyFocusedRef.current.blur === 'function') {
+      previouslyFocusedRef.current.blur();
+    }
     inputRef.current?.focus();
+    return () => {
+      // On close, restore focus if the captured element is still in the DOM.
+      const target = previouslyFocusedRef.current;
+      if (target && document.body.contains(target) && typeof target.focus === 'function') {
+        target.focus();
+      }
+    };
   }, []);
 
   /* ---------- build the row set ---------- */
 
   const rows = useMemo<PaletteRow[]>(() => {
-    const trimmed = query.trim();
+    const trimmed = debouncedQuery.trim();
     const isCommandMode = trimmed.startsWith('>');
     const isSnapshotMode = trimmed.startsWith(':') || trimmed.startsWith('#');
     const stripped = isCommandMode || isSnapshotMode ? trimmed.slice(1).trim() : trimmed;
@@ -153,7 +182,7 @@ function CommandPaletteInner() {
     return rankBy(pool, stripped, (r) => `${r.label} ${r.hint ?? ''}`)
       .slice(0, PALETTE_RESULT_CAP)
       .map((r) => r.item);
-  }, [query, ctx, snapshotCount, files, addresses, openFile, setSnap]);
+  }, [debouncedQuery, ctx, snapshotCount, files, addresses, openFile, setSnap]);
 
   /* keep activeIdx in range */
   useEffect(() => {

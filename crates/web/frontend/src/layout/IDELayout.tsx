@@ -15,6 +15,8 @@ import { FileExplorer } from '../components/explorer/FileExplorer';
 import { BreakpointsView } from '../components/explorer/BreakpointsView';
 import { CommandPalette } from '../components/CommandPalette';
 import { useGlobalKeybinds } from '../hooks/useGlobalKeybinds';
+import { useSnapshotCount } from '../hooks/useSnapshotCount';
+import { useTrace } from '../hooks/useTrace';
 import { useSession, type ActivityKind } from '../store/session';
 import {
   ACTIVITY_WIDTH_PX,
@@ -212,6 +214,10 @@ function BottomArea() {
       api.getPanel('trace')?.api.setActive();
     }
 
+    // Subscribe AFTER default-panel setup completes so the partial-init
+    // states emitted during `addPanel` calls aren't persisted as the
+    // "saved" layout. Otherwise a refresh mid-init could pin a half-built
+    // shape into localStorage.
     disposablesRef.current.push(
       api.onDidLayoutChange(() => {
         try {
@@ -283,12 +289,57 @@ function SidePlaceholder({ activity }: { activity: ActivityKind }) {
 
 /* ── shell ────────────────────────────────────────────────── */
 
+/** Walk a trace tree and collect all `code_address` strings (lower-cased). */
+function collectAddressesFromTrace(trace: unknown): Set<string> {
+  const out = new Set<string>();
+  if (!Array.isArray(trace)) return out;
+  type Entry = { code_address?: string; children?: Entry[] };
+  const walk = (e: Entry) => {
+    if (typeof e.code_address === 'string') out.add(e.code_address.toLowerCase());
+    e.children?.forEach(walk);
+  };
+  (trace as Entry[]).forEach(walk);
+  return out;
+}
+
 export function IDELayout() {
   const activity = useSession((s) => s.activeActivity);
   useGlobalKeybinds();
 
+  // Close any open file whose address is no longer in the loaded trace.
+  // Keyed on `data` reference identity so we only run when the trace query
+  // actually produces a new value (not on every IDELayout render).
+  const trace = useTrace();
+  useEffect(() => {
+    const data = trace.data;
+    if (!data) return;
+    const addrs = collectAddressesFromTrace(data);
+    const open = useSession.getState().openFiles;
+    const close = useSession.getState().closeFile;
+    for (const f of open) {
+      if (!addrs.has(f.addr.toLowerCase())) close(f.id);
+    }
+  }, [trace.data]);
+
+  // Show a top-level banner when both queries succeed but return empty data.
+  // Loading states are excluded so the banner doesn't flash during cold start.
+  const snapshotCountQ = useSnapshotCount();
+  const traceIsEmpty = trace.isSuccess && Array.isArray(trace.data) && trace.data.length === 0;
+  const noSnapshots = snapshotCountQ.isSuccess && snapshotCountQ.data === 0;
+  const showEmptyBanner = traceIsEmpty && noSnapshots;
+
   return (
     <div className="flex h-full flex-col bg-(--color-bg-root)" data-testid="ide-layout">
+      {showEmptyBanner && (
+        <div
+          data-testid="empty-trace-banner"
+          role="status"
+          className="flex items-center justify-center border-b border-(--color-border) bg-(--color-bg-elevated) px-4 py-2 font-display text-xs text-(--color-fg-secondary)"
+        >
+          No trace loaded — start with{' '}
+          <code className="mx-1 font-mono">edb replay --ui=web &lt;tx&gt;</code>
+        </div>
+      )}
       <div className="flex flex-1 overflow-hidden">
         {/* activity bar (left) */}
         <div style={{ width: ACTIVITY_WIDTH_PX }} className="shrink-0">

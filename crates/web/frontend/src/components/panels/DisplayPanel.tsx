@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Copy, RefreshCw } from 'lucide-react';
 import { useSession } from '../../store/session';
@@ -167,19 +167,64 @@ function formatMemory(mem: number[]): string {
   return rows.join('\n');
 }
 
+/**
+ * For a 16 KB memory image we'd render ~512 rows of hex; the synchronous
+ * formatting can stutter paint. Default to the first 4 KB and let the user
+ * opt into the full dump.
+ */
+const MEMORY_FORMAT_DEFAULT_BYTES = 4 * 1024;
+const MEMORY_LARGE_THRESHOLD = 16 * 1024;
+
 function MemoryView({ snap }: { snap: SnapshotInfo | undefined }) {
   const mem = snap?.detail.kind === 'Opcode' ? snap.detail.memory : [];
-  return <pre>{formatMemory(mem)}</pre>;
+  const [showAll, setShowAll] = useState(false);
+  const isLarge = mem.length > MEMORY_LARGE_THRESHOLD;
+  // Stable identity for memoization: array reference + length covers both
+  // "same snapshot" (reference equal) and "snapshot changed" (length-change
+  // common, reference change definitive).
+  const formatted = useMemo(() => {
+    if (mem.length === 0) return '';
+    if (isLarge && !showAll) {
+      return formatMemory(mem.slice(0, MEMORY_FORMAT_DEFAULT_BYTES));
+    }
+    return formatMemory(mem);
+  }, [mem, isLarge, showAll]);
+  return (
+    <div>
+      {isLarge && !showAll && (
+        <div className="mb-2 flex items-center gap-2 text-xs text-(--color-fg-tertiary)">
+          <span>
+            Showing first {MEMORY_FORMAT_DEFAULT_BYTES} bytes of {mem.length}.
+          </span>
+          <button
+            type="button"
+            data-testid="memory-show-all"
+            onClick={() => setShowAll(true)}
+            className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-bg-hover)"
+          >
+            Show full memory
+          </button>
+        </div>
+      )}
+      <pre>{formatted}</pre>
+    </div>
+  );
 }
 
 function StorageView({ id }: { id: number }) {
   const { data, error } = useStorageDiff(id);
   if (error) return <span>{(error as Error).message}</span>;
   if (!data) return <span>Loading…</span>;
+  // Drop slots that didn't change — the engine sometimes echoes touched-but-
+  // unchanged slots, and rendering them with red strikethrough → green text
+  // visually implies a mutation that didn't happen.
+  const rows = data.filter((d) => d.before !== d.after);
+  if (rows.length === 0)
+    return <span className="text-(--color-fg-tertiary)">(no storage changes)</span>;
   return (
     <table className="w-full">
       <tbody>
-        {data.map((d, i) => (
+        {rows.map((d, i) => (
           <tr key={i} data-testid={`storage-row-${i}`}>
             <td className="pr-3 text-(--color-fg-secondary)">{d.slot}</td>
             <td className="pr-3 line-through text-(--color-danger)">{d.before ?? '∅'}</td>

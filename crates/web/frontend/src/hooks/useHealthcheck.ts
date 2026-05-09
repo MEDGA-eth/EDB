@@ -39,6 +39,8 @@ export function useHealthcheck() {
   useEffect(() => {
     let misses = 0;
     let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
     const tick = async () => {
       const ok = await probeHealth();
       if (cancelled) return;
@@ -49,9 +51,39 @@ export function useHealthcheck() {
         if (misses >= HEALTHCHECK_FAILURE_THRESHOLD) setSessionEnded(true);
       }
     };
-    void tick();
-    const id = setInterval(tick, HEALTHCHECK_INTERVAL_MS);
-    return () => { cancelled = true; clearInterval(id); };
+
+    const start = () => {
+      if (intervalId !== null) return;
+      void tick();
+      intervalId = setInterval(tick, HEALTHCHECK_INTERVAL_MS);
+    };
+    const stop = () => {
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+    // Pause polling while the tab is hidden; resume + immediate probe when
+    // it returns. `document.hidden` semantics differ slightly across happy-dom
+    // / browsers, so guard the access.
+    const onVisibility = () => {
+      if (typeof document === 'undefined') return;
+      if (document.hidden) stop();
+      else start();
+    };
+
+    if (typeof document === 'undefined' || !document.hidden) start();
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibility);
+    }
+
+    return () => {
+      cancelled = true;
+      stop();
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibility);
+      }
+    };
   }, [setConnection, setSessionEnded]);
   // exported so we can suppress in tests / compute outside React if needed
   void rpcRaw; void useSession;

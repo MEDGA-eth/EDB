@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, FileCode2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, FileCode2, RefreshCw } from 'lucide-react';
 import { useTrace } from '../../hooks/useTrace';
 import { useCodeByAddress } from '../../hooks/useCodeByAddress';
 import { useSession } from '../../store/session';
@@ -69,7 +69,7 @@ function FileExplorerInner() {
 
 function AddressNode({ addr }: { addr: string }) {
   const [expanded, setExpanded] = useState(true);
-  const { data } = useCodeByAddress(addr);
+  const { data, error, refetch } = useCodeByAddress(addr);
   const open = useSession((s) => s.openFile);
 
   const Chevron = expanded ? ChevronDown : ChevronRight;
@@ -92,8 +92,33 @@ function AddressNode({ addr }: { addr: string }) {
       >
         <Chevron size={12} className="text-(--color-fg-tertiary)" />
         <span className="font-mono text-xs text-(--color-syn-type)">{shortAddr(addr)}</span>
+        {error && (
+          <AlertTriangle
+            size={12}
+            className="ml-auto text-(--color-danger)"
+            aria-label="Failed to load files for this address"
+          />
+        )}
       </button>
-      {expanded && (
+      {expanded && error && (
+        <div
+          className="flex items-center gap-2 px-6 py-1 text-xs text-(--color-danger)"
+          data-testid={`explorer-error-${addr}`}
+        >
+          <span className="truncate">Failed to load: {(error as Error).message}</span>
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            data-testid={`explorer-retry-${addr}`}
+            className="inline-flex items-center gap-1 rounded border border-(--color-border) px-1.5 py-0.5 hover:bg-(--color-bg-hover)"
+            aria-label={`Retry loading files for ${shortAddr(addr)}`}
+          >
+            <RefreshCw size={10} />
+            Retry
+          </button>
+        </div>
+      )}
+      {expanded && !error && (
         <ul>
           {files.length === 0 && (
             <li className="px-6 py-1 text-xs text-(--color-fg-tertiary)">…</li>

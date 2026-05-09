@@ -78,10 +78,18 @@ describe('<CommandPalette />', () => {
   });
 
   test('Enter dispatches the active row and closes', async () => {
+    useSession.setState({ currentSnapshotId: 2 });
     const { wrapper } = makeWrapper();
     render(<CommandPalette />, { wrapper });
     await waitFor(() => expect(screen.getByTestId('palette-input')).toBeTruthy());
-    await userEvent.type(screen.getByTestId('palette-input'), '>first{enter}');
+    await userEvent.type(screen.getByTestId('palette-input'), '>first');
+    // Wait for the debounced row build to settle and confirm the file rows
+    // dropped out (command-mode is active).
+    await waitFor(() => expect(screen.getByTestId('palette-row-cmd:nav.first')).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.queryByTestId(/^palette-row-file:/)).toBeNull(),
+    );
+    await userEvent.type(screen.getByTestId('palette-input'), '{enter}');
     await waitFor(() => expect(useSession.getState().paletteOpen).toBe(false));
     expect(useSession.getState().currentSnapshotId).toBe(0);
   });
@@ -109,8 +117,14 @@ describe('<CommandPalette />', () => {
     const { wrapper } = makeWrapper();
     render(<CommandPalette />, { wrapper });
     const input = screen.getByTestId('palette-input');
-    await userEvent.type(input, '>theme{enter}');
-    const recent = JSON.parse(localStorage.getItem('edb-web:palette-recent')!);
-    expect(recent).toContain('cmd:view.toggle-theme');
+    await userEvent.type(input, '>theme');
+    const row = await screen.findByTestId('palette-row-cmd:view.toggle-theme');
+    // Click the row directly so we don't race the debounced row rebuild
+    // against the Enter keypress.
+    await userEvent.click(row);
+    await waitFor(() => {
+      const recent = JSON.parse(localStorage.getItem('edb-web:palette-recent')!);
+      expect(recent).toContain('cmd:view.toggle-theme');
+    });
   });
 });
