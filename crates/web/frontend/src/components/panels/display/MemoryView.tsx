@@ -46,8 +46,8 @@ const MEMORY_FORMAT_DEFAULT_BYTES = 4 * 1024;
 const MEMORY_LARGE_THRESHOLD = 16 * 1024;
 
 export function MemoryView({ snap }: { snap: SnapshotInfo | undefined }) {
-  const mem = snap?.detail.kind === 'Opcode' ? snap.detail.memory : [];
   const [showAll, setShowAll] = useState(false);
+  const mem = snap?.detail.kind === 'Opcode' ? snap.detail.memory : [];
   const isLarge = mem.length > MEMORY_LARGE_THRESHOLD;
   // Stable identity for memoization: array reference + length covers both
   // "same snapshot" (reference equal) and "snapshot changed" (length-change
@@ -59,6 +59,14 @@ export function MemoryView({ snap }: { snap: SnapshotInfo | undefined }) {
     }
     return formatMemory(mem);
   }, [mem, isLarge, showAll]);
+  if (snap?.detail.kind !== 'Opcode') {
+    return (
+      <div className="text-(--color-fg-tertiary) italic">
+        Memory is only available in opcode-level snapshots.
+        Source-level (hook) snapshots do not capture raw memory.
+      </div>
+    );
+  }
   return (
     <div>
       {isLarge && !showAll && (

@@ -92,53 +92,17 @@ Type `?` in the TUI to view the help page.
 
 #### Web UI (`--ui=web`)
 
-Pass `--ui=web` and EDB will start the engine, open your default browser, and serve a React/TypeScript SPA on the same port as the JSON-RPC server. No second listener, no extra binary — everything is bundled into the `edb` binary at compile time.
+`edb --ui=web replay <tx>` opens a browser-based debugger that shares the engine's port (no extra binary). Both light and dark themes ship by default.
 
 <p align="center">
   <img src="resources/edb-web.png" alt="EDB Web UI screenshot (light theme)" width="98%" style="border: 1px solid #ddd; border-radius: 8px;">
 </p>
 
-The web UI ships with:
-
-- A four-panel layout (source / call trace / variables-and-storage / Solidity REPL) with draggable splitters on desktop and a tab fallback on narrow viewports.
-- Snapshot navigation is reflected in the URL hash, so reloads and shared links keep your place.
-- A pastel light theme (`☀️`) plus a dark theme (`🌙`) you can toggle from the top bar — the choice is remembered in `localStorage`.
-- A connection indicator that polls `/health`; if the engine shuts down (`Ctrl+C`), the UI shows a "session ended" overlay instead of failing silently.
-
 <p align="center">
   <img src="resources/edb-web-dark.png" alt="EDB Web UI screenshot (dark theme)" width="98%" style="border: 1px solid #ddd; border-radius: 8px;">
 </p>
 
-Click `?` in the top-right to see the keybindings and command reference.
-
-> **Security boundary.** The engine binds to `127.0.0.1`, so the JSON-RPC
-> API and embedded UI are reachable only from the same machine. On
-> shared environments (devcontainers, remote SSH, multi-user dev hosts),
-> any local user can connect — there is no per-user authentication.
-> Use OS-level isolation if you're debugging sensitive data.
-
-##### Hacking on the web UI
-
-The frontend lives in `crates/web/frontend/` (Bun + React 19 + Vite + Tailwind v4). For fast iteration without a real engine:
-
-```bash
-cd crates/web/frontend
-bun install
-bun run dev --mode=mock          # http://127.0.0.1:5173, RPC served from canned fixtures
-bun test src/                    # 94 unit/component tests
-bun run e2e                      # 3 Playwright flows against the mock dev server
-```
-
-To iterate with a real engine instead, run `edb replay <tx>` in another terminal and `bun run dev` (without `--mode=mock`) — the dev server proxies `POST /` and `GET /health` to the engine's port.
-
-If you don't have `bun` installed, set `EDB_SKIP_WEB_BUILD=1` before any `cargo` command to skip the frontend build (the resulting binary will fall back to a placeholder when `--ui=web` is requested).
-
-### Release checklist
-
-- Do **not** set `EDB_SKIP_WEB_BUILD=1` for release builds. It produces
-  a binary that panics at runtime when `--ui=web` is used.
-- Verify `bun --version` resolves on the build agent before invoking
-  `cargo build --release`.
+For development setup and architecture details, see [DEV.md](DEV.md) and [ARCH.md](ARCH.md).
 
 
 ## Why EDB?

@@ -175,6 +175,18 @@ EDB/
 │   │   ├── tests/
 │   │   └── Cargo.toml
 │   │
+│   ├── web/                   # Browser-based debugging UI
+│   │   ├── src/               # Rust crate (axum server + rust-embed)
+│   │   │   ├── lib.rs         # Embedded SPA + RPC server entry
+│   │   │   └── ...
+│   │   ├── frontend/          # React/TypeScript SPA (Bun + Vite + Tailwind v4)
+│   │   │   ├── src/           # Components, hooks, store, schemas
+│   │   │   ├── e2e/           # Playwright end-to-end specs
+│   │   │   ├── scripts/       # Dev tooling (smoke, capture, mocks)
+│   │   │   ├── package.json
+│   │   │   └── vite.config.ts
+│   │   ├── build.rs           # Builds the SPA into the binary at compile time
+│   │   └── Cargo.toml
 │   │
 │   └── integration-tests/     # End-to-end integration tests
 │       ├── tests/
@@ -362,6 +374,83 @@ perf record --call-graph=dwarf target/release/edb replay 0x...
 perf report
 ```
 
+## 🌐 Web UI Development
+
+The web UI is a React/TypeScript SPA living in `crates/web/frontend/`,
+embedded into the `edb` binary at compile time via `rust-embed`. The
+engine's existing Axum listener serves both the JSON-RPC API and the SPA
+on the same port — no second listener, no extra binary.
+
+### Stack
+
+| Layer | Tooling |
+|---|---|
+| Runtime / package manager | Bun |
+| Framework | React 19 + TypeScript + Vite |
+| UI shell | dockview (VSCode-style splits + tabs) |
+| Styling | Tailwind v4 |
+| State | TanStack Query (server) + Zustand (UI) |
+| Editor | CodeMirror 6 (Solidity language pack) |
+| Validation | zod schemas matching the engine's serde-default JSON |
+
+### Iterating without a real engine
+
+```bash
+cd crates/web/frontend
+bun install
+bun run dev --mode=mock          # http://127.0.0.1:5173, RPC served from canned fixtures
+bun test src/                    # unit + component tests
+bun run e2e                      # Playwright flows against the mock dev server
+```
+
+The mock fixtures under `src/data/mocks/captures/` are real engine
+captures from a Uniswap V2 swap (196 snapshots, 11 trace entries) — sizes
+and shapes match production.
+
+### Iterating against a real engine
+
+In one terminal:
+```bash
+edb --ui=web replay 0x<tx-hash>
+```
+
+In another:
+```bash
+cd crates/web/frontend
+bun run dev                      # proxy /POST and /health to the engine's port
+```
+
+The dev server proxies `POST /` and `GET /health` to the running engine
+(defaults to `127.0.0.1:8545`; override with `VITE_EDB_RPC_PORT`).
+
+### Smoke testing the live UI
+
+```bash
+URL=http://127.0.0.1:<engine-port> bun run scripts/smoke.ts
+```
+
+Drives the live UI end-to-end and captures `resources/edb-web.png`. Set
+`DARK=1` and `OUT=…edb-web-dark.png` for the dark variant. Use
+`bun run scripts/capture-with-file.ts` if you want a screenshot with a
+Solidity file open in the editor.
+
+### Skipping the bun build
+
+If you don't have `bun` installed, set `EDB_SKIP_WEB_BUILD=1` before any
+`cargo` command. The resulting binary will fall back to a placeholder
+when `--ui=web` is requested. **Don't ship release builds with this set**
+— it produces a binary that panics at runtime when `--ui=web` is used.
+Verify `bun --version` resolves on the build agent before invoking
+`cargo build --release`.
+
+### Security boundary
+
+The engine binds to `127.0.0.1`, so the JSON-RPC API and embedded UI are
+reachable only from the same machine. On shared environments
+(devcontainers, remote SSH, multi-user dev hosts), any local user can
+connect — there is no per-user authentication. Use OS-level isolation if
+you're debugging sensitive data.
+
 ## 🏗️ Architecture Guidelines
 
 ### Module Responsibilities
@@ -389,6 +478,12 @@ perf report
 - **Dependencies**: Engine RPC client, terminal UI libraries (ratatui)
 - **Key Features**: Multi-panel interface, syntax highlighting, real-time updates
 - **State**: UI state management, no debugging logic
+
+#### Web Crate (`edb-web`)
+- **Purpose**: Browser-based debugging interface
+- **Dependencies**: Engine RPC server (shared port), `rust-embed` for the SPA
+- **Key Features**: Embedded React/TypeScript SPA, single-port architecture (`GET /*` serves SPA assets, `POST /` serves JSON-RPC), light/dark themes, dockview-based layout
+- **State**: Zustand store + TanStack Query cache live in the browser; the Rust crate is stateless beyond serving static assets
 
 #### CLI Crate (`edb`)
 - **Purpose**: Command-line interface and workflow orchestration

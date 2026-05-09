@@ -9,12 +9,13 @@ EDB (Ethereum Debugger) is a sophisticated time-travel debugger for Ethereum tra
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                         User Interface                      │
-├─────────────────────────────────────────────────────────────┤
-│                         Terminal UI                         │
-│                         (TUI Crate)                         │
-└───────────────────────────────┬─────────────────────────────┘
+├──────────────────────────┬──────────────────────────────────┤
+│       Terminal UI        │           Web UI                 │
+│       (TUI Crate)        │       (Web Crate, embedded)      │
+└──────────────────────────┴──────────────────────────────────┘
                                 │
                                 │      JSON-RPC API
+                                │   (shared by TUI and Web)
                                 │
 ┌───────────────────────────────▼─────────────────────────────┐
 │                    Engine Module                            │
@@ -196,6 +197,48 @@ Rich terminal-based debugging interface:
 - **Keyboard Navigation**: Vi-like keybindings
 - **Resource Management**: Efficient terminal rendering
 
+### 6. Web Module (`crates/web`)
+
+Browser-based debugging interface, served by the same `edb` binary:
+
+#### Architecture
+- **Embedded SPA**: A React + TypeScript application bundled at compile
+  time via `rust-embed`. There is no second binary — the SPA assets ship
+  inside `edb` and are served by the engine's existing Axum listener.
+- **Single Port**: `GET /*` serves SPA assets (with cache-busting hashed
+  filenames); `POST /` serves the JSON-RPC API. Both share the engine's
+  port, so launching with `--ui=web` doesn't open additional listeners.
+- **Same RPC API**: The web UI consumes the exact same JSON-RPC methods
+  as the TUI (`edb_getTrace`, `edb_getSnapshotInfo`, `edb_evalOnSnapshot`,
+  …). Adding a new RPC method automatically becomes available to both
+  clients.
+
+#### Frontend Stack
+- **Framework**: React 19 + Vite, packaged with Bun
+- **Layout**: dockview (VSCode-style splits + tabs)
+- **State**: TanStack Query for server data, Zustand for UI state
+- **Editor**: CodeMirror 6 with the Solidity language pack
+- **Validation**: zod schemas mirror the engine's serde-default JSON;
+  each RPC response is parsed through a transform that converts the
+  externally-tagged wire form (`{ Opcode: ... }`) into the internal
+  `kind`-tagged form used by components.
+
+#### Features
+- **Time-travel Navigation**: URL hash reflects the active snapshot, so
+  reloads and shared links keep their place
+- **Source-level Variable Inspection**: Hook snapshots surface decoded
+  locals and state variables; opcode snapshots surface stack/memory/
+  transient storage
+- **Themes**: Light and dark, persisted in `localStorage`
+- **Connection Indicator**: Polls `/health`; shows a "session ended"
+  overlay if the engine shuts down
+
+#### Security Boundary
+- The engine binds to `127.0.0.1`, so the JSON-RPC API and the embedded
+  UI are reachable only from the same machine. Multi-user dev hosts and
+  shared environments need OS-level isolation if the debugged data is
+  sensitive — there is no per-user authentication today.
+
 
 ## Debugging Workflow
 
@@ -306,7 +349,6 @@ Rich terminal-based debugging interface:
 ## Future Enhancements
 
 ### Near Term
-- **Web UI**: Full-featured browser interface with direct JSON-RPC communication
 - **Foundry Integration**: Direct test debugging support
 - **Breakpoint Conditions**: Conditional breakpoints
 - **Watch Expressions**: Monitor specific variables

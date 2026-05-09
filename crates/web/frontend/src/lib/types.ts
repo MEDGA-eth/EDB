@@ -90,25 +90,51 @@ export const SolValue: z.ZodType<SolValue> = z.lazy(() =>
   ]),
 );
 
+/** Threshold above which `formatSolValue` truncates `Bytes` payloads. */
+export const BYTES_TRUNCATION_THRESHOLD = 100; // bytes (=> 200 hex chars)
+
 /**
- * Render a `SolValue` to a short, human-readable string. Best-effort —
- * complex nested structures truncate. Used by the terminal panel and the
- * vars view, which previously dumped the entire JSON envelope.
+ * Structured rendering of a `SolValue` — separates the primary value from
+ * a typing suffix (e.g. `uint256`, `bytes4`) and a byte-count truncation
+ * marker. Consumers that render to React (e.g. `VarsView`) can style the
+ * suffix in a secondary color; consumers that render to plain text (e.g.
+ * the terminal) join everything with spaces.
+ *
+ * `truncatedFullValue` is set when `Bytes` was truncated; a `<details>`
+ * affordance can use it to expand the full hex.
  */
-export function formatSolValue(v: SolValue | null | undefined): string {
-  if (v === null || v === undefined) return '∅';
+export interface SolValueParts {
+  value: string;
+  suffix?: string;
+  truncatedFullValue?: string;
+}
+
+export function formatSolValueParts(
+  v: SolValue | null | undefined,
+): SolValueParts {
+  if (v === null || v === undefined) return { value: '∅' };
   switch (v.type) {
-    case 'Bool': return v.value ? 'true' : 'false';
-    case 'Int':
-    case 'Uint': return v.value.value;
-    case 'FixedBytes': return v.value.value;
-    case 'Address': return v.value;
-    case 'Function': return v.value;
+    case 'Bool': return { value: v.value ? 'true' : 'false' };
+    case 'Int': return { value: v.value.value, suffix: `int${v.value.bits}` };
+    case 'Uint': return { value: v.value.value, suffix: `uint${v.value.bits}` };
+    case 'FixedBytes': return { value: v.value.value, suffix: `bytes${v.value.size}` };
+    case 'Address': return { value: v.value };
+    case 'Function': return { value: v.value };
     case 'Bytes': {
       const hex = v.value.map((b) => b.toString(16).padStart(2, '0')).join('');
-      return `0x${hex}`;
+      const full = `0x${hex}`;
+      if (v.value.length > BYTES_TRUNCATION_THRESHOLD) {
+        const head = hex.slice(0, 8);
+        const tail = hex.slice(-8);
+        return {
+          value: `0x${head}…${tail}`,
+          suffix: `${v.value.length} bytes`,
+          truncatedFullValue: full,
+        };
+      }
+      return { value: full };
     }
-    case 'String': return JSON.stringify(v.value);
+    case 'String': return { value: JSON.stringify(v.value) };
     case 'Array':
     case 'FixedArray':
     case 'Tuple': {
@@ -116,7 +142,7 @@ export function formatSolValue(v: SolValue | null | undefined): string {
       const more = v.value.length > 8 ? `, …${v.value.length - 8} more` : '';
       const open = v.type === 'Tuple' ? '(' : '[';
       const close = v.type === 'Tuple' ? ')' : ']';
-      return `${open}${items.join(', ')}${more}${close}`;
+      return { value: `${open}${items.join(', ')}${more}${close}` };
     }
     case 'CustomStruct': {
       const s = v.value;
@@ -125,9 +151,22 @@ export function formatSolValue(v: SolValue | null | undefined): string {
         .map((f, i) => `${s.prop_names[i] ?? i}: ${formatSolValue(f)}`)
         .join(', ');
       const more = s.tuple.length > 6 ? `, …${s.tuple.length - 6} more` : '';
-      return `${s.name}{${fields}${more}}`;
+      return { value: `${s.name}{${fields}${more}}` };
     }
   }
+}
+
+/**
+ * Render a `SolValue` to a short, human-readable string. Best-effort —
+ * complex nested structures truncate. Used by the terminal panel and the
+ * vars view, which previously dumped the entire JSON envelope.
+ *
+ * The plain-text form joins the primary value with the type suffix in
+ * parentheses: `42 (uint256)`, `0xff (int8)`, `0xdeadbeef (bytes4)`.
+ */
+export function formatSolValue(v: SolValue | null | undefined): string {
+  const p = formatSolValueParts(v);
+  return p.suffix ? `${p.value} (${p.suffix})` : p.value;
 }
 
 /* ── Snapshots ────────────────────────────────────────────── */
@@ -246,6 +285,7 @@ export const LogData = z.object({
   topics: z.array(Hex),
   data: Hex,
 });
+export type LogData = z.infer<typeof LogData>;
 
 /**
  * Mirrors `TraceEntry`. Note: the trace is FLAT (`{ inner: TraceEntry[] }`)
@@ -442,20 +482,33 @@ export type ConstructorArgs = z.infer<typeof ConstructorArgs>;
  *   `{ Source: { bytecode_address, file_path, line_number } }`
  *   `{ Opcode: { bytecode_address, pc } }`
  * For ergonomics we keep our internal representation (used by the session
- * store + UI) discriminated on `kind`. We provide both the wire schema for
- * decoding engine responses (currently unused — engines never *return*
- * breakpoints) and helpers for serialising our internal form to the wire.
+ * store + UI) discriminated on `kind`. We accept the engine's external
+ * tagging at parse-time and transform into the internal `kind`-tagged
+ * form. (Currently latent — the engine doesn't *return* breakpoints in any
+ * RPC response — but the schema is ready for whenever it does.)
  */
-export const BreakpointLocation = z.union([
-  z.object({ kind: z.literal('Opcode'), bytecode_address: Address, pc: z.number().int().nonnegative() }),
-  z.object({
-    kind: z.literal('Source'),
+export type BreakpointLocation =
+  | { kind: 'Opcode'; bytecode_address: string; pc: number }
+  | { kind: 'Source'; bytecode_address: string; file_path: string; line_number: number };
+
+const BreakpointLocationOpcodeWire = z.object({
+  Opcode: z.object({ bytecode_address: Address, pc: z.number().int().nonnegative() }),
+});
+const BreakpointLocationSourceWire = z.object({
+  Source: z.object({
     bytecode_address: Address,
     file_path: z.string(),
     line_number: z.number().int().nonnegative(),
   }),
-]);
-export type BreakpointLocation = z.infer<typeof BreakpointLocation>;
+});
+
+export const BreakpointLocation = z
+  .union([BreakpointLocationOpcodeWire, BreakpointLocationSourceWire])
+  .transform((d): BreakpointLocation =>
+    'Opcode' in d
+      ? { kind: 'Opcode', ...d.Opcode }
+      : { kind: 'Source', ...d.Source },
+  );
 
 export const Breakpoint = z.object({
   loc: BreakpointLocation.nullable(),
