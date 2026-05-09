@@ -72,21 +72,86 @@ function SolValueCell({ value }: { value: SolValue | null }) {
   );
 }
 
-function VarTable({ entries }: { entries: [string, SolValue | null][] }) {
-  if (entries.length === 0) return <span className="text-(--color-fg-tertiary)">(none)</span>;
+function typeOf(v: SolValue | null): string | null {
+  if (!v) return null;
+  if (v.type === 'Uint') return `uint${v.value.bits}`;
+  if (v.type === 'Int') return `int${v.value.bits}`;
+  if (v.type === 'FixedBytes') return `bytes${v.value.size}`;
+  if (v.type === 'Bool') return 'bool';
+  if (v.type === 'Address') return 'address';
+  if (v.type === 'String') return 'string';
+  if (v.type === 'Bytes') return 'bytes';
+  if (v.type === 'Function') return 'function';
+  if (v.type === 'Array') return `${typeOf(v.value[0]) ?? 'T'}[]`;
+  if (v.type === 'FixedArray') return `${typeOf(v.value[0]) ?? 'T'}[${v.value.length}]`;
+  if (v.type === 'Tuple') return `(${v.value.length} fields)`;
+  if (v.type === 'CustomStruct') return v.value.name;
+  return null;
+}
+
+/** Coloured chip distinguishing primitive / reference / aggregate types. */
+function typeChipColour(t: string): string {
+  if (/^(uint|int)\d*$/.test(t)) return 'var(--color-syn-type-std)';
+  if (t === 'address') return 'var(--color-syn-type)';
+  if (t === 'bool') return 'var(--color-syn-atom)';
+  if (t === 'string' || t === 'bytes' || /^bytes\d+$/.test(t)) return 'var(--color-syn-string)';
+  if (t.endsWith(']') || t.startsWith('(')) return 'var(--color-syn-func)';
+  return 'var(--color-syn-modifier)';
+}
+
+/**
+ * Render each variable as a card-style row. Layout:
+ *
+ *   ┌─────────────────────────────┬──────────┐
+ *   │ name                        │ uint256  │  ← type chip on the right
+ *   ├─────────────────────────────┴──────────┤
+ *   │ <value, mono, full width>              │
+ *   └────────────────────────────────────────┘
+ *
+ * Compared to a plain two-column table this gives each variable real
+ * breathing room, surfaces the type with a coloured chip, and lets long
+ * values wrap underneath the name without truncating the column.
+ */
+function VarList({ entries }: { entries: [string, SolValue | null][] }) {
+  if (entries.length === 0)
+    return <div className="px-1 py-2 text-[12px] italic text-(--color-fg-tertiary)">(none)</div>;
   return (
-    <table className="w-full">
-      <tbody>
-        {entries.map(([k, v]) => (
-          <tr key={k} data-testid={`var-row-${k}`}>
-            <td className="pr-3 text-(--color-fg-secondary) align-top">{k}</td>
-            <td>
+    <ul className="flex flex-col gap-1.5" role="list">
+      {entries.map(([k, v]) => {
+        const t = typeOf(v);
+        return (
+          <li
+            key={k}
+            data-testid={`var-row-${k}`}
+            className="rounded border border-(--color-border) bg-(--color-bg-elevated)/60 px-2.5 py-1.5 hover:border-(--color-border-strong) transition"
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <span
+                className="break-all font-display text-[13px] font-semibold text-(--color-fg)"
+                title={k}
+              >
+                {k}
+              </span>
+              {t && (
+                <span
+                  className="shrink-0 rounded-full px-1.5 py-px font-mono text-[10px] tracking-wide"
+                  style={{
+                    color: typeChipColour(t),
+                    backgroundColor: 'var(--color-bg)',
+                    border: '1px solid var(--color-border)',
+                  }}
+                >
+                  {t}
+                </span>
+              )}
+            </div>
+            <div className="mt-1 font-mono text-[12px] text-(--color-fg-secondary) leading-relaxed">
               <SolValueCell value={v} />
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+            </div>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -113,13 +178,13 @@ export function VarsView({ snap }: { snap: SnapshotInfo | undefined }) {
         <h3 className="mb-1 text-xs font-semibold tracking-wide text-(--color-fg-secondary) uppercase">
           Locals
         </h3>
-        <VarTable entries={localEntries} />
+        <VarList entries={localEntries} />
       </section>
       <section>
         <h3 className="mb-1 text-xs font-semibold tracking-wide text-(--color-fg-secondary) uppercase">
           State Variables
         </h3>
-        <VarTable entries={stateEntries} />
+        <VarList entries={stateEntries} />
       </section>
     </div>
   );

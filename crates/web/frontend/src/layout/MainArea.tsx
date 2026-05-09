@@ -10,6 +10,7 @@ import { DisplayPanel } from '../components/panels/DisplayPanel';
 import { TerminalPanel } from '../components/panels/TerminalPanel';
 import { useSession } from '../store/session';
 import { LAYOUT_KEY, LAYOUT_VERSION } from '../lib/constants';
+import { setDockviewApi } from '../lib/dockviewBridge';
 
 interface Disposable {
   dispose(): void;
@@ -47,10 +48,16 @@ export function MainArea() {
   const activeFileId = useSession((s) => s.activeFileId);
   const setActiveFile = useSession((s) => s.setActiveFile);
   const closeFile = useSession((s) => s.closeFile);
+  // Watch the current snapshot too: stepping within a single file keeps
+  // `activeFileId` stable (same `${addr}::${path}` key), so a useEffect
+  // keyed only on activeFileId would never re-fire and the file panel
+  // would stay buried behind whatever tab the user clicked last.
+  const currentSnapshotId = useSession((s) => s.currentSnapshotId);
 
   const onReady = (event: DockviewReadyEvent) => {
     const api = event.api;
     apiRef.current = api;
+    setDockviewApi(api);
 
     // Restore from persisted layout if the schema version matches. We
     // serialise the same `{version, layout}` envelope the old BottomArea
@@ -146,6 +153,7 @@ export function MainArea() {
         try { d.dispose(); } catch { /* ignore */ }
       }
       disposablesRef.current = [];
+      setDockviewApi(null);
     };
   }, []);
 
@@ -178,13 +186,22 @@ export function MainArea() {
     }
   }, [openFiles]);
 
-  // Reflect external `activeFileId` writes (URL hash, palette navigation, etc.)
+  // Reflect external `activeFileId` writes (URL hash, palette navigation,
+  // step-driven follow). Also re-runs when the snapshot id changes — even
+  // if the active file is unchanged, the user expects each Step to surface
+  // the code view if they were sitting on Display / Terminal.
   useEffect(() => {
     const api = apiRef.current;
     if (!api || !activeFileId) return;
     const panel = api.getPanel(activeFileId);
-    if (panel && api.activePanel?.id !== panel.id) panel.api.setActive();
-  }, [activeFileId]);
+    if (!panel) return;
+    panel.api.setActive();
+    // setActive on the panel also makes its group active in dockview, so
+    // the code view scrolls to the front of its split. Calling it
+    // unconditionally (not gated on `activePanel?.id !== panel.id`) is
+    // what brings a buried tab back into view when the user has clicked
+    // Display / Terminal between steps.
+  }, [activeFileId, currentSnapshotId]);
 
   return (
     <div className="h-full w-full" data-testid="main-area">
