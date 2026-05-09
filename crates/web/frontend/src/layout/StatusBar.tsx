@@ -8,7 +8,7 @@ import { HelpOverlay } from '../components/HelpOverlay';
 export function StatusBar() {
   const id = useSession((s) => s.currentSnapshotId);
   const setId = useSession((s) => s.setSnapshotId);
-  const { data: count } = useSnapshotCount();
+  const { data: count, isSuccess: countLoaded } = useSnapshotCount();
   // True while a programmatic hash write is pending, so the resulting
   // `hashchange` event doesn't echo back into the store.
   const skipNextHashRef = useRef(false);
@@ -17,6 +17,25 @@ export function StatusBar() {
   useEffect(() => {
     countRef.current = count;
   }, [count]);
+
+  // When the snapshot count itself shrinks (e.g., trace reload returns fewer
+  // snapshots), reclamp `currentSnapshotId` so the URL never points past the
+  // last valid id. We deliberately skip the `count === 0` case — that's the
+  // loading state, not an empty trace; the trace just hasn't arrived yet.
+  useEffect(() => {
+    if (!countLoaded) return;
+    if (typeof count !== 'number' || count <= 0) return;
+    const cur = useSession.getState().currentSnapshotId;
+    const hi = count - 1;
+    if (cur > hi) {
+      setId(hi);
+      const target = String(hi);
+      if (window.location.hash.replace(/^#/, '') !== target) {
+        skipNextHashRef.current = true;
+        window.location.hash = target;
+      }
+    }
+  }, [count, countLoaded, setId]);
 
   // Clamp `n` to the current valid snapshot range. Returns the clamped value.
   // When count is undefined (still loading), only the lower bound applies.
