@@ -1,7 +1,7 @@
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { search } from '@codemirror/search';
-import { Compartment, EditorState } from '@codemirror/state';
-import { EditorView, lineNumbers } from '@codemirror/view';
+import { Compartment, EditorState, RangeSetBuilder } from '@codemirror/state';
+import { Decoration, EditorView, lineNumbers } from '@codemirror/view';
 import { tags as t } from '@lezer/highlight';
 import { solidity } from '@replit/codemirror-lang-solidity';
 import { useEffect, useRef } from 'react';
@@ -53,6 +53,12 @@ export interface SolidityEditorOptions {
   showLineNumbers: boolean;
   /** Wrap long lines? Reconfigured live. */
   wordWrap: boolean;
+  /**
+   * 1-indexed line number to highlight (subtle accent background) and scroll
+   * into view. Used by the editor area to track the current snapshot's
+   * source location. Pass `undefined` to clear.
+   */
+  highlightLine?: number;
 }
 
 export interface SolidityEditorHandle {
@@ -60,6 +66,21 @@ export interface SolidityEditorHandle {
   containerRef: React.MutableRefObject<HTMLDivElement | null>;
   /** Imperative handle to the underlying EditorView (e.g. for openSearchPanel). */
   viewRef: React.MutableRefObject<EditorView | null>;
+  /** Imperative scroll-to-byte-offset (1-indexed line number resolved internally). */
+  revealOffset(byteOffset: number): void;
+}
+
+const lineHighlight = Decoration.line({
+  attributes: { class: 'cm-edb-current-line', 'data-edb-current': 'true' },
+});
+
+function buildHighlight(view: EditorView, line: number | undefined) {
+  const builder = new RangeSetBuilder<Decoration>();
+  if (line && line > 0 && line <= view.state.doc.lines) {
+    const l = view.state.doc.line(line);
+    builder.add(l.from, l.from, lineHighlight);
+  }
+  return builder.finish();
 }
 
 /**
@@ -72,16 +93,18 @@ export interface SolidityEditorHandle {
  * view.
  */
 export function useSolidityEditor(opts: SolidityEditorOptions): SolidityEditorHandle {
-  const { content, showLineNumbers, wordWrap } = opts;
+  const { content, showLineNumbers, wordWrap, highlightLine } = opts;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const wrapCmpRef = useRef<Compartment>(new Compartment());
   const lnCmpRef = useRef<Compartment>(new Compartment());
+  const hlCmpRef = useRef<Compartment>(new Compartment());
 
   useEffect(() => {
     if (!containerRef.current) return;
     const wrapCmp = wrapCmpRef.current;
     const lnCmp = lnCmpRef.current;
+    const hlCmp = hlCmpRef.current;
     const state = EditorState.create({
       doc: content,
       extensions: [
@@ -91,11 +114,21 @@ export function useSolidityEditor(opts: SolidityEditorOptions): SolidityEditorHa
         edbTheme,
         search(),
         wrapCmp.of(wordWrap ? [EditorView.lineWrapping] : []),
+        // current-line highlight, reconfigured imperatively when the active
+        // snapshot resolves to a new (file, line).
+        hlCmp.of([]),
         EditorView.editable.of(false),
       ],
     });
     const view = new EditorView({ state, parent: containerRef.current });
     viewRef.current = view;
+    if (typeof highlightLine === 'number') {
+      view.dispatch({
+        effects: hlCmpRef.current.reconfigure(
+          EditorView.decorations.of(buildHighlight(view, highlightLine)),
+        ),
+      });
+    }
     return () => {
       view.destroy();
       viewRef.current = null;
@@ -121,5 +154,30 @@ export function useSolidityEditor(opts: SolidityEditorOptions): SolidityEditorHa
     });
   }, [showLineNumbers]);
 
-  return { containerRef, viewRef };
+  // Reconfigure highlight + scroll into view when the active line changes.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: hlCmpRef.current.reconfigure(
+        highlightLine
+          ? EditorView.decorations.of(buildHighlight(view, highlightLine))
+          : [],
+      ),
+    });
+    if (highlightLine && highlightLine > 0 && highlightLine <= view.state.doc.lines) {
+      const l = view.state.doc.line(highlightLine);
+      view.dispatch({ effects: EditorView.scrollIntoView(l.from, { y: 'center' }) });
+    }
+  }, [highlightLine]);
+
+  function revealOffset(byteOffset: number) {
+    const view = viewRef.current;
+    if (!view) return;
+    const clamped = Math.max(0, Math.min(byteOffset, view.state.doc.length));
+    const line = view.state.doc.lineAt(clamped);
+    view.dispatch({ effects: EditorView.scrollIntoView(line.from, { y: 'center' }) });
+  }
+
+  return { containerRef, viewRef, revealOffset };
 }

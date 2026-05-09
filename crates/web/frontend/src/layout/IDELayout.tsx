@@ -5,6 +5,7 @@ import { EditorArea } from './EditorArea';
 import { BottomArea } from './BottomArea';
 import { FileExplorer } from '../components/explorer/FileExplorer';
 import { BreakpointsView } from '../components/explorer/BreakpointsView';
+import { TraceSidebar } from '../components/explorer/TraceSidebar';
 import { CommandPalette } from '../components/CommandPalette';
 import { useGlobalKeybinds } from '../hooks/useGlobalKeybinds';
 import { useSnapshotCount } from '../hooks/useSnapshotCount';
@@ -29,6 +30,8 @@ function SideBar({ activity }: { activity: ActivityKind }) {
           <FileExplorer />
         ) : activity === 'breakpoints' ? (
           <BreakpointsView />
+        ) : activity === 'trace' ? (
+          <TraceSidebar />
         ) : (
           <SidePlaceholder activity={activity} />
         )}

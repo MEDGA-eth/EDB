@@ -1,6 +1,7 @@
 import { openSearchPanel } from '@codemirror/search';
-import { Bug, Code2, Copy, FileCode2, Hash, Search, WrapText } from 'lucide-react';
+import { Bug, Code2, Copy, FileCode2, Hash, Locate, Search, WrapText } from 'lucide-react';
 import { useCodeByAddress } from '../hooks/useCodeByAddress';
+import { useSnapshotInfo } from '../hooks/useSnapshotInfo';
 import { useSolidityEditor } from '../hooks/useSolidityEditor';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ErrorCard } from '../components/ErrorCard';
@@ -102,11 +103,38 @@ function SolidityView({
   const wordWrap = useSession((s) => s.wordWrap);
   const showLineNumbers = useSession((s) => s.showLineNumbers);
   const addBreakpoint = useSession((s) => s.addBreakpoint);
-  const { containerRef, viewRef } = useSolidityEditor({
+  // Subscribe to the active snapshot so we can highlight the current line
+  // when (a) the snapshot is a Hook (source-level) snapshot, AND (b) it
+  // belongs to this tab's (addr, path).
+  const currentSnapshotId = useSession((s) => s.currentSnapshotId);
+  const { data: currentSnap } = useSnapshotInfo(currentSnapshotId);
+  const highlightLine = (() => {
+    if (!currentSnap || !file) return undefined;
+    if (currentSnap.detail.kind !== 'Hook') return undefined;
+    if (currentSnap.bytecode_address.toLowerCase() !== addr.toLowerCase()) return undefined;
+    if (currentSnap.detail.path !== file.path) return undefined;
+    // offsets are byte-offsets into the source file content; convert to line.
+    const offset = Math.max(0, Math.min(currentSnap.detail.offset, file.content.length));
+    // Count newlines up to offset, +1 because lines are 1-indexed.
+    let line = 1;
+    for (let i = 0; i < offset; i += 1) {
+      if (file.content.charCodeAt(i) === 10) line += 1;
+    }
+    return line;
+  })();
+  const { containerRef, viewRef, revealOffset } = useSolidityEditor({
     content: file?.content ?? '',
     wordWrap,
     showLineNumbers,
+    highlightLine,
   });
+
+  function revealCurrent() {
+    if (!currentSnap) return;
+    if (currentSnap.detail.kind === 'Hook') {
+      revealOffset(currentSnap.detail.offset);
+    }
+  }
 
   function copyContent() {
     if (!file) return;
@@ -163,6 +191,13 @@ function SolidityView({
           label="Add breakpoint at cursor line"
           testid="file-add-breakpoint"
           onClick={addBreakpointAtCursor}
+        />
+        <ToolbarButton
+          icon={Locate}
+          label="Reveal current snapshot location"
+          testid="file-reveal-current"
+          onClick={revealCurrent}
+          disabled={typeof highlightLine !== 'number'}
         />
         <ToolbarDivider />
         <span
