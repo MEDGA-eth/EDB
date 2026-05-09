@@ -17,13 +17,15 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
+      title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
       aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
       aria-pressed={theme === 'dark'}
       onClick={toggle}
-      className="rounded-[var(--radius)] px-3 py-1 text-(--color-fg-secondary) hover:bg-(--color-bg-hover)"
+      className="inline-flex items-center gap-1 rounded-[var(--radius)] px-2 py-0.5 text-[12px] text-(--color-fg-secondary) hover:bg-(--color-bg-hover)"
       data-testid="theme-toggle"
     >
       {theme === 'dark' ? '🌙' : '☀️'}
+      <span className="hidden lg:inline">{theme === 'dark' ? 'Dark' : 'Light'}</span>
     </button>
   );
 }

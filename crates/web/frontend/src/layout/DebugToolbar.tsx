@@ -230,11 +230,16 @@ function ReopenMenu() {
         data-testid="reopen-menu"
         onClick={() => setOpen((o) => !o)}
         title={`Reopen ${closed.length} closed panel${closed.length === 1 ? '' : 's'}`}
-        className="inline-flex items-center gap-1.5 rounded border border-(--color-border) bg-(--color-bg) px-2 py-1 text-[12px] text-(--color-fg-secondary) hover:bg-(--color-bg-hover) hover:text-(--color-fg)"
+        className={
+          'inline-flex items-center gap-1.5 rounded border-2 border-(--color-accent) ' +
+          'bg-(--color-accent) px-3 py-1 text-[13px] font-semibold text-white ' +
+          'shadow-[var(--shadow-sm)] hover:brightness-110 ' +
+          'animate-[pulse_2.4s_ease-in-out_infinite]'
+        }
       >
-        <LayoutGrid size={14} aria-hidden />
-        <span>Reopen</span>
-        <span className="rounded-full bg-(--color-accent) px-1.5 py-px font-mono text-[10px] text-white">
+        <LayoutGrid size={16} aria-hidden />
+        <span>Reopen panel{closed.length === 1 ? '' : 's'}</span>
+        <span className="rounded-full bg-white/25 px-1.5 py-px font-mono text-[11px]">
           {closed.length}
         </span>
       </button>
