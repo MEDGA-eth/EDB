@@ -20,7 +20,13 @@ export function applyTheme(theme: Theme): void {
 
 export function persistTheme(theme: Theme): void {
   if (typeof localStorage === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, theme);
+  try {
+    localStorage.setItem(STORAGE_KEY, theme);
+  } catch (e) {
+    // QuotaExceededError, SecurityError (private mode / iframes), etc.
+    // eslint-disable-next-line no-console
+    console.warn('persistTheme: localStorage.setItem failed', e);
+  }
 }
 
 export function initialTheme(): Theme {

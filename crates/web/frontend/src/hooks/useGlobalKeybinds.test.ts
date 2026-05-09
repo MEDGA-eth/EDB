@@ -41,4 +41,41 @@ describe('useGlobalKeybinds', () => {
     press('p');
     expect(useSession.getState().paletteOpen).toBe(false);
   });
+
+  test('Cmd+P inside a CodeMirror editor does NOT open the palette', () => {
+    renderHook(() => useGlobalKeybinds());
+    // Build a fake CodeMirror surface in the DOM and dispatch from inside it.
+    const editor = document.createElement('div');
+    editor.className = 'cm-editor';
+    const inner = document.createElement('div');
+    inner.setAttribute('contenteditable', 'true');
+    editor.appendChild(inner);
+    document.body.appendChild(editor);
+    const ev = new KeyboardEvent('keydown', {
+      key: 'p',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    inner.dispatchEvent(ev);
+    expect(useSession.getState().paletteOpen).toBe(false);
+    expect(ev.defaultPrevented).toBe(false);
+    document.body.removeChild(editor);
+  });
+
+  test('Cmd+P inside a plain <input> does NOT open the palette', () => {
+    renderHook(() => useGlobalKeybinds());
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    const ev = new KeyboardEvent('keydown', {
+      key: 'p',
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    input.dispatchEvent(ev);
+    expect(useSession.getState().paletteOpen).toBe(false);
+    expect(ev.defaultPrevented).toBe(false);
+    document.body.removeChild(input);
+  });
 });

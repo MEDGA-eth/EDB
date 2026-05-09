@@ -9,14 +9,28 @@ import { useSession } from '../store/session';
  * - Esc → close palette if open
  *
  * The handler is only active while mounted, so unit tests can opt-in.
+ *
+ * When focus is inside an editable element (CodeMirror, `<input>`,
+ * `<textarea>`, or any `contenteditable`), Cmd/Ctrl+P is left alone so the
+ * editor can handle it locally — e.g. CodeMirror's search panel.
  */
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!target || !(target instanceof Element)) return false;
+  // CodeMirror 6 wraps its editable surface in `.cm-editor`; descendants of
+  // that subtree (the actual contenteditable div) need editor semantics.
+  if (target.closest('.cm-editor')) return true;
+  if (target.closest('input, textarea, [contenteditable="true"], [contenteditable=""]'))
+    return true;
+  return false;
+}
+
 export function useGlobalKeybinds(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
-      // ignore inside contenteditable / inputs for typing keys, but Cmd+P
-      // is a global shortcut that always wins.
       if (mod && !e.altKey && (e.key === 'p' || e.key === 'P')) {
+        // Inside an editor / input: let the local component handle it.
+        if (isEditableTarget(e.target)) return;
         e.preventDefault();
         e.stopPropagation();
         useSession.getState().togglePalette();

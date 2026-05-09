@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSession } from '../store/session';
 import { Health } from '../lib/types';
 import { rpcRaw } from '../lib/rpc';
@@ -17,6 +18,23 @@ async function probeHealth(): Promise<boolean> {
 export function useHealthcheck() {
   const setConnection = useSession(s => s.setConnection);
   const setSessionEnded = useSession(s => s.setSessionEnded);
+  const queryClient = useQueryClient();
+  const sessionEnded = useSession(s => s.sessionEnded);
+
+  // Track previous sessionEnded value across renders so we only react on the
+  // false → true transition (preventing infinite invalidation loops).
+  const prevEndedRef = useRef<boolean>(sessionEnded);
+
+  // When sessionEnded flips false → true, cancel any in-flight queries and
+  // drop their cached results so a reconnected session can't surface stale
+  // data from a previous engine.
+  useEffect(() => {
+    if (!prevEndedRef.current && sessionEnded) {
+      void queryClient.cancelQueries();
+      queryClient.removeQueries();
+    }
+    prevEndedRef.current = sessionEnded;
+  }, [sessionEnded, queryClient]);
 
   useEffect(() => {
     let misses = 0;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   DockviewReact,
   type DockviewApi,
@@ -285,14 +285,7 @@ function SidePlaceholder({ activity }: { activity: ActivityKind }) {
 
 export function IDELayout() {
   const activity = useSession((s) => s.activeActivity);
-  const [editorPx, setEditorPx] = useState(0); // forces re-mount when window resizes radically
   useGlobalKeybinds();
-
-  useEffect(() => {
-    const onResize = () => setEditorPx((n) => n + 1);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   return (
     <div className="flex h-full flex-col bg-(--color-bg-root)" data-testid="ide-layout">
@@ -306,8 +299,12 @@ export function IDELayout() {
         {/* main split: editor (top) + bottom panel */}
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="flex-1 overflow-hidden" data-testid="editor-region">
-            {/* `key` lets the empty-state swap to dockview cleanly */}
-            <EditorArea key={editorPx} />
+            {/*
+              The editor area stays mounted across window resizes — dockview
+              observes its container and handles its own layout. Re-mounting
+              on every resize was pathological under drag (60fps).
+            */}
+            <EditorArea />
           </div>
           <div
             className="h-2 cursor-row-resize border-t border-b border-(--color-border) bg-(--color-bg)"
