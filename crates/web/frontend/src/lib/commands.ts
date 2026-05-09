@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { useSession } from '../store/session';
 import { rpc } from './rpc';
 import { breakpointToWire, type Breakpoint, type SnapshotInfo } from './types';
+import { ensureFixedPanel } from './dockviewBridge';
 
 const HitsSchema = z.array(z.number().int().nonnegative());
 
@@ -356,6 +357,24 @@ export const COMMANDS: Command[] = [
     label: 'Show: Breakpoints',
     group: 'View',
     run: () => useSession.getState().setActivity('breakpoints'),
+  },
+  // Re-open closed dockview panels. dockview removes a panel from the
+  // layout entirely when the user closes its tab, so the only way back
+  // is to addPanel a fresh one. ensureFixedPanel anchors the new panel
+  // to whichever sibling is still mounted so the user gets continuity.
+  {
+    id: 'view.panel.display',
+    label: 'Reopen: Display panel',
+    group: 'View',
+    hint: 'recover',
+    run: () => { ensureFixedPanel('display', 'Display'); },
+  },
+  {
+    id: 'view.panel.terminal',
+    label: 'Reopen: Terminal panel',
+    group: 'View',
+    hint: 'recover',
+    run: () => { ensureFixedPanel('terminal', 'Terminal'); },
   },
   // ── Trace ───────────────────────────────────────────────────
   {

@@ -1,23 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
-    <radialGradient id="g" cx="0.5" cy="0.42" r="0.62">
-      <stop offset="0%" stop-color="#a7f3d0"/>
-      <stop offset="55%" stop-color="#34d399"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fdfaf3"/>
+      <stop offset="100%" stop-color="#efe7d5"/>
+    </linearGradient>
+    <linearGradient id="fg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#34d399"/>
       <stop offset="100%" stop-color="#047857"/>
-    </radialGradient>
+    </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="14" fill="#062a1f"/>
-  <ellipse cx="32" cy="34" rx="14" ry="16" fill="url(#g)"/>
-  <circle cx="27" cy="30" r="2.6" fill="#fdfdfd"/>
-  <circle cx="37" cy="30" r="2.6" fill="#fdfdfd"/>
-  <circle cx="27" cy="30.4" r="1.2" fill="#062a1f"/>
-  <circle cx="37" cy="30.4" r="1.2" fill="#062a1f"/>
-  <path d="M 18 22 Q 13 16 9 16" stroke="#34d399" stroke-width="2.2" stroke-linecap="round" fill="none"/>
-  <path d="M 46 22 Q 51 16 55 16" stroke="#34d399" stroke-width="2.2" stroke-linecap="round" fill="none"/>
-  <circle cx="9" cy="16" r="1.6" fill="#a7f3d0"/>
-  <circle cx="55" cy="16" r="1.6" fill="#a7f3d0"/>
-  <line x1="32" y1="20" x2="32" y2="48" stroke="#062a1f" stroke-width="1.4" opacity="0.55"/>
-  <ellipse cx="29.5" cy="40" rx="1.2" ry="2" fill="#062a1f" opacity="0.45"/>
-  <ellipse cx="34.5" cy="40" rx="1.2" ry="2" fill="#062a1f" opacity="0.45"/>
+  <rect width="64" height="64" rx="14" fill="url(#bg)" stroke="#d6cdb6" stroke-width="1"/>
+  <!-- a step/play arrow that suggests "advance" + a trailing dot for a breakpoint -->
+  <path
+    d="M 22 18 L 22 46 L 44 32 Z"
+    fill="url(#fg)"
+    stroke="#065f46"
+    stroke-width="1.2"
+    stroke-linejoin="round"
+  />
+  <circle cx="14" cy="32" r="3.4" fill="#dc2626" stroke="#fdfaf3" stroke-width="1.2"/>
+  <!-- soft chevron dots beneath the arrow as a quiet debug-step signature -->
+  <circle cx="48" cy="48" r="1.6" fill="#047857" opacity="0.55"/>
+  <circle cx="52.5" cy="48" r="1.6" fill="#047857" opacity="0.35"/>
+  <circle cx="57" cy="48" r="1.6" fill="#047857" opacity="0.18"/>
 </svg>
