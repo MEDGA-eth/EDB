@@ -9,6 +9,20 @@ export interface AvailableFile {
   path: string;
 }
 
+/** Per-address fetch status for UI affordances (loading / error / retry). */
+export type AddressFileStatus = 'pending' | 'ok' | 'error';
+
+export interface AddressFileEntry {
+  addr: string;
+  status: AddressFileStatus;
+  /** Files for this address; empty until status === 'ok'. */
+  files: AvailableFile[];
+  /** Error message if status === 'error'. */
+  error?: string;
+  /** Retry the per-address code fetch. */
+  refetch: () => void;
+}
+
 interface TraceEntry {
   id: number;
   kind: string;
@@ -45,6 +59,12 @@ export function useAvailableFiles(): {
   files: AvailableFile[];
   addresses: string[];
   isLoading: boolean;
+  /**
+   * Per-address status — useful for the FileExplorer where we want to
+   * surface failed lookups with a retry affordance instead of dropping
+   * the address silently.
+   */
+  perAddress: AddressFileEntry[];
 } {
   const traceQ = useQuery({
     queryKey: ['trace'] as const,
@@ -78,6 +98,33 @@ export function useAvailableFiles(): {
     return out;
   }, [addresses, codeQs]);
 
+  const perAddress = useMemo<AddressFileEntry[]>(() => {
+    return addresses.map((addr, i) => {
+      const q = codeQs[i];
+      if (!q) {
+        return { addr, status: 'pending', files: [], refetch: () => {} };
+      }
+      if (q.error) {
+        return {
+          addr,
+          status: 'error',
+          files: [],
+          error: (q.error as Error).message,
+          refetch: () => void q.refetch(),
+        };
+      }
+      const data = q.data;
+      if (!data) {
+        return { addr, status: 'pending', files: [], refetch: () => void q.refetch() };
+      }
+      const out: AvailableFile[] =
+        data.kind === 'Opcodes'
+          ? [{ addr, path: DISASM_PATH }]
+          : data.files.map((f) => ({ addr, path: f.path }));
+      return { addr, status: 'ok', files: out, refetch: () => void q.refetch() };
+    });
+  }, [addresses, codeQs]);
+
   const isLoading = traceQ.isLoading || codeQs.some((q) => q.isLoading);
-  return { files, addresses, isLoading };
+  return { files, addresses, isLoading, perAddress };
 }

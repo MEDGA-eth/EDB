@@ -54,6 +54,7 @@ export const COMMANDS: Command[] = [
     label: 'Next snapshot',
     group: 'Navigation',
     hint: 'n',
+    enabled: ({ snapshotCount }) => useSession.getState().currentSnapshotId < snapshotCount - 1,
     run: ({ snapshotCount }) => useSession.getState().nextSnapshot(snapshotCount),
   },
   {
@@ -61,18 +62,23 @@ export const COMMANDS: Command[] = [
     label: 'Previous snapshot',
     group: 'Navigation',
     hint: 'p',
+    enabled: () => useSession.getState().currentSnapshotId > 0,
     run: () => useSession.getState().prevSnapshot(),
   },
   {
     id: 'nav.first',
     label: 'First snapshot',
     group: 'Navigation',
+    enabled: ({ snapshotCount }) =>
+      snapshotCount > 0 && useSession.getState().currentSnapshotId !== 0,
     run: () => setSnapshot(0),
   },
   {
     id: 'nav.last',
     label: 'Last snapshot',
     group: 'Navigation',
+    enabled: ({ snapshotCount }) =>
+      snapshotCount > 0 && useSession.getState().currentSnapshotId !== snapshotCount - 1,
     run: ({ snapshotCount }) => setSnapshot(clamp(snapshotCount - 1, snapshotCount)),
   },
   {
@@ -80,7 +86,8 @@ export const COMMANDS: Command[] = [
     label: 'Next call',
     group: 'Navigation',
     hint: 'N',
-    enabled: (c) => typeof c.nextCallId === 'number',
+    enabled: (c) =>
+      typeof c.nextCallId === 'number' && c.nextCallId !== useSession.getState().currentSnapshotId,
     run: (c) => {
       if (typeof c.nextCallId === 'number') setSnapshot(c.nextCallId);
     },
@@ -90,7 +97,8 @@ export const COMMANDS: Command[] = [
     label: 'Previous call',
     group: 'Navigation',
     hint: 'P',
-    enabled: (c) => typeof c.prevCallId === 'number',
+    enabled: (c) =>
+      typeof c.prevCallId === 'number' && c.prevCallId !== useSession.getState().currentSnapshotId,
     run: (c) => {
       if (typeof c.prevCallId === 'number') setSnapshot(c.prevCallId);
     },

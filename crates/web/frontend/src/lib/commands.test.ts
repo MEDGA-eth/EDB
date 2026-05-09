@@ -38,9 +38,28 @@ describe('command registry', () => {
     expect(useSession.getState().currentSnapshotId).toBe(1);
   });
 
+  test('nav.next disabled at the last snapshot', () => {
+    useSession.setState({ currentSnapshotId: 4 });
+    expect(getCommand('nav.next')!.enabled?.(ctx({ snapshotCount: 5 }))).toBe(false);
+    useSession.setState({ currentSnapshotId: 3 });
+    expect(getCommand('nav.next')!.enabled?.(ctx({ snapshotCount: 5 }))).toBe(true);
+  });
+
+  test('nav.prev disabled at snapshot 0', () => {
+    useSession.setState({ currentSnapshotId: 0 });
+    expect(getCommand('nav.prev')!.enabled?.(ctx())).toBe(false);
+    useSession.setState({ currentSnapshotId: 1 });
+    expect(getCommand('nav.prev')!.enabled?.(ctx())).toBe(true);
+  });
+
   test('nav.last clamps to count-1', () => {
     getCommand('nav.last')!.run(ctx({ snapshotCount: 7 }));
     expect(useSession.getState().currentSnapshotId).toBe(6);
+  });
+
+  test('nav.last disabled when already at last', () => {
+    useSession.setState({ currentSnapshotId: 6 });
+    expect(getCommand('nav.last')!.enabled?.(ctx({ snapshotCount: 7 }))).toBe(false);
   });
 
   test('nav.first goes to 0', () => {
@@ -49,12 +68,26 @@ describe('command registry', () => {
     expect(useSession.getState().currentSnapshotId).toBe(0);
   });
 
+  test('nav.first disabled when already at 0 or count is 0', () => {
+    useSession.setState({ currentSnapshotId: 0 });
+    expect(getCommand('nav.first')!.enabled?.(ctx({ snapshotCount: 5 }))).toBe(false);
+    expect(getCommand('nav.first')!.enabled?.(ctx({ snapshotCount: 0 }))).toBe(false);
+    useSession.setState({ currentSnapshotId: 2 });
+    expect(getCommand('nav.first')!.enabled?.(ctx({ snapshotCount: 5 }))).toBe(true);
+  });
+
   test('nav.next-call disabled without nextCallId', () => {
     const cmd = getCommand('nav.next-call')!;
     expect(cmd.enabled?.(ctx())).toBe(false);
     expect(cmd.enabled?.(ctx({ nextCallId: 3 }))).toBe(true);
     cmd.run(ctx({ nextCallId: 3 }));
     expect(useSession.getState().currentSnapshotId).toBe(3);
+  });
+
+  test('nav.next-call disabled when target equals current', () => {
+    useSession.setState({ currentSnapshotId: 3 });
+    expect(getCommand('nav.next-call')!.enabled?.(ctx({ nextCallId: 3 }))).toBe(false);
+    expect(getCommand('nav.next-call')!.enabled?.(ctx({ nextCallId: 4 }))).toBe(true);
   });
 
   test('view.toggle-theme flips theme', () => {
