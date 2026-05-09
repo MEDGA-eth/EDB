@@ -94,13 +94,21 @@ export function StatusBar() {
 
   return (
     <footer
-      className="flex h-6 items-center justify-between border-t border-(--color-border) bg-(--color-bg) px-3 font-display text-[12px]"
+      className="flex h-7 items-center justify-between border-t border-(--color-border) bg-(--color-bg) px-3 font-body text-[12px]"
       data-testid="status-bar"
     >
-      <div className="flex items-center gap-3">
-        <span className="font-bold text-(--color-fg-secondary)">edb</span>
+      <div className="flex items-center gap-4">
+        <span
+          className="font-display text-[13px] font-bold tracking-wide text-(--color-fg)"
+          aria-label="Ethereum Debugger"
+        >
+          edb
+        </span>
         <span className="text-(--color-fg-secondary)" data-testid="snapshot-label">
-          snapshot {id} / {count ?? '…'}
+          snapshot{' '}
+          <span className="font-mono text-(--color-fg)">{id}</span>{' '}
+          <span className="text-(--color-fg-tertiary)">/</span>{' '}
+          <span className="font-mono text-(--color-fg-secondary)">{count ?? '…'}</span>
         </span>
       </div>
       <div className="flex items-center gap-3">
@@ -130,7 +138,7 @@ function PaletteHint() {
       aria-hidden
       className="hidden items-center gap-1 text-(--color-fg-tertiary) sm:inline-flex"
     >
-      <kbd className="rounded border border-(--color-border) bg-(--color-bg-elevated) px-1 font-mono text-[10px]">
+      <kbd className="rounded border border-(--color-border) bg-(--color-bg-elevated) px-1.5 py-px font-mono text-[11px] leading-none">
         {IS_MAC ? '⌘' : 'Ctrl'}P
       </kbd>
     </span>

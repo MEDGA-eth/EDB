@@ -162,6 +162,12 @@ export function MainArea() {
   // already-open file tab; if no files are open, place the new tab ABOVE
   // the bottom (display/terminal) group so the IDE keeps its code-on-top
   // / panels-on-bottom shape.
+  //
+  // Care: dockview throws if `referencePanel` doesn't exist. The user may
+  // have closed `display` AND `terminal`, leaving the dockview empty —
+  // anchoring to a missing id would crash the app. Always pick an anchor
+  // that's actually present, or fall through to no `position` so dockview
+  // makes a fresh group.
   useEffect(() => {
     const api = apiRef.current;
     if (!api) return;
@@ -173,9 +179,13 @@ export function MainArea() {
     for (const f of openFiles) {
       if (api.getPanel(f.id)) continue;
       const existingFile = api.panels.find((p) => !FIXED_PANEL_IDS.has(p.id));
+      const display = api.getPanel('display');
+      const anyFixed = display ?? api.getPanel('terminal');
       const position = existingFile
         ? { referencePanel: existingFile.id, direction: 'within' as const }
-        : { referencePanel: 'display', direction: 'above' as const };
+        : anyFixed
+          ? { referencePanel: anyFixed.id, direction: 'above' as const }
+          : undefined;
       api.addPanel({
         id: f.id,
         component: 'file',
