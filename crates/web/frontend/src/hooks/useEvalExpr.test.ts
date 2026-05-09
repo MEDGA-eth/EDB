@@ -7,15 +7,18 @@ describe('useEvalExpr', () => {
   afterEach(() => (globalThis.fetch as { mockReset?: () => void }).mockReset?.());
 
   test('mutates and caches result under [eval, id, expr]', async () => {
-    mockRpc({ edb_evalOnSnapshot: (p) => ({ ok: true, params: p }) });
+    let receivedParams: unknown[] = [];
+    mockRpc({ edb_evalOnSnapshot: (p) => { receivedParams = p!; return { Ok: { type: 'Bool', value: true } }; } });
     const { wrapper, client } = makeWrapper();
     const { result } = renderHook(() => useEvalExpr(), { wrapper });
     const out = await result.current.mutateAsync({ id: 1, expr: 'foo' });
-    expect((out as { ok: boolean }).ok).toBe(true);
+    expect(out.kind).toBe('Ok');
+    if (out.kind === 'Ok') expect(out.value).toEqual({ type: 'Bool', value: true });
+    expect(receivedParams).toEqual([1, 'foo']);
     await waitFor(() =>
       expect(client.getQueryData(['eval', 1, 'foo']) as unknown).toEqual({
-        ok: true,
-        params: [1, 'foo'],
+        kind: 'Ok',
+        value: { type: 'Bool', value: true },
       }),
     );
   });

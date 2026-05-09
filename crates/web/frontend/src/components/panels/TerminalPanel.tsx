@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ArrowDownToLine, Copy, Trash2, X } from 'lucide-react';
 import { useEvalExpr } from '../../hooks/useEvalExpr';
+import { formatSolValue, type EvalResult } from '../../lib/types';
 import { useSession } from '../../store/session';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { Toolbar, ToolbarButton, ToolbarDivider } from '../Toolbar';
@@ -29,6 +30,24 @@ export function prettyJson(value: unknown): string {
     const detail = e instanceof Error ? ` — ${e.message}` : '';
     return `[unserializable: ${typeof value}]${detail}`;
   }
+}
+
+/**
+ * Render an `EvalResult` as a single line for terminal display.
+ *
+ * We avoid `prettyJson` for the success case because the SolValue envelope
+ * (`{ type, value: { bits, value } }`) is verbose and noisy in the
+ * common case of a single-uint-256 or single-bool result. `formatSolValue`
+ * collapses each variant to a short, human-readable form. We still fall
+ * back to `prettyJson` for unexpected envelopes.
+ */
+export function formatEvalResult(value: unknown): string {
+  if (value && typeof value === 'object' && 'kind' in value) {
+    const r = value as EvalResult;
+    if (r.kind === 'Ok') return formatSolValue(r.value);
+    if (r.kind === 'Err') return `error: ${r.error}`;
+  }
+  return prettyJson(value);
 }
 
 export function TerminalPanel() {
@@ -83,7 +102,7 @@ function TerminalPanelInner() {
     const last = [...history].reverse().find((h) => h.kind === 'result' || h.kind === 'error');
     if (!last) return;
     let text = '';
-    if (last.kind === 'result') text = `${last.expr} → ${prettyJson(last.value)}`;
+    if (last.kind === 'result') text = `${last.expr} → ${formatEvalResult(last.value)}`;
     else if (last.kind === 'error') text = `${last.expr} ⨯ ${last.message} (${last.code})`;
     if (!navigator.clipboard?.writeText) {
       append({
@@ -234,7 +253,7 @@ function TerminalLine({ entry }: { entry: import('../../store/session').Terminal
     );
   return (
     <div data-testid="term-result">
-      <ReactMarkdown>{`\`${entry.expr}\` →\n\n\`\`\`\n${prettyJson(entry.value)}\n\`\`\``}</ReactMarkdown>
+      <ReactMarkdown>{`\`${entry.expr}\` →\n\n\`\`\`\n${formatEvalResult(entry.value)}\n\`\`\``}</ReactMarkdown>
     </div>
   );
 }

@@ -3,7 +3,9 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { makeWrapper, mockRpc } from './_test-utils';
 import { useCallableABI } from './useCallableABI';
 
-const fixture = { is_proxy: false, normal: [] };
+const fixture = [
+  { address: '0x' + '0'.repeat(40), contract_ty: 'Normal', entries: [] },
+];
 
 describe('useCallableABI', () => {
   afterEach(() => (globalThis.fetch as { mockReset?: () => void }).mockReset?.());
@@ -16,7 +18,7 @@ describe('useCallableABI', () => {
     const { result } = renderHook(() => useCallableABI(addr), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(received).toEqual([addr]);
-    expect(result.current.data?.is_proxy).toBe(false);
+    expect(result.current.data?.[0]?.contract_ty).toBe('Normal');
   });
 
   test('schema error on bad shape', async () => {

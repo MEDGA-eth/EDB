@@ -5,7 +5,7 @@ import { rpc } from '../../lib/rpc';
 import { useSession } from '../../store/session';
 import { ToolbarButton } from '../Toolbar';
 import { ErrorBoundary } from '../ErrorBoundary';
-import type { Breakpoint } from '../../lib/types';
+import { breakpointToWire, type Breakpoint } from '../../lib/types';
 
 const HitsSchema = z.array(z.number().int().nonnegative());
 
@@ -35,7 +35,7 @@ function BreakpointsViewInner() {
     if (!bp) return;
     const hits = await qc.fetchQuery({
       queryKey: ['bp-hits', JSON.stringify(bp, Object.keys(bp).sort())] as const,
-      queryFn: () => rpc('edb_getBreakpointHits', HitsSchema, [bp]),
+      queryFn: () => rpc('edb_getBreakpointHits', HitsSchema, [breakpointToWire(bp)]),
     });
     if (hits.length > 0) setSnap(hits[0]);
   }

@@ -1,26 +1,19 @@
 {
   "id": 0,
-  "frame_id": { "trace_entry_id": 0, "step_id": 0 },
+  "frame_id": [0, 0],
   "next_id": 1,
   "prev_id": 0,
-  "target_address": "0x000000000022d473030f116ddee9f6b43ac78ba3",
-  "bytecode_address": "0x000000000022d473030f116ddee9f6b43ac78ba3",
+  "target_address": "0x7a250d5630b4cf539739df2c5dacb4c659f2488d",
+  "bytecode_address": "0x7a250d5630b4cf539739df2c5dacb4c659f2488d",
   "detail": {
-    "kind": "Hook",
-    "id": 0,
-    "frame_id": { "trace_entry_id": 0, "step_id": 0 },
-    "path": "src/Vault.sol",
-    "offset": 612,
-    "length": 67,
-    "locals": {
-      "amount": "0x056bc75e2d63100000",
-      "supply": "0x152d02c7e14af6800000",
-      "reserves": "0x29a2241af62c00000",
-      "shares": "0x056bc75e2d63100000"
-    },
-    "state_variables": {
-      "totalShares": "0x152d02c7e14af6800000",
-      "asset": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+    "Hook": {
+      "id": 0,
+      "frame_id": [0, 0],
+      "path": "Contract",
+      "offset": 9164,
+      "length": 31,
+      "locals": {},
+      "state_variables": {}
     }
   }
 }

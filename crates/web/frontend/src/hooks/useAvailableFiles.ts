@@ -1,7 +1,7 @@
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { rpc } from '../lib/rpc';
-import { CodeKind, Trace } from '../lib/types';
+import { CodeKind, Trace, type TraceEntry } from '../lib/types';
 import { DISASM_PATH } from '../layout/FileTabPanel';
 
 export interface AvailableFile {
@@ -23,25 +23,16 @@ export interface AddressFileEntry {
   refetch: () => void;
 }
 
-interface TraceEntry {
-  id: number;
-  kind: string;
-  code_address: string;
-  target_address: string;
-  children?: TraceEntry[];
-}
-
 /** Hard cap on how many `edb_getCodeByAddress` queries run in parallel. */
 const PARALLEL_CODE_QUERY_LIMIT = 25;
 
+/** Collect unique `code_address` values from the flat trace. */
 function collectAddresses(trace: TraceEntry[] | undefined): string[] {
   if (!trace) return [];
   const out = new Set<string>();
-  const walk = (e: TraceEntry) => {
+  for (const e of trace) {
     if (e.code_address) out.add(e.code_address.toLowerCase());
-    e.children?.forEach(walk);
-  };
-  trace.forEach(walk);
+  }
   return Array.from(out);
 }
 
@@ -71,7 +62,7 @@ export function useAvailableFiles(): {
     queryFn: () => rpc('edb_getTrace', Trace),
   });
   const addresses = useMemo(
-    () => collectAddresses(traceQ.data as TraceEntry[] | undefined),
+    () => collectAddresses(traceQ.data?.inner),
     [traceQ.data],
   );
   const codeQs = useQueries({

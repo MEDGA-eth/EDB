@@ -3,7 +3,10 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { makeWrapper, mockRpc } from './_test-utils';
 import { useCodeByAddress } from './useCodeByAddress';
 
-const opcodeFixture = { kind: 'Opcodes', disasm: '0000: PUSH1 0x60' };
+const ADDR = '0x' + '0'.repeat(40);
+const opcodeFixture = {
+  Opcode: { bytecode_address: ADDR, codes: { '0': 'PUSH1 0x60' } },
+};
 
 describe('useCodeByAddress', () => {
   afterEach(() => (globalThis.fetch as { mockReset?: () => void }).mockReset?.());
@@ -12,10 +15,9 @@ describe('useCodeByAddress', () => {
     let received: unknown[] = [];
     mockRpc({ edb_getCodeByAddress: (p) => { received = p!; return opcodeFixture; } });
     const { wrapper } = makeWrapper();
-    const addr = '0x' + '0'.repeat(40);
-    const { result } = renderHook(() => useCodeByAddress(addr), { wrapper });
+    const { result } = renderHook(() => useCodeByAddress(ADDR), { wrapper });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(received).toEqual([addr]);
+    expect(received).toEqual([ADDR]);
     expect(result.current.data?.kind).toBe('Opcodes');
   });
 

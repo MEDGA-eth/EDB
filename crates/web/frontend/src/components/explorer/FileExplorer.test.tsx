@@ -8,6 +8,28 @@ import { useSession } from '../../store/session';
 const ADDR_A = '0x' + 'a'.repeat(40);
 const ADDR_B = '0x' + 'b'.repeat(40);
 
+function entry(id: number, parent: number | null, addr: string) {
+  return {
+    id,
+    parent_id: parent,
+    depth: parent === null ? 0 : 1,
+    call_type: { Call: 'Call' },
+    caller: '0x' + '1'.repeat(40),
+    target: addr,
+    code_address: addr,
+    input: '0x',
+    value: '0x0',
+    result: { Success: { output: '0x', result: 'Stop' } },
+    created_contract: false,
+    create_scheme: null,
+    bytecode: '0x6080',
+    target_label: null,
+    self_destruct: null,
+    events: [],
+    first_snapshot_id: id,
+  };
+}
+
 describe('<FileExplorer />', () => {
   afterEach(() => {
     cleanup();
@@ -15,7 +37,7 @@ describe('<FileExplorer />', () => {
   });
 
   test('shows empty state when trace has no entries', async () => {
-    mockRpc({ edb_getTrace: () => [] });
+    mockRpc({ edb_getTrace: () => ({ inner: [] }) });
     const { wrapper } = makeWrapper();
     render(<FileExplorer />, { wrapper });
     await waitFor(() => expect(screen.getByTestId('explorer-empty')).toBeTruthy());
@@ -23,19 +45,16 @@ describe('<FileExplorer />', () => {
 
   test('lists unique code addresses from the trace', async () => {
     mockRpc({
-      edb_getTrace: () => [
-        {
-          id: 0,
-          kind: 'Call',
-          code_address: ADDR_A,
-          target_address: ADDR_A,
-          children: [
-            { id: 1, kind: 'Call', code_address: ADDR_B, target_address: ADDR_B, children: [] },
-            { id: 2, kind: 'Call', code_address: ADDR_A, target_address: ADDR_A, children: [] },
-          ],
-        },
-      ],
-      edb_getCodeByAddress: () => ({ kind: 'Opcodes', disasm: 'STOP' }),
+      edb_getTrace: () => ({
+        inner: [
+          entry(0, null, ADDR_A),
+          entry(1, 0, ADDR_B),
+          entry(2, 0, ADDR_A),
+        ],
+      }),
+      edb_getCodeByAddress: (params) => ({
+        Opcode: { bytecode_address: (params as string[])[0], codes: { '0': 'STOP' } },
+      }),
     });
     const { wrapper } = makeWrapper();
     render(<FileExplorer />, { wrapper });
@@ -45,13 +64,12 @@ describe('<FileExplorer />', () => {
 
   test('clicking a file calls openFile in the session store', async () => {
     mockRpc({
-      edb_getTrace: () => [
-        { id: 0, kind: 'Call', code_address: ADDR_A, target_address: ADDR_A, children: [] },
-      ],
+      edb_getTrace: () => ({ inner: [entry(0, null, ADDR_A)] }),
       edb_getCodeByAddress: () => ({
-        kind: 'Source',
-        entry: 'a.sol',
-        files: [{ path: 'a.sol', content: 'contract X{}' }],
+        Source: {
+          bytecode_address: ADDR_A,
+          sources: { 'a.sol': 'contract X{}' },
+        },
       }),
     });
     const { wrapper } = makeWrapper();
@@ -66,21 +84,12 @@ describe('<FileExplorer />', () => {
 
   test('arrow keys move focus between rows; Enter on a file opens it', async () => {
     mockRpc({
-      edb_getTrace: () => [
-        {
-          id: 0,
-          kind: 'Call',
-          code_address: ADDR_A,
-          target_address: ADDR_A,
-          children: [
-            { id: 1, kind: 'Call', code_address: ADDR_B, target_address: ADDR_B, children: [] },
-          ],
+      edb_getTrace: () => ({ inner: [entry(0, null, ADDR_A), entry(1, 0, ADDR_B)] }),
+      edb_getCodeByAddress: (params) => ({
+        Source: {
+          bytecode_address: (params as string[])[0],
+          sources: { 'a.sol': '' },
         },
-      ],
-      edb_getCodeByAddress: () => ({
-        kind: 'Source',
-        entry: 'a.sol',
-        files: [{ path: 'a.sol', content: '' }],
       }),
     });
     const { wrapper } = makeWrapper();
@@ -105,9 +114,7 @@ describe('<FileExplorer />', () => {
   test('error state surfaces a retry affordance', async () => {
     let calls = 0;
     mockRpc({
-      edb_getTrace: () => [
-        { id: 0, kind: 'Call', code_address: ADDR_A, target_address: ADDR_A, children: [] },
-      ],
+      edb_getTrace: () => ({ inner: [entry(0, null, ADDR_A)] }),
       edb_getCodeByAddress: () => {
         calls += 1;
         // Always fail — we just want the error state to surface.

@@ -1,10 +1,8 @@
 {
-  "kind": "Source",
-  "entry": "src/Vault.sol",
-  "files": [
-    {
-      "path": "src/Vault.sol",
-      "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\nimport {IERC20} from \"@openzeppelin/contracts/token/ERC20/IERC20.sol\";\n\n/// @notice Yield-bearing single-asset vault.\ncontract Vault {\n    IERC20 public immutable asset;\n    uint256 public totalShares;\n    mapping(address => uint256) public sharesOf;\n\n    event Deposit(address indexed user, uint256 amount, uint256 shares);\n\n    error InsufficientBalance(uint256 needed, uint256 actual);\n\n    constructor(IERC20 _asset) {\n        asset = _asset;\n    }\n\n    function deposit(uint256 amount) external returns (uint256 shares) {\n        uint256 supply = totalShares;\n        uint256 reserves = asset.balanceOf(address(this));\n        shares = supply == 0 ? amount : (amount * supply) / reserves;\n        require(shares > 0, \"zero shares\");\n        totalShares = supply + shares;\n        sharesOf[msg.sender] += shares;\n        bool ok = asset.transferFrom(msg.sender, address(this), amount);\n        if (!ok) revert InsufficientBalance(amount, reserves);\n        emit Deposit(msg.sender, amount, shares);\n    }\n}\n"
+  "Source": {
+    "bytecode_address": "0x7a250d5630b4cf539739df2c5dacb4c659f2488d",
+    "sources": {
+      "Vault.sol": "// SPDX-License-Identifier: MIT\npragma solidity ^0.6.6;\n\ncontract UniswapV2Router02 {\n    address public immutable factory;\n    address public immutable WETH;\n\n    constructor(address _factory, address _WETH) public {\n        factory = _factory;\n        WETH = _WETH;\n    }\n\n    function swapExactETHForTokens(\n        uint amountOutMin,\n        address[] calldata path,\n        address to,\n        uint deadline\n    ) external payable returns (uint[] memory amounts) {\n        // ... pretend body ...\n    }\n}\n"
     }
-  ]
+  }
 }
