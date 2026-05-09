@@ -64,7 +64,7 @@ function OpcodesView({ addr, disasm }: { addr: string; disasm: string }) {
           className="font-display text-[11px] text-(--color-fg-tertiary)"
           data-testid="file-toolbar-meta"
         >
-          {addr.slice(0, 10)}… · disasm
+          {addr.slice(0, 10)}… · {DISASM_PATH}
         </span>
       </Toolbar>
       <pre

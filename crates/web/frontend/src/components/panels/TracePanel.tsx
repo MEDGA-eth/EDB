@@ -57,6 +57,37 @@ function TracePanelInner() {
   if (error) return <ErrorCard message={(error as Error).message} onRetry={() => refetch()} />;
   if (!data) return null;
 
+  // Keyboard nav: ↑/↓ moves focus between entry buttons; Enter selects;
+  // ←/→ collapses/expands when focused on a node with children.
+  function onKey(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (!containerRef.current) return;
+    const buttons = Array.from(
+      containerRef.current.querySelectorAll<HTMLButtonElement>('[data-testid^="trace-entry-"]'),
+    );
+    const focusIdx = buttons.findIndex((b) => b === document.activeElement);
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = buttons[Math.min(buttons.length - 1, Math.max(0, focusIdx + 1))];
+      next?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = buttons[Math.max(0, focusIdx - 1)];
+      prev?.focus();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      const cur = buttons[focusIdx];
+      if (!cur) return;
+      const idStr = cur.getAttribute('data-testid')?.replace('trace-entry-', '');
+      if (!idStr) return;
+      const toggle = containerRef.current.querySelector<HTMLButtonElement>(
+        `[data-testid="trace-toggle-${idStr}"]`,
+      );
+      if (toggle) {
+        e.preventDefault();
+        toggle.click();
+      }
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <Toolbar testid="trace-toolbar">
@@ -90,6 +121,9 @@ function TracePanelInner() {
       <div
         ref={containerRef}
         data-testid="trace-panel"
+        role="tree"
+        aria-label="Call trace"
+        onKeyDown={onKey}
         className="flex-1 overflow-auto p-2 font-mono text-sm"
       >
         {(data as Entry[]).map((e) => (
@@ -134,7 +168,13 @@ function TraceNode({
   const hasKids = (entry.children?.length ?? 0) > 0;
   return (
     <>
-      <div className="flex w-full items-center" style={{ paddingLeft: `${depth * 16 + 4}px` }}>
+      <div
+        className="flex w-full items-center"
+        style={{ paddingLeft: `${depth * 16 + 4}px` }}
+        role="treeitem"
+        aria-expanded={hasKids ? open : undefined}
+        aria-selected={isCurrent}
+      >
         {hasKids ? (
           <button
             type="button"

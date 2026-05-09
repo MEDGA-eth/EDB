@@ -111,6 +111,12 @@ The web UI ships with:
 
 Click `?` in the top-right to see the keybindings and command reference.
 
+> **Security boundary.** The engine binds to `127.0.0.1`, so the JSON-RPC
+> API and embedded UI are reachable only from the same machine. On
+> shared environments (devcontainers, remote SSH, multi-user dev hosts),
+> any local user can connect — there is no per-user authentication.
+> Use OS-level isolation if you're debugging sensitive data.
+
 ##### Hacking on the web UI
 
 The frontend lives in `crates/web/frontend/` (Bun + React 19 + Vite + Tailwind v4). For fast iteration without a real engine:
@@ -126,6 +132,13 @@ bun run e2e                      # 3 Playwright flows against the mock dev serve
 To iterate with a real engine instead, run `edb replay <tx>` in another terminal and `bun run dev` (without `--mode=mock`) — the dev server proxies `POST /` and `GET /health` to the engine's port.
 
 If you don't have `bun` installed, set `EDB_SKIP_WEB_BUILD=1` before any `cargo` command to skip the frontend build (the resulting binary will fall back to a placeholder when `--ui=web` is requested).
+
+### Release checklist
+
+- Do **not** set `EDB_SKIP_WEB_BUILD=1` for release builds. It produces
+  a binary that panics at runtime when `--ui=web` is used.
+- Verify `bun --version` resolves on the build agent before invoking
+  `cargo build --release`.
 
 
 ## Why EDB?

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Copy, RefreshCw } from 'lucide-react';
 import { useSession } from '../../store/session';
@@ -8,6 +8,12 @@ import { ErrorBoundary } from '../ErrorBoundary';
 import { ErrorCard } from '../ErrorCard';
 import { Toolbar, ToolbarButton, ToolbarDivider } from '../Toolbar';
 import type { SnapshotInfo } from '../../lib/types';
+import { VarsView } from './display/VarsView';
+import { StackView } from './display/StackView';
+import { MemoryView } from './display/MemoryView';
+import { StorageView } from './display/StorageView';
+import { TransientView } from './display/TransientView';
+import { formatMemory } from './display/formatMemory';
 
 type Tab = 'vars' | 'stack' | 'memory' | 'storage' | 'transient';
 const TABS: { key: Tab; label: string }[] = [
@@ -126,127 +132,5 @@ function DisplayPanelInner() {
         )}
       </div>
     </div>
-  );
-}
-
-function VarsView({ snap }: { snap: SnapshotInfo | undefined }) {
-  if (!snap) return <span>(no snapshot)</span>;
-  // Discriminate on detail.kind — Opcode snapshots carry no source variables.
-  if (snap.detail.kind === 'Opcode')
-    return <span>(no source variables in opcode mode)</span>;
-  // Hook snapshot: surface locals + state_variables.
-  const { locals, state_variables, path, offset, length } = snap.detail;
-  return (
-    <pre>
-      {JSON.stringify({ path, offset, length, locals, state_variables }, null, 2)}
-    </pre>
-  );
-}
-
-function StackView({ snap }: { snap: SnapshotInfo | undefined }) {
-  const stack = snap?.detail.kind === 'Opcode' ? snap.detail.stack : [];
-  if (stack.length === 0) return <span>(no stack in source mode)</span>;
-  return (
-    <ol reversed start={stack.length} className="list-decimal pl-6">
-      {stack.map((v, i) => (
-        <li key={i}>{v}</li>
-      ))}
-    </ol>
-  );
-}
-
-function formatMemory(mem: number[]): string {
-  const rows: string[] = [];
-  for (let i = 0; i < mem.length; i += 32) {
-    const slice = mem
-      .slice(i, i + 32)
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-    rows.push(`${i.toString(16).padStart(6, '0')}: ${slice}`);
-  }
-  return rows.join('\n');
-}
-
-/**
- * For a 16 KB memory image we'd render ~512 rows of hex; the synchronous
- * formatting can stutter paint. Default to the first 4 KB and let the user
- * opt into the full dump.
- */
-const MEMORY_FORMAT_DEFAULT_BYTES = 4 * 1024;
-const MEMORY_LARGE_THRESHOLD = 16 * 1024;
-
-function MemoryView({ snap }: { snap: SnapshotInfo | undefined }) {
-  const mem = snap?.detail.kind === 'Opcode' ? snap.detail.memory : [];
-  const [showAll, setShowAll] = useState(false);
-  const isLarge = mem.length > MEMORY_LARGE_THRESHOLD;
-  // Stable identity for memoization: array reference + length covers both
-  // "same snapshot" (reference equal) and "snapshot changed" (length-change
-  // common, reference change definitive).
-  const formatted = useMemo(() => {
-    if (mem.length === 0) return '';
-    if (isLarge && !showAll) {
-      return formatMemory(mem.slice(0, MEMORY_FORMAT_DEFAULT_BYTES));
-    }
-    return formatMemory(mem);
-  }, [mem, isLarge, showAll]);
-  return (
-    <div>
-      {isLarge && !showAll && (
-        <div className="mb-2 flex items-center gap-2 text-xs text-(--color-fg-tertiary)">
-          <span>
-            Showing first {MEMORY_FORMAT_DEFAULT_BYTES} bytes of {mem.length}.
-          </span>
-          <button
-            type="button"
-            data-testid="memory-show-all"
-            onClick={() => setShowAll(true)}
-            className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-bg-hover)"
-          >
-            Show full memory
-          </button>
-        </div>
-      )}
-      <pre>{formatted}</pre>
-    </div>
-  );
-}
-
-function StorageView({ id }: { id: number }) {
-  const { data, error } = useStorageDiff(id);
-  if (error) return <span>{(error as Error).message}</span>;
-  if (!data) return <span>Loading…</span>;
-  // Drop slots that didn't change — the engine sometimes echoes touched-but-
-  // unchanged slots, and rendering them with red strikethrough → green text
-  // visually implies a mutation that didn't happen.
-  const rows = data.filter((d) => d.before !== d.after);
-  if (rows.length === 0)
-    return <span className="text-(--color-fg-tertiary)">(no storage changes)</span>;
-  return (
-    <table className="w-full">
-      <tbody>
-        {rows.map((d, i) => (
-          <tr key={i} data-testid={`storage-row-${i}`}>
-            <td className="pr-3 text-(--color-fg-secondary)">{d.slot}</td>
-            <td className="pr-3 line-through text-(--color-danger)">{d.before ?? '∅'}</td>
-            <td className="text-(--color-success)">{d.after ?? '∅'}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function TransientView({ snap }: { snap: SnapshotInfo | undefined }) {
-  const t = snap?.detail.kind === 'Opcode' ? snap.detail.transient_storage : {};
-  const entries = Object.entries(t);
-  if (entries.length === 0) return <span>(empty)</span>;
-  return (
-    <ul>
-      {entries.map(([k, v]) => (
-        <li key={k}>
-          {k} = {v}
-        </li>
-      ))}
-    </ul>
   );
 }
