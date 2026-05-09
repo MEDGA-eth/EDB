@@ -21,6 +21,7 @@ describe('useSession', () => {
       showLineNumbers: true,
       traceExpandTick: 0,
       traceCollapseTick: 0,
+      watchExpressions: [],
     });
   });
   afterEach(() => { localStorage.clear(); });
@@ -177,6 +178,30 @@ describe('useSession', () => {
     expect(useSession.getState().breakpoints.every((bp) => bp.enabled === false)).toBe(true);
     s.enableAllBreakpoints();
     expect(useSession.getState().breakpoints.every((bp) => bp.enabled === true)).toBe(true);
+  });
+
+  test('addWatchExpression skips empty + duplicate; clear empties', () => {
+    const s = useSession.getState();
+    s.addWatchExpression('msg.sender');
+    s.addWatchExpression('msg.sender'); // dup
+    s.addWatchExpression('   '); // blank
+    expect(useSession.getState().watchExpressions).toEqual(['msg.sender']);
+    s.addWatchExpression('balanceOf(this)');
+    expect(useSession.getState().watchExpressions).toEqual([
+      'msg.sender',
+      'balanceOf(this)',
+    ]);
+    s.removeWatchExpression('msg.sender');
+    expect(useSession.getState().watchExpressions).toEqual(['balanceOf(this)']);
+    s.clearWatchExpressions();
+    expect(useSession.getState().watchExpressions).toEqual([]);
+  });
+
+  test('watchExpressions persist across rehydration', () => {
+    useSession.getState().addWatchExpression('1 + 1');
+    const raw = localStorage.getItem('edb-web:session')!;
+    const persisted = JSON.parse(raw).state;
+    expect(persisted.watchExpressions).toEqual(['1 + 1']);
   });
 
   test('clearBreakpoints empties the list', () => {

@@ -24,6 +24,7 @@ describe('command registry', () => {
       showLineNumbers: true,
       traceExpandTick: 0,
       traceCollapseTick: 0,
+      watchExpressions: [],
     });
   });
   afterEach(() => useSession.setState({ paletteOpen: false }));
