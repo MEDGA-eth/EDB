@@ -1,7 +1,13 @@
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { search } from '@codemirror/search';
 import { Compartment, EditorState, RangeSetBuilder } from '@codemirror/state';
-import { Decoration, EditorView, lineNumbers } from '@codemirror/view';
+import {
+  Decoration,
+  EditorView,
+  GutterMarker,
+  gutter,
+  lineNumbers,
+} from '@codemirror/view';
 import { tags as t } from '@lezer/highlight';
 import { solidity } from '@replit/codemirror-lang-solidity';
 import { useEffect, useRef } from 'react';
@@ -56,7 +62,38 @@ export const edbTheme = EditorView.theme({
   '.cm-selectionBackground, & ::selection': {
     backgroundColor: 'var(--color-accent-dim)',
   },
+  // Breakpoint gutter — fixed-width column, cursor flips to "pointer" so
+  // clicks feel like the breakpoint affordance they actually are.
+  '.cm-edb-bp-gutter': {
+    width: '14px',
+    cursor: 'pointer',
+  },
+  '.cm-edb-bp-gutter .cm-gutterElement': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  '.cm-edb-bp-marker': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    lineHeight: '1',
+  },
 });
+
+/**
+ * Per-line breakpoint state used to render gutter markers. `enabled === false`
+ * yields a dimmed grey dot; otherwise the marker is the danger-coloured dot
+ * users associate with breakpoints in IDEs. Callers compute this list by
+ * filtering the global breakpoint store to entries matching the editor's
+ * `(addr, path)` pair.
+ */
+export interface BreakpointMarker {
+  /** 1-indexed line number; matches `Source.line_number` in the wire format. */
+  line: number;
+  /** UI-only enable flag; defaults to true. */
+  enabled: boolean;
+}
 
 export interface SolidityEditorOptions {
   /** Document content. Re-initialises the view when it changes. */
@@ -71,6 +108,18 @@ export interface SolidityEditorOptions {
    * source location. Pass `undefined` to clear.
    */
   highlightLine?: number;
+  /**
+   * Lines that should display a breakpoint dot in the dedicated bp-gutter.
+   * Reconfigured live via a compartment when the array identity changes.
+   * Empty / undefined hides the gutter entirely.
+   */
+  breakpoints?: BreakpointMarker[];
+  /**
+   * Click handler for the breakpoint gutter. Receives the 1-indexed line that
+   * was clicked. The hook does NOT mutate any store directly — the host wires
+   * this into `addBreakpoint` (or a toggle) so stores stay decoupled.
+   */
+  onToggleBreakpoint?(line: number): void;
 }
 
 export interface SolidityEditorHandle {
@@ -96,6 +145,73 @@ function buildHighlight(view: EditorView, line: number | undefined) {
 }
 
 /**
+ * GutterMarker rendering an inline breakpoint dot. Two variants:
+ * - `enabled` → solid red circle keyed off `--color-danger`.
+ * - `disabled` → muted grey circle keyed off `--color-fg-tertiary`.
+ *
+ * We render with a small SVG instead of a CSS pseudo-element so the marker
+ * lines up with the gutter's text-baseline alignment regardless of font.
+ */
+class BreakpointGutterMarker extends GutterMarker {
+  constructor(public readonly enabled: boolean) {
+    super();
+  }
+  override eq(other: GutterMarker): boolean {
+    return other instanceof BreakpointGutterMarker && other.enabled === this.enabled;
+  }
+  override toDOM(): HTMLElement {
+    const span = document.createElement('span');
+    span.className = 'cm-edb-bp-marker';
+    span.setAttribute('data-enabled', this.enabled ? 'true' : 'false');
+    span.innerHTML =
+      '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">' +
+      `<circle cx="5" cy="5" r="4" fill="${
+        this.enabled ? 'var(--color-danger)' : 'var(--color-fg-tertiary)'
+      }" /></svg>`;
+    return span;
+  }
+}
+
+const ENABLED_MARKER = new BreakpointGutterMarker(true);
+const DISABLED_MARKER = new BreakpointGutterMarker(false);
+
+/** Build a breakpoint-gutter extension keyed off the supplied markers. */
+function makeBreakpointGutter(
+  markers: BreakpointMarker[],
+  onToggle?: (line: number) => void,
+) {
+  return gutter({
+    class: 'cm-edb-bp-gutter',
+    markers: (view) => {
+      const builder = new RangeSetBuilder<GutterMarker>();
+      // Sort + dedupe by line so RangeSetBuilder receives strictly-increasing
+      // positions (it throws otherwise).
+      const seen = new Map<number, BreakpointMarker>();
+      for (const m of markers) {
+        if (!seen.has(m.line)) seen.set(m.line, m);
+      }
+      const sorted = [...seen.values()].sort((a, b) => a.line - b.line);
+      for (const m of sorted) {
+        if (m.line < 1 || m.line > view.state.doc.lines) continue;
+        const l = view.state.doc.line(m.line);
+        builder.add(l.from, l.from, m.enabled ? ENABLED_MARKER : DISABLED_MARKER);
+      }
+      return builder.finish();
+    },
+    initialSpacer: () => ENABLED_MARKER,
+    domEventHandlers: onToggle
+      ? {
+          mousedown: (view, line) => {
+            const ln = view.state.doc.lineAt(line.from).number;
+            onToggle(ln);
+            return true;
+          },
+        }
+      : undefined,
+  });
+}
+
+/**
  * Boots a read-only Solidity CodeMirror editor inside the returned
  * `containerRef`. Both the file-tab editor and the mobile code panel share
  * this hook so that the highlight + compartment plumbing lives in one place.
@@ -105,21 +221,35 @@ function buildHighlight(view: EditorView, line: number | undefined) {
  * view.
  */
 export function useSolidityEditor(opts: SolidityEditorOptions): SolidityEditorHandle {
-  const { content, showLineNumbers, wordWrap, highlightLine } = opts;
+  const { content, showLineNumbers, wordWrap, highlightLine, breakpoints, onToggleBreakpoint } = opts;
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
   const wrapCmpRef = useRef<Compartment>(new Compartment());
   const lnCmpRef = useRef<Compartment>(new Compartment());
   const hlCmpRef = useRef<Compartment>(new Compartment());
+  const bpCmpRef = useRef<Compartment>(new Compartment());
+  // Stash the latest toggle handler in a ref so the gutter compartment
+  // doesn't need to be reconfigured every time the React owner re-renders
+  // — it always invokes the freshest closure.
+  const toggleRef = useRef<typeof onToggleBreakpoint>(onToggleBreakpoint);
+  toggleRef.current = onToggleBreakpoint;
 
   useEffect(() => {
     if (!containerRef.current) return;
     const wrapCmp = wrapCmpRef.current;
     const lnCmp = lnCmpRef.current;
     const hlCmp = hlCmpRef.current;
+    const bpCmp = bpCmpRef.current;
     const state = EditorState.create({
       doc: content,
       extensions: [
+        // breakpoint gutter mounts to the LEFT of the line-number gutter so
+        // dots sit in the spot users expect from VS Code / IntelliJ. Empty
+        // when there's no toggle handler (we still render markers in that
+        // mode since the gutter renders on its own).
+        bpCmp.of(
+          makeBreakpointGutter(breakpoints ?? [], (line) => toggleRef.current?.(line)),
+        ),
         lnCmp.of(showLineNumbers ? [lineNumbers()] : []),
         solidity,
         syntaxHighlighting(edbHighlight),
@@ -134,6 +264,12 @@ export function useSolidityEditor(opts: SolidityEditorOptions): SolidityEditorHa
     });
     const view = new EditorView({ state, parent: containerRef.current });
     viewRef.current = view;
+    // Stamp a data-testid on the breakpoint gutter so playwright (and the
+    // smoke script) can assert it independently of CodeMirror's internal
+    // class names. The gutter is rendered synchronously after `new EditorView`
+    // so the query runs after mount in the same tick.
+    const bpGutterEl = containerRef.current.querySelector('.cm-edb-bp-gutter');
+    if (bpGutterEl) bpGutterEl.setAttribute('data-testid', 'bp-gutter');
     if (typeof highlightLine === 'number') {
       view.dispatch({
         effects: hlCmpRef.current.reconfigure(
@@ -182,6 +318,25 @@ export function useSolidityEditor(opts: SolidityEditorOptions): SolidityEditorHa
       view.dispatch({ effects: EditorView.scrollIntoView(l.from, { y: 'center' }) });
     }
   }, [highlightLine]);
+
+  // Reconfigure the breakpoint gutter when the marker list changes. We
+  // serialise the markers into a stable string so consumers passing fresh
+  // arrays each render don't trigger pointless reconfiguration.
+  const bpKey = (breakpoints ?? [])
+    .map((m) => `${m.line}:${m.enabled ? '1' : '0'}`)
+    .sort()
+    .join(',');
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.dispatch({
+      effects: bpCmpRef.current.reconfigure(
+        makeBreakpointGutter(breakpoints ?? [], (line) => toggleRef.current?.(line)),
+      ),
+    });
+    // bpKey captures the only meaningful change in `breakpoints`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bpKey]);
 
   function revealOffset(byteOffset: number) {
     const view = viewRef.current;

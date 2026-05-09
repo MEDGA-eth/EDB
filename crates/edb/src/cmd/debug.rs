@@ -25,5 +25,10 @@ pub async fn debug_foundry_test(
     _cli: &crate::Cli,
     _rpc_url: &str,
 ) -> Result<()> {
-    unimplemented!("Foundry test debugging not yet implemented");
+    // The Foundry test debugging path is still under design. Returning a
+    // friendly error here is preferable to `unimplemented!()` because the
+    // panic crashes the entire process — including the web UI host —
+    // before the browser even loads. With a clean `Err` the CLI prints a
+    // single tidy line and exits 1, which is what users expect.
+    eyre::bail!("`edb test` is not yet implemented. Use `edb replay <tx-hash>` instead.")
 }

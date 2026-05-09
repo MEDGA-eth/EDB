@@ -103,6 +103,8 @@ function SolidityView({
   const wordWrap = useSession((s) => s.wordWrap);
   const showLineNumbers = useSession((s) => s.showLineNumbers);
   const addBreakpoint = useSession((s) => s.addBreakpoint);
+  const removeBreakpoint = useSession((s) => s.removeBreakpoint);
+  const breakpoints = useSession((s) => s.breakpoints);
   // Subscribe to the active snapshot so we can highlight the current line
   // when (a) the snapshot is a Hook (source-level) snapshot, AND (b) it
   // belongs to this tab's (addr, path).
@@ -122,11 +124,46 @@ function SolidityView({
     }
     return line;
   })();
+  // Filter the global breakpoint list down to source breakpoints that match
+  // this editor's (addr, path). The marker list is intentionally small —
+  // typically <10 — so an O(n) scan per render is fine.
+  const bpMarkers = (() => {
+    if (!file) return [];
+    const matching: { line: number; enabled: boolean }[] = [];
+    for (const bp of breakpoints) {
+      if (!bp.loc || bp.loc.kind !== 'Source') continue;
+      if (bp.loc.bytecode_address.toLowerCase() !== addr.toLowerCase()) continue;
+      if (bp.loc.file_path !== file.path) continue;
+      matching.push({ line: bp.loc.line_number, enabled: bp.enabled ?? true });
+    }
+    return matching;
+  })();
+  function toggleBreakpointAtLine(line: number) {
+    if (!file) return;
+    const idx = breakpoints.findIndex(
+      (bp) =>
+        bp.loc &&
+        bp.loc.kind === 'Source' &&
+        bp.loc.bytecode_address.toLowerCase() === addr.toLowerCase() &&
+        bp.loc.file_path === file.path &&
+        bp.loc.line_number === line,
+    );
+    if (idx >= 0) {
+      removeBreakpoint(idx);
+    } else {
+      addBreakpoint({
+        loc: { kind: 'Source', bytecode_address: addr, file_path: file.path, line_number: line },
+        condition: null,
+      });
+    }
+  }
   const { containerRef, viewRef, revealOffset } = useSolidityEditor({
     content: file?.content ?? '',
     wordWrap,
     showLineNumbers,
     highlightLine,
+    breakpoints: bpMarkers,
+    onToggleBreakpoint: toggleBreakpointAtLine,
   });
 
   function revealCurrent() {

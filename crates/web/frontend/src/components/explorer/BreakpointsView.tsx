@@ -77,12 +77,20 @@ function BreakpointsViewInner() {
         </div>
       </div>
       {breakpoints.length === 0 ? (
-        <p
+        <div
           data-testid="breakpoints-empty"
-          className="px-3 py-3 text-xs text-(--color-fg-tertiary)"
+          className="flex flex-col gap-1 px-3 py-3 text-xs italic text-(--color-fg-tertiary)"
         >
-          No breakpoints. Use the editor toolbar or `break addr:line` in the terminal.
-        </p>
+          <span>No breakpoints set.</span>
+          <span>Click a line gutter in the editor to add one.</span>
+          <span className="not-italic">
+            Or use{' '}
+            <code className="rounded bg-(--color-bg-elevated) px-1 font-mono text-[11px]">
+              break addr:line
+            </code>{' '}
+            in the terminal.
+          </span>
+        </div>
       ) : (
         <ul className="flex-1 overflow-auto">
           {breakpoints.map((bp, i) => (

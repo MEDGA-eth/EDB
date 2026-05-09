@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import { AlertTriangle, Plus, X } from 'lucide-react';
 import { useSession } from '../../../store/session';
 import { useWatchValue } from '../../../hooks/useWatchValue';
 import { formatSolValue, type EvalResult } from '../../../lib/types';
@@ -9,20 +9,33 @@ import { ErrorBoundary } from '../../ErrorBoundary';
  * Render the resolved value of a watch expression. The query auto-fires on
  * snapshot change because the cache key embeds `snapshotId`. Errors come
  * back from the engine as `EvalResult.Err` (not RPC errors), so we flag
- * them inline rather than surfacing a generic "request failed" UI.
+ * them inline rather than surfacing a generic "request failed" UI. Both
+ * branches render with the same warning icon affordance so the error path
+ * never looks like a crashed row to the user.
  */
 function WatchRow({ expr, snapshotId }: { expr: string; snapshotId: number }) {
   const { data, isLoading, error } = useWatchValue(expr, snapshotId);
   const remove = useSession((s) => s.removeWatchExpression);
 
+  function renderError(message: string, testid: string) {
+    return (
+      <span
+        data-testid={testid}
+        title={message}
+        className="inline-flex items-center gap-1 text-(--color-danger)"
+      >
+        <AlertTriangle size={12} aria-hidden />
+        <span className="truncate">{message}</span>
+      </span>
+    );
+  }
+
   function renderValue() {
     if (isLoading) return <span className="text-(--color-fg-tertiary)">…</span>;
-    if (error)
-      return <span className="text-(--color-danger)">RPC error: {(error as Error).message}</span>;
+    if (error) return renderError((error as Error).message, `watch-rpc-error-${expr}`);
     if (!data) return <span className="text-(--color-fg-tertiary)">(no value)</span>;
     const r = data as EvalResult;
-    if (r.kind === 'Err')
-      return <span className="text-(--color-danger)">error: {r.error}</span>;
+    if (r.kind === 'Err') return renderError(r.error, `watch-eval-error-${expr}`);
     return <span className="text-(--color-fg)">{formatSolValue(r.value)}</span>;
   }
 

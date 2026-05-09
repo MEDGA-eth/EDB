@@ -11,6 +11,13 @@ function shortHex(hex: string): { display: string; truncated: boolean } {
   return { display: `${head}…${tail}`, truncated: true };
 }
 
+/** Extract the 4-byte selector (`0xXXXXXXXX`) from a calldata hex string. */
+function selectorOf(calldataHex: string): string | null {
+  // 0x + 8 hex chars = 10 chars min for a function selector
+  if (calldataHex.length < 10) return null;
+  return calldataHex.slice(0, 10).toLowerCase();
+}
+
 /**
  * Shows the calldata for the active snapshot. Two sources of truth:
  *
@@ -20,8 +27,10 @@ function shortHex(hex: string): { display: string; truncated: boolean } {
  *   instead we look up the trace entry for the snapshot's `frame_id[0]`
  *   and surface its `input` field — i.e. the call's calldata at entry.
  *
- * In both cases we render the raw hex with a head/tail truncation when
- * long, and a `<details>` toggle to expand the full payload.
+ * The 4-byte selector is split out and rendered separately when present so
+ * users can match it to a 4byte database without copying the full payload.
+ * Full ABI decode (function name + arg values) is a follow-up — it requires
+ * a keccak256 implementation we don't currently ship.
  */
 export function CalldataView({ snap }: { snap: SnapshotInfo | undefined }) {
   const { data: trace } = useTrace();
@@ -38,6 +47,8 @@ export function CalldataView({ snap }: { snap: SnapshotInfo | undefined }) {
 
   const { display, truncated } = shortHex(calldataHex);
   const byteLen = Math.max(0, (calldataHex.length - 2) / 2);
+  const selector = selectorOf(calldataHex);
+  const argsHex = selector ? `0x${calldataHex.slice(10)}` : null;
 
   return (
     <div data-testid="calldata-view" className="flex flex-col gap-2">
@@ -45,6 +56,20 @@ export function CalldataView({ snap }: { snap: SnapshotInfo | undefined }) {
         {byteLen} byte{byteLen === 1 ? '' : 's'}
         {truncated && ' (truncated)'}
       </div>
+      {selector && (
+        <div
+          data-testid="calldata-selector"
+          className="flex items-baseline gap-2 text-xs"
+        >
+          <span className="font-display tracking-wide text-(--color-fg-tertiary) uppercase">
+            selector
+          </span>
+          <code className="font-mono text-(--color-syn-keyword)">{selector}</code>
+          <span className="text-(--color-fg-tertiary)">
+            (4 bytes)
+          </span>
+        </div>
+      )}
       {truncated ? (
         <details>
           <summary className="cursor-pointer break-all">{display}</summary>
@@ -54,6 +79,14 @@ export function CalldataView({ snap }: { snap: SnapshotInfo | undefined }) {
           >
             {calldataHex}
           </pre>
+          {argsHex && argsHex.length > 2 && (
+            <pre
+              data-testid="calldata-args"
+              className="mt-2 break-all whitespace-pre-wrap text-xs text-(--color-fg-tertiary)"
+            >
+              args: {argsHex}
+            </pre>
+          )}
         </details>
       ) : (
         <span className="break-all">{display}</span>
