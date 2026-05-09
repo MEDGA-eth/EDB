@@ -54,7 +54,8 @@ function OpcodesView({ addr, disasm }: { addr: string; disasm: string }) {
       <Toolbar testid="file-toolbar-opcodes">
         <ToolbarButton
           icon={Copy}
-          label="Copy disassembly"
+          label="Copy"
+          showLabel
           testid="file-copy"
           onClick={() => {
             if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(disasm);
@@ -62,7 +63,7 @@ function OpcodesView({ addr, disasm }: { addr: string; disasm: string }) {
         />
         <ToolbarDivider />
         <span
-          className="font-display text-[11px] text-(--color-fg-tertiary)"
+          className="font-display text-[12px] text-(--color-fg-tertiary)"
           data-testid="file-toolbar-meta"
         >
           {addr.slice(0, 10)}… · {DISASM_PATH}
@@ -197,27 +198,31 @@ function SolidityView({
       <Toolbar testid="file-toolbar-source">
         <ToolbarButton
           icon={Search}
-          label="Find in file (Ctrl+F)"
+          label="Find"
+          showLabel
           testid="file-find"
           onClick={findInFile}
         />
         <ToolbarButton
           icon={Copy}
-          label="Copy file content"
+          label="Copy"
+          showLabel
           testid="file-copy"
           onClick={copyContent}
         />
         <ToolbarDivider />
         <ToolbarButton
           icon={WrapText}
-          label="Toggle word wrap"
+          label="Wrap"
+          showLabel
           testid="file-wrap"
           active={wordWrap}
           onClick={() => useSession.getState().toggleWordWrap()}
         />
         <ToolbarButton
           icon={Hash}
-          label="Toggle line numbers"
+          label="Line numbers"
+          showLabel
           testid="file-line-numbers"
           active={showLineNumbers}
           onClick={() => useSession.getState().toggleLineNumbers()}
@@ -225,25 +230,27 @@ function SolidityView({
         <ToolbarDivider />
         <ToolbarButton
           icon={Bug}
-          label="Add breakpoint at cursor line"
+          label="Breakpoint here"
+          showLabel
           testid="file-add-breakpoint"
           onClick={addBreakpointAtCursor}
         />
         <ToolbarButton
           icon={Locate}
-          label="Reveal current snapshot location"
+          label="Reveal current"
+          showLabel
           testid="file-reveal-current"
           onClick={revealCurrent}
           disabled={typeof highlightLine !== 'number'}
         />
         <ToolbarDivider />
         <span
-          className="ml-1 inline-flex items-center gap-1 font-display text-[11px] text-(--color-fg-tertiary)"
+          className="ml-1 inline-flex items-center gap-1 font-display text-[12px] text-(--color-fg-tertiary)"
           data-testid="file-toolbar-meta"
         >
-          <FileCode2 size={11} />
+          <FileCode2 size={12} aria-hidden />
           {addr.slice(0, 10)}… · {file?.path ?? ''}
-          <Code2 size={11} />
+          <Code2 size={12} aria-hidden />
         </span>
       </Toolbar>
       <div ref={containerRef} data-testid="solidity-view" className="flex-1 overflow-auto" />

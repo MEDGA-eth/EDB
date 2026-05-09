@@ -9,6 +9,7 @@ import { TraceSidebar } from '../components/explorer/TraceSidebar';
 import { CommandPalette } from '../components/CommandPalette';
 import { useGlobalKeybinds } from '../hooks/useGlobalKeybinds';
 import { useSnapshotCount } from '../hooks/useSnapshotCount';
+import { useSnapshotFollow } from '../hooks/useSnapshotFollow';
 import { useTrace } from '../hooks/useTrace';
 import { useSession, type ActivityKind } from '../store/session';
 import { ACTIVITY_WIDTH_PX, SIDEBAR_WIDTH_PX } from '../lib/constants';
@@ -69,6 +70,9 @@ function collectAddressesFromTrace(trace: unknown): Set<string> {
 export function IDELayout() {
   const activity = useSession((s) => s.activeActivity);
   useGlobalKeybinds();
+  // Step → open the matching code tab automatically. Lives at the IDE
+  // shell so it's active regardless of which sidebar pane is showing.
+  useSnapshotFollow();
 
   // Close any open file whose address is no longer in the loaded trace.
   // Keyed on `data` reference identity so we only run when the trace query

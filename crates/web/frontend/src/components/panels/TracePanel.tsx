@@ -217,26 +217,30 @@ function TracePanelInner() {
         <ToolbarButton
           icon={ChevronsDown}
           label="Expand all"
+          showLabel
           testid="trace-expand-all"
           onClick={() => useSession.getState().bumpTraceExpand()}
         />
         <ToolbarButton
           icon={ChevronsRight}
           label="Collapse all"
+          showLabel
           testid="trace-collapse-all"
           onClick={() => useSession.getState().bumpTraceCollapse()}
         />
         <ToolbarDivider />
         <ToolbarButton
           icon={Crosshair}
-          label="Scroll to current snapshot"
+          label="Reveal current"
+          showLabel
           testid="trace-scroll-current"
           onClick={scrollToCurrent}
         />
         <ToolbarDivider />
         <ToolbarButton
           icon={RefreshCw}
-          label="Refresh trace"
+          label="Refresh"
+          showLabel
           testid="trace-refresh"
           onClick={() => qc.invalidateQueries({ queryKey: ['trace'] })}
         />
@@ -363,6 +367,22 @@ function TraceNode({
   const openFile = useSession((s) => s.openFile);
   const qc = useQueryClient();
   const [open, setOpen] = useState(true);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Dismiss the context menu on any outside click / Esc / scroll.
+  useEffect(() => {
+    if (!menuPos) return;
+    const close = () => setMenuPos(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menuPos]);
 
   useEffect(() => {
     if (forceOpen > 0) setOpen(true);
@@ -390,14 +410,14 @@ function TraceNode({
   const indent = depth * 16 + 4;
 
   /**
-   * Click handler: jump to the first snapshot for this entry AND reveal
-   * the source/disasm view for the entry's `code_address`. The path comes
-   * from the cached snapshot if available, else we kick off a fetch and
-   * open the file once it lands. Best-effort — the snapshot navigation
-   * always happens, file-open piggybacks on cache.
+   * Left-click: ONLY open the source/disasm view for the entry's code
+   * address — do NOT advance the snapshot. This lets users skim the call
+   * tree to read code without losing their stepping position. Right-click
+   * (or Shift+click as a keyboard fallback) advances the snapshot via
+   * {@link handleJump}, mirroring the previous behaviour for users who
+   * want it.
    */
-  function handleSelect() {
-    setSnap(targetSnapshotId);
+  function revealSourceForEntry() {
     const cached = qc.getQueryData<SnapshotInfo>(['snapshot', targetSnapshotId]);
     const addr = entry.code_address;
     if (cached) {
@@ -405,7 +425,6 @@ function TraceNode({
       openFile({ addr, path });
       return;
     }
-    // Best-effort fetch: open file once snapshot resolves; ignore failures.
     qc.fetchQuery({
       queryKey: ['snapshot', targetSnapshotId] as const,
       queryFn: () => rpc('edb_getSnapshotInfo', SnapshotInfoSchema, [targetSnapshotId]),
@@ -419,6 +438,22 @@ function TraceNode({
         // best-effort: opening fails silently if the snapshot fetch errors
       },
     );
+  }
+
+  function handleSelect(e: React.MouseEvent) {
+    // Shift+click acts as a keyboard alternative to the right-click menu —
+    // jump to the entry's first snapshot AND reveal source.
+    if (e.shiftKey) {
+      setSnap(targetSnapshotId);
+      revealSourceForEntry();
+      return;
+    }
+    revealSourceForEntry();
+  }
+
+  function handleJump() {
+    setSnap(targetSnapshotId);
+    revealSourceForEntry();
   }
 
   return (
@@ -450,8 +485,10 @@ function TraceNode({
           data-failed={failed ? 'true' : undefined}
           data-current={isCurrent ? 'true' : undefined}
           onClick={handleSelect}
-          aria-label={`Go to trace entry ${entry.id} (${label})${failed ? ' — reverted/errored' : ''}`}
+          onContextMenu={(e) => { e.preventDefault(); setMenuPos({ x: e.clientX, y: e.clientY }); }}
+          aria-label={`Reveal source for trace entry ${entry.id} (${label})${failed ? ' — reverted/errored' : ''}. Right-click for jump options.`}
           aria-pressed={isCurrent}
+          title={`${label} → ${target}\nClick: open source.\nShift+click or right-click: jump to snapshot ${targetSnapshotId}.`}
           className={
             'flex-1 rounded px-2 py-0.5 text-left hover:bg-(--color-bg-hover) ' +
             (isCurrent ? 'bg-(--color-accent-dim) font-semibold text-(--color-fg) ' : '') +
@@ -472,6 +509,32 @@ function TraceNode({
           )}
         </button>
       </div>
+      {menuPos && (
+        <div
+          role="menu"
+          data-testid={`trace-menu-${entry.id}`}
+          // Stop propagation so the global mousedown listener that closes
+          // the menu doesn't fire when the user clicks an item.
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{ position: 'fixed', top: menuPos.y, left: menuPos.x, zIndex: 60 }}
+          className="min-w-[180px] rounded border border-(--color-border-strong) bg-(--color-bg-elevated) py-1 shadow-[var(--shadow-md)]"
+        >
+          <MenuItem
+            label={`Jump to snapshot ${targetSnapshotId}`}
+            onClick={() => { setMenuPos(null); handleJump(); }}
+          />
+          <MenuItem
+            label="Reveal source only"
+            onClick={() => { setMenuPos(null); revealSourceForEntry(); }}
+          />
+          {hasKids && (
+            <MenuItem
+              label={open ? 'Collapse children' : 'Expand children'}
+              onClick={() => { setMenuPos(null); setOpen((o) => !o); }}
+            />
+          )}
+        </div>
+      )}
       <EventsList events={entry.events} indent={indent} />
       {open &&
         node.children.map((c) => (
@@ -486,5 +549,19 @@ function TraceNode({
           />
         ))}
     </>
+  );
+}
+
+/** Item in the trace right-click context menu. */
+function MenuItem({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      role="menuitem"
+      type="button"
+      onClick={onClick}
+      className="block w-full px-3 py-1.5 text-left text-[13px] text-(--color-fg) hover:bg-(--color-bg-hover)"
+    >
+      {label}
+    </button>
   );
 }

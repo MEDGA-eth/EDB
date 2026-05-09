@@ -37,6 +37,13 @@ export interface ToolbarButtonProps
   label: string;
   active?: boolean;
   testid?: string;
+  /**
+   * Render the label inline next to the icon (instead of only as a
+   * tooltip). Keeps every action self-explanatory in dense toolbars
+   * — set this on toolbars where users may not be familiar with the
+   * iconography (Trace, Code editor, etc).
+   */
+  showLabel?: boolean;
 }
 
 export function ToolbarButton({
@@ -44,9 +51,34 @@ export function ToolbarButton({
   label,
   active = false,
   testid,
+  showLabel = false,
   className,
   ...rest
 }: ToolbarButtonProps) {
+  if (showLabel) {
+    return (
+      <button
+        type="button"
+        title={label}
+        aria-label={label}
+        aria-pressed={active}
+        data-testid={testid}
+        className={
+          'inline-flex h-7 items-center gap-1.5 rounded-[var(--radius)] px-2 ' +
+          'text-[12px] text-(--color-fg-secondary) transition ' +
+          'hover:bg-(--color-bg-hover) hover:text-(--color-fg) ' +
+          'active:scale-95 ' +
+          'disabled:opacity-40 disabled:cursor-not-allowed ' +
+          (active ? 'bg-(--color-bg-active) text-(--color-fg) ' : '') +
+          (className ?? '')
+        }
+        {...rest}
+      >
+        <Icon size={14} aria-hidden />
+        <span>{label}</span>
+      </button>
+    );
+  }
   return (
     <button
       type="button"

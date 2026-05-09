@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TracePanel } from './TracePanel';
 import { makeWrapper, mockRpc } from '../../hooks/_test-utils';
@@ -49,13 +49,43 @@ describe('<TracePanel />', () => {
     expect(screen.getByTestId('trace-entry-1')).toBeTruthy();
   });
 
-  test('clicking a node sets snapshot id to first_snapshot_id', async () => {
+  test('plain left-click does NOT change the snapshot (reveal-only)', async () => {
     mockRpc({ edb_getTrace: () => fakeTrace });
+    useSession.setState({ currentSnapshotId: 0 });
     const { wrapper } = makeWrapper();
     render(<TracePanel />, { wrapper });
     await waitFor(() => expect(screen.getByTestId('trace-entry-1')).toBeTruthy());
     await userEvent.click(screen.getByTestId('trace-entry-1'));
+    // Reveal-only mode: stepping position is preserved.
+    expect(useSession.getState().currentSnapshotId).toBe(0);
+  });
+
+  test('shift+click jumps to first_snapshot_id', async () => {
+    mockRpc({ edb_getTrace: () => fakeTrace });
+    useSession.setState({ currentSnapshotId: 0 });
+    const { wrapper } = makeWrapper();
+    render(<TracePanel />, { wrapper });
+    await waitFor(() => expect(screen.getByTestId('trace-entry-1')).toBeTruthy());
+    // user-event v14 doesn't take a `{ shiftKey: true }` option on click,
+    // so go through fireEvent which lets us pass it on the synthetic event.
+    fireEvent.click(screen.getByTestId('trace-entry-1'), { shiftKey: true });
     // entry 1 maps to first_snapshot_id == 1
+    expect(useSession.getState().currentSnapshotId).toBe(1);
+  });
+
+  test('right-click opens a context menu with Jump / Reveal options', async () => {
+    mockRpc({ edb_getTrace: () => fakeTrace });
+    useSession.setState({ currentSnapshotId: 0 });
+    const { wrapper } = makeWrapper();
+    render(<TracePanel />, { wrapper });
+    const node = await screen.findByTestId('trace-entry-1');
+    // Fire a contextmenu event to open the menu.
+    const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 100, clientY: 100 });
+    node.dispatchEvent(ev);
+    expect(await screen.findByTestId('trace-menu-1')).toBeTruthy();
+    // The menu carries a "Jump to snapshot" item that flips the snapshot.
+    const jump = screen.getByText(/Jump to snapshot/);
+    await userEvent.click(jump);
     expect(useSession.getState().currentSnapshotId).toBe(1);
   });
 });
