@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSession } from '../store/session';
 import { Health } from '../lib/types';
-import { rpcRaw } from '../lib/rpc';
 import { HEALTHCHECK_FAILURE_THRESHOLD, HEALTHCHECK_INTERVAL_MS } from '../lib/constants';
 
 async function probeHealth(): Promise<boolean> {
@@ -85,6 +84,4 @@ export function useHealthcheck() {
       }
     };
   }, [setConnection, setSessionEnded]);
-  // exported so we can suppress in tests / compute outside React if needed
-  void rpcRaw; void useSession;
 }

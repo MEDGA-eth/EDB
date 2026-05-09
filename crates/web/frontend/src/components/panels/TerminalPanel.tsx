@@ -13,13 +13,22 @@ import { Toolbar, ToolbarButton, ToolbarDivider } from '../Toolbar';
  * strings (so a JS number can never silently truncate them). However, in
  * case a future build accidentally returns a `bigint` literal in JSON,
  * we add a replacer that stringifies it so `JSON.stringify` doesn't throw.
+ *
+ * `JSON.stringify` can still throw for circular references, BigInts that
+ * escape the replacer (older engines), or odd host objects. Catch those
+ * so the terminal renders a typed fallback instead of crashing the panel.
  */
 export function prettyJson(value: unknown): string {
-  return JSON.stringify(
-    value,
-    (_k, v) => (typeof v === 'bigint' ? v.toString() : v),
-    2,
-  );
+  try {
+    return JSON.stringify(
+      value,
+      (_k, v) => (typeof v === 'bigint' ? v.toString() : v),
+      2,
+    );
+  } catch (e) {
+    const detail = e instanceof Error ? ` — ${e.message}` : '';
+    return `[unserializable: ${typeof value}]${detail}`;
+  }
 }
 
 export function TerminalPanel() {
