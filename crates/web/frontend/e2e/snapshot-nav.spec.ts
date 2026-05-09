@@ -33,11 +33,14 @@ test('command palette navigates between snapshots', async ({ page }) => {
 
   await expect(page.getByTestId('command-palette')).toBeHidden();
   await expect(page).toHaveURL(/#25$/);
-  await expect(page.getByTestId('snapshot-label')).toContainText('snapshot 25');
+  // Status bar shows snapshots 1-based now — internal id 25 → label 26.
+  // URL hash and palette `:N` syntax remain 0-indexed (those are addresses,
+  // not display labels).
+  await expect(page.getByTestId('snapshot-label')).toContainText('snapshot 26');
 
   // Re-open the palette and run the `next call` command. The mock advances
   // by 5 (matching the real engine's getNextCall behaviour for this tx),
-  // so snapshot 25 → 30.
+  // so snapshot 25 → 30 (display: 31).
   await page.keyboard.press(isMac ? 'Meta+P' : 'Control+P');
   await expect(page.getByTestId('command-palette')).toBeVisible();
   const palette2 = page.getByTestId('palette-input');
@@ -47,6 +50,6 @@ test('command palette navigates between snapshots', async ({ page }) => {
   await nextCallRow.click();
 
   await expect(page.getByTestId('command-palette')).toBeHidden();
-  await expect(page.getByTestId('snapshot-label')).toContainText('snapshot 30');
+  await expect(page.getByTestId('snapshot-label')).toContainText('snapshot 31');
   await expect(page).toHaveURL(/#30$/);
 });
