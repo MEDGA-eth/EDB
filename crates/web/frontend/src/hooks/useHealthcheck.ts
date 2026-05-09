@@ -2,9 +2,7 @@ import { useEffect } from 'react';
 import { useSession } from '../store/session';
 import { Health } from '../lib/types';
 import { rpcRaw } from '../lib/rpc';
-
-const POLL_MS = 2000;
-const FAILURE_THRESHOLD = 3;
+import { HEALTHCHECK_FAILURE_THRESHOLD, HEALTHCHECK_INTERVAL_MS } from '../lib/constants';
 
 async function probeHealth(): Promise<boolean> {
   try {
@@ -30,11 +28,11 @@ export function useHealthcheck() {
       else {
         misses++;
         setConnection(misses === 1 ? 'degraded' : 'offline');
-        if (misses >= FAILURE_THRESHOLD) setSessionEnded(true);
+        if (misses >= HEALTHCHECK_FAILURE_THRESHOLD) setSessionEnded(true);
       }
     };
     void tick();
-    const id = setInterval(tick, POLL_MS);
+    const id = setInterval(tick, HEALTHCHECK_INTERVAL_MS);
     return () => { cancelled = true; clearInterval(id); };
   }, [setConnection, setSessionEnded]);
   // exported so we can suppress in tests / compute outside React if needed

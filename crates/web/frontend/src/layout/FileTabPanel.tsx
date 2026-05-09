@@ -1,12 +1,7 @@
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
-import { search, openSearchPanel } from '@codemirror/search';
-import { Compartment, EditorState } from '@codemirror/state';
-import { EditorView, lineNumbers } from '@codemirror/view';
-import { tags as t } from '@lezer/highlight';
-import { solidity } from '@replit/codemirror-lang-solidity';
-import { useEffect, useRef } from 'react';
+import { openSearchPanel } from '@codemirror/search';
 import { Bug, Code2, Copy, FileCode2, Hash, Search, WrapText } from 'lucide-react';
 import { useCodeByAddress } from '../hooks/useCodeByAddress';
+import { useSolidityEditor } from '../hooks/useSolidityEditor';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ErrorCard } from '../components/ErrorCard';
 import { tokenize } from '../lib/opcodeTokens';
@@ -15,41 +10,6 @@ import { useSession } from '../store/session';
 
 /** marker path used for the synthetic disassembly tab when an address has no Solidity */
 export const DISASM_PATH = '<disasm>';
-
-const edbHighlight = HighlightStyle.define([
-  { tag: t.keyword, color: 'var(--color-syn-keyword)', fontWeight: '600' },
-  { tag: [t.string, t.special(t.string)], color: 'var(--color-syn-string)' },
-  { tag: [t.number, t.bool, t.null], color: 'var(--color-syn-number)' },
-  { tag: t.comment, color: 'var(--color-syn-comment)', fontStyle: 'italic' },
-  { tag: [t.typeName, t.className, t.namespace], color: 'var(--color-syn-type)' },
-  {
-    tag: [t.function(t.variableName), t.function(t.propertyName)],
-    color: 'var(--color-syn-func)',
-  },
-  { tag: [t.operator, t.operatorKeyword], color: 'var(--color-fg)' },
-  { tag: t.variableName, color: 'var(--color-fg)' },
-  { tag: t.propertyName, color: 'var(--color-fg-secondary)' },
-  { tag: t.punctuation, color: 'var(--color-fg-tertiary)' },
-]);
-
-const edbTheme = EditorView.theme({
-  '&': {
-    fontFamily: 'var(--font-mono)',
-    fontSize: '13px',
-    backgroundColor: 'transparent',
-  },
-  '.cm-content': { caretColor: 'var(--color-fg)' },
-  '.cm-gutters': {
-    backgroundColor: 'transparent',
-    color: 'var(--color-fg-tertiary)',
-    border: 'none',
-  },
-  '.cm-activeLine': { backgroundColor: 'var(--color-bg-hover)' },
-  '.cm-activeLineGutter': { backgroundColor: 'var(--color-bg-hover)' },
-  '.cm-selectionBackground, & ::selection': {
-    backgroundColor: 'var(--color-accent-dim)',
-  },
-});
 
 /** Dockview passes parameters as `params` on the panel-props object. */
 export interface FileTabPanelParams {
@@ -139,53 +99,14 @@ function SolidityView({
 }) {
   const file =
     files.find((f) => f.path === path) ?? files.find((f) => f.path === entry) ?? files[0];
-  const ref = useRef<HTMLDivElement | null>(null);
-  const viewRef = useRef<EditorView | null>(null);
-  const wrapCmpRef = useRef<Compartment>(new Compartment());
-  const lnCmpRef = useRef<Compartment>(new Compartment());
   const wordWrap = useSession((s) => s.wordWrap);
   const showLineNumbers = useSession((s) => s.showLineNumbers);
   const addBreakpoint = useSession((s) => s.addBreakpoint);
-
-  useEffect(() => {
-    if (!ref.current || !file) return;
-    const wrapCmp = wrapCmpRef.current;
-    const lnCmp = lnCmpRef.current;
-    const state = EditorState.create({
-      doc: file.content,
-      extensions: [
-        lnCmp.of(showLineNumbers ? [lineNumbers()] : []),
-        solidity,
-        syntaxHighlighting(edbHighlight),
-        edbTheme,
-        search(),
-        wrapCmp.of(wordWrap ? [EditorView.lineWrapping] : []),
-        EditorView.editable.of(false),
-      ],
-    });
-    const view = new EditorView({ state, parent: ref.current });
-    viewRef.current = view;
-    return () => {
-      view.destroy();
-      viewRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file]);
-
-  useEffect(() => {
-    const view = viewRef.current;
-    if (!view) return;
-    view.dispatch({
-      effects: wrapCmpRef.current.reconfigure(wordWrap ? [EditorView.lineWrapping] : []),
-    });
-  }, [wordWrap]);
-  useEffect(() => {
-    const view = viewRef.current;
-    if (!view) return;
-    view.dispatch({
-      effects: lnCmpRef.current.reconfigure(showLineNumbers ? [lineNumbers()] : []),
-    });
-  }, [showLineNumbers]);
+  const { containerRef, viewRef } = useSolidityEditor({
+    content: file?.content ?? '',
+    wordWrap,
+    showLineNumbers,
+  });
 
   function copyContent() {
     if (!file) return;
@@ -253,7 +174,7 @@ function SolidityView({
           <Code2 size={11} />
         </span>
       </Toolbar>
-      <div ref={ref} data-testid="solidity-view" className="flex-1 overflow-auto" />
+      <div ref={containerRef} data-testid="solidity-view" className="flex-1 overflow-auto" />
     </div>
   );
 }

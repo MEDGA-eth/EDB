@@ -72,6 +72,7 @@ function BreakpointsViewInner() {
               <button
                 type="button"
                 title="Jump to first hit"
+                aria-label={`Jump to first hit of breakpoint ${i + 1}`}
                 onClick={() => void jumpToFirstHit(i)}
                 data-testid={`bp-jump-${i}`}
                 className="flex-1 truncate text-left font-mono text-(--color-fg-secondary) hover:text-(--color-fg)"

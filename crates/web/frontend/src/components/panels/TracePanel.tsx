@@ -140,6 +140,8 @@ function TraceNode({
             type="button"
             onClick={() => setOpen((o) => !o)}
             data-testid={`trace-toggle-${entry.id}`}
+            aria-label={`${open ? 'Collapse' : 'Expand'} trace entry ${entry.id}`}
+            aria-expanded={open}
             className="mr-1 inline-flex h-4 w-4 items-center justify-center text-(--color-fg-tertiary) hover:text-(--color-fg)"
           >
             {open ? '▾' : '▸'}
@@ -151,6 +153,8 @@ function TraceNode({
           type="button"
           data-testid={`trace-entry-${entry.id}`}
           onClick={() => setId(entry.id)}
+          aria-label={`Go to trace entry ${entry.id} (${entry.kind})`}
+          aria-pressed={isCurrent}
           className={
             'flex-1 rounded px-2 py-0.5 text-left hover:bg-(--color-bg-hover) ' +
             (isCurrent ? 'bg-(--color-accent-dim) text-(--color-fg)' : '')

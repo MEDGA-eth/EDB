@@ -16,15 +16,17 @@ import { BreakpointsView } from '../components/explorer/BreakpointsView';
 import { CommandPalette } from '../components/CommandPalette';
 import { useGlobalKeybinds } from '../hooks/useGlobalKeybinds';
 import { useSession, type ActivityKind } from '../store/session';
+import {
+  ACTIVITY_WIDTH_PX,
+  LAYOUT_KEY,
+  LAYOUT_VERSION,
+  SIDEBAR_WIDTH_PX,
+} from '../lib/constants';
 
 /** Subset of dockview's `IDisposable` we care about. */
 interface Disposable {
   dispose(): void;
 }
-
-const SIDEBAR_WIDTH = 280;
-const ACTIVITY_WIDTH = 48;
-const LAYOUT_KEY = 'edb-web:layout';
 
 const BOTTOM_PANEL_IDS = new Set(['trace', 'display', 'terminal']);
 
@@ -57,6 +59,23 @@ function EditorArea() {
         if (stillOpen) closeFile(p.id);
       }),
     );
+    // Seed dockview with whatever the store already had open. The reconcile
+    // useEffect runs once before `onReady` (mounts before paint), so it
+    // misses the very first transition from `openFiles=[]` to `[file]` —
+    // hence we replay the set here when the api becomes available.
+    const wantedFiles = useSession.getState().openFiles;
+    for (const f of wantedFiles) {
+      if (!event.api.getPanel(f.id)) {
+        event.api.addPanel({
+          id: f.id,
+          component: 'file',
+          title: f.path === '<disasm>' ? 'disasm' : (f.path.split('/').pop() ?? f.path),
+          params: { addr: f.addr, path: f.path },
+        });
+      }
+    }
+    const activeId = useSession.getState().activeFileId;
+    if (activeId) event.api.getPanel(activeId)?.api.setActive();
   };
 
   // Dispose dockview event subscriptions when the EditorArea unmounts.
@@ -151,13 +170,18 @@ function BottomArea() {
   const onReady = (event: DockviewReadyEvent) => {
     const api = event.api;
     apiRef.current = api;
-    // try to restore from session/localStorage
+    // try to restore from session/localStorage. Persisted state is wrapped
+    // as `{ version, layout }`; mismatched versions are dropped so older
+    // dockview JSON shapes can never wedge a fresh build.
     const saved = useSession.getState().layoutJson ?? localStorage.getItem(LAYOUT_KEY);
     let restored = false;
     if (saved) {
       try {
-        api.fromJSON(JSON.parse(saved));
-        restored = true;
+        const parsed = JSON.parse(saved) as { version?: number; layout?: unknown };
+        if (parsed && parsed.version === LAYOUT_VERSION && parsed.layout) {
+          api.fromJSON(parsed.layout as Parameters<typeof api.fromJSON>[0]);
+          restored = true;
+        }
       } catch {
         // fall through to default
       }
@@ -191,7 +215,7 @@ function BottomArea() {
     disposablesRef.current.push(
       api.onDidLayoutChange(() => {
         try {
-          const json = JSON.stringify(api.toJSON());
+          const json = JSON.stringify({ version: LAYOUT_VERSION, layout: api.toJSON() });
           setLayoutJson(json);
           localStorage.setItem(LAYOUT_KEY, json);
         } catch {
@@ -230,7 +254,7 @@ function SideBar({ activity }: { activity: ActivityKind }) {
   return (
     <aside
       className="flex h-full flex-col overflow-hidden border-r border-(--color-border) bg-(--color-bg)"
-      style={{ width: SIDEBAR_WIDTH }}
+      style={{ width: SIDEBAR_WIDTH_PX }}
       data-testid="side-bar"
     >
       <header className="flex h-8 items-center border-b border-(--color-border) px-3 font-display text-[11px] font-semibold tracking-wide text-(--color-fg-secondary) uppercase">
@@ -274,7 +298,7 @@ export function IDELayout() {
     <div className="flex h-full flex-col bg-(--color-bg-root)" data-testid="ide-layout">
       <div className="flex flex-1 overflow-hidden">
         {/* activity bar (left) */}
-        <div style={{ width: ACTIVITY_WIDTH }} className="shrink-0">
+        <div style={{ width: ACTIVITY_WIDTH_PX }} className="shrink-0">
           <ActivityBar />
         </div>
         {/* sidebar */}

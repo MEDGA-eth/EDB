@@ -87,6 +87,8 @@ function AddressNode({ addr }: { addr: string }) {
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-1 px-2 py-1 text-left hover:bg-(--color-bg-hover)"
         data-testid={`explorer-addr-${addr}`}
+        aria-label={`${expanded ? 'Collapse' : 'Expand'} ${shortAddr(addr)}`}
+        aria-expanded={expanded}
       >
         <Chevron size={12} className="text-(--color-fg-tertiary)" />
         <span className="font-mono text-xs text-(--color-syn-type)">{shortAddr(addr)}</span>
@@ -103,6 +105,7 @@ function AddressNode({ addr }: { addr: string }) {
                 onClick={() => open({ addr, path: f.path })}
                 className="flex w-full items-center gap-2 px-2 py-1 pl-6 text-left text-xs hover:bg-(--color-bg-hover)"
                 data-testid={`explorer-file-${addr}-${f.path}`}
+                aria-label={`Open ${f.label}`}
               >
                 <FileCode2 size={12} className="text-(--color-fg-tertiary)" />
                 <span className="truncate">{f.label}</span>

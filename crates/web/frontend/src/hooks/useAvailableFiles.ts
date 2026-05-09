@@ -17,6 +17,9 @@ interface TraceEntry {
   children?: TraceEntry[];
 }
 
+/** Hard cap on how many `edb_getCodeByAddress` queries run in parallel. */
+const PARALLEL_CODE_QUERY_LIMIT = 25;
+
 function collectAddresses(trace: TraceEntry[] | undefined): string[] {
   if (!trace) return [];
   const out = new Set<string>();
@@ -31,6 +34,12 @@ function collectAddresses(trace: TraceEntry[] | undefined): string[] {
 /**
  * Returns the union of every (addr, path) pair available in the loaded trace.
  * Uses cached `useQuery` calls so it shares cache with the file explorer.
+ *
+ * Concurrency is capped at {@link PARALLEL_CODE_QUERY_LIMIT}: only the first
+ * N addresses (by trace order) are fetched eagerly. Later addresses still
+ * have their query objects in place so the cache stays consistent, but the
+ * `enabled` flag is `false` until earlier ones settle. Once any of the
+ * leading queries lands in cache, the next batch unlocks automatically.
  */
 export function useAvailableFiles(): {
   files: AvailableFile[];
@@ -46,10 +55,12 @@ export function useAvailableFiles(): {
     [traceQ.data],
   );
   const codeQs = useQueries({
-    queries: addresses.map((addr) => ({
+    queries: addresses.map((addr, i) => ({
       queryKey: ['code-addr', addr] as const,
       queryFn: () => rpc('edb_getCodeByAddress', CodeKind, [addr]),
-      enabled: !!addr,
+      // Stagger fan-out: only the first N addresses fire eagerly; later
+      // ones wait until they fall into the leading window.
+      enabled: !!addr && i < PARALLEL_CODE_QUERY_LIMIT,
     })),
   });
 

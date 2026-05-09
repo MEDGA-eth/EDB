@@ -9,9 +9,9 @@ import { usePrevCall } from '../hooks/usePrevCall';
 import { useAvailableFiles } from '../hooks/useAvailableFiles';
 import { COMMANDS, type Command, type CommandCtx } from '../lib/commands';
 import { rankBy } from '../lib/fuzzyMatch';
+import { PALETTE_RECENT_LIMIT, PALETTE_RESULT_CAP } from '../lib/constants';
 
 const RECENT_KEY = 'edb-web:palette-recent';
-const RECENT_MAX = 10;
 
 type PaletteRow =
   | { kind: 'command'; id: string; label: string; hint?: string; group?: string; run(): void }
@@ -35,7 +35,7 @@ function pushRecent(id: string) {
   if (typeof localStorage === 'undefined') return;
   const cur = loadRecent().filter((x) => x !== id);
   cur.unshift(id);
-  while (cur.length > RECENT_MAX) cur.pop();
+  while (cur.length > PALETTE_RECENT_LIMIT) cur.pop();
   try {
     localStorage.setItem(RECENT_KEY, JSON.stringify(cur));
   } catch {
@@ -147,11 +147,11 @@ function CommandPaletteInner() {
       const recent = new Set(loadRecent());
       const recentRows = pool.filter((r) => recent.has(r.id));
       const rest = pool.filter((r) => !recent.has(r.id));
-      return [...recentRows, ...rest].slice(0, 60);
+      return [...recentRows, ...rest].slice(0, PALETTE_RESULT_CAP);
     }
 
     return rankBy(pool, stripped, (r) => `${r.label} ${r.hint ?? ''}`)
-      .slice(0, 80)
+      .slice(0, PALETTE_RESULT_CAP)
       .map((r) => r.item);
   }, [query, ctx, snapshotCount, files, addresses, openFile, setSnap]);
 

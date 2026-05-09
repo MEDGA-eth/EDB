@@ -86,10 +86,31 @@ export const SnapshotInfo = z.object({
 export type SnapshotInfo = z.infer<typeof SnapshotInfo>;
 
 /* ── Trace ────────────────────────────────────────────────── */
+/**
+ * Known trace-entry kinds the engine emits today. Future kinds will
+ * fall through the `z.string()` fallback below so the schema doesn't
+ * trip on a tracer extension.
+ */
+export const TraceEntryKind = z
+  .enum([
+    'CALL',
+    'STATICCALL',
+    'DELEGATECALL',
+    'CREATE',
+    'CREATE2',
+    'CALLCODE',
+    'LOG',
+    'RETURN',
+    'REVERT',
+    'SELFDESTRUCT',
+  ])
+  .or(z.string());
+export type TraceEntryKind = z.infer<typeof TraceEntryKind>;
+
 export const TraceEntry: z.ZodType<unknown> = z.lazy(() =>
   z.object({
     id: z.number().int().nonnegative(),
-    kind: z.string(),
+    kind: TraceEntryKind,
     code_address: Address,
     target_address: Address,
     children: z.array(TraceEntry).default([]),
