@@ -21,7 +21,10 @@ describe('<HelpOverlay />', () => {
     render(<HelpOverlay />);
     await userEvent.click(screen.getByTestId('help-open'));
     expect(screen.getByTestId('help-overlay')).toBeTruthy();
-    await userEvent.click(screen.getByRole('button', { name: /close/i }));
+    // The redesigned overlay has both an ⓧ in the header and a "Close"
+    // button in the footer. We click the explicit footer button.
+    const closeButtons = screen.getAllByRole('button', { name: /close/i });
+    await userEvent.click(closeButtons[closeButtons.length - 1]);
     expect(screen.queryByTestId('help-overlay')).toBeNull();
   });
 

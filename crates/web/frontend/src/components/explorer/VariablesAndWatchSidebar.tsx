@@ -15,13 +15,20 @@ export function VariablesAndWatchSidebar() {
   const snapQ = useSnapshotInfo(id);
   return (
     <ErrorBoundary label="VariablesAndWatchSidebar">
-      <div className="flex h-full flex-col gap-1 py-2" data-testid="vars-watch-sidebar">
+      {/* Single overflow-auto root so the whole pane scrolls as one
+          column. Previously each section managed its own scroll, which
+          meant a tall Variables list pushed Watch off-screen with no way
+          to reach the watch input until you collapsed the locals. */}
+      <div
+        className="flex h-full flex-col gap-1 overflow-auto py-2"
+        data-testid="vars-watch-sidebar"
+      >
         <SectionHeader>Variables</SectionHeader>
-        <div className="px-3 pb-2 border-b border-(--color-border)">
+        <div className="border-b border-(--color-border) px-3 pb-3">
           <VarsView snap={snapQ.data} />
         </div>
         <SectionHeader>Watch</SectionHeader>
-        <div className="flex-1 overflow-auto px-3 pb-2">
+        <div className="px-3 pb-3">
           <WatchView snapshotId={id} />
         </div>
       </div>

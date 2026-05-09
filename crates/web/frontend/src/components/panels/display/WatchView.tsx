@@ -136,17 +136,21 @@ function WatchViewInner({ snapshotId }: { snapshotId: number }) {
   }
 
   return (
-    <div data-testid="watch-view" className="flex h-full flex-col">
+    // No inner overflow-auto — the parent (VariablesAndWatchSidebar)
+    // owns scrolling for the whole vars+watch column. Keeping a local
+    // scroller would mean two scrollbars stacked, with the input box
+    // pinned to the bottom of an inner box rather than the pane.
+    <div data-testid="watch-view" className="flex flex-col">
       {watches.length === 0 ? (
         <p
           data-testid="watch-empty"
-          className="px-1 py-2 text-xs text-(--color-fg-tertiary)"
+          className="px-1 py-2 text-[12px] text-(--color-fg-tertiary)"
         >
           No watch expressions. Add a Solidity expression below — it&apos;s
           re-evaluated on every snapshot change.
         </p>
       ) : (
-        <ul className="flex-1 overflow-auto flex flex-col gap-1.5 p-1" role="list">
+        <ul className="flex flex-col gap-1.5 p-1" role="list">
           {watches.map((expr) => (
             <WatchRow key={expr} expr={expr} snapshotId={snapshotId} />
           ))}
@@ -154,22 +158,22 @@ function WatchViewInner({ snapshotId }: { snapshotId: number }) {
       )}
       <form
         onSubmit={submit}
-        className="mt-2 flex items-center gap-2 border-t border-(--color-border) bg-(--color-bg) px-2 py-2"
+        className="mt-2 flex items-center gap-2 rounded border border-(--color-border) bg-(--color-bg) px-2 py-2"
       >
-        <Plus size={12} className="text-(--color-fg-tertiary)" aria-hidden />
+        <Plus size={14} className="text-(--color-fg-tertiary)" aria-hidden />
         <input
           data-testid="watch-input"
           aria-label="Add watch expression"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder="e.g. balanceOf(msg.sender)"
-          className="flex-1 bg-transparent font-mono text-sm outline-none placeholder:text-(--color-fg-tertiary)"
+          className="flex-1 bg-transparent font-mono text-[13px] outline-none placeholder:text-(--color-fg-tertiary)"
         />
         <button
           type="submit"
           data-testid="watch-add"
           disabled={draft.trim().length === 0}
-          className="rounded border border-(--color-border) bg-(--color-bg-elevated) px-2 py-0.5 text-xs text-(--color-fg-secondary) hover:bg-(--color-bg-hover) hover:text-(--color-fg) disabled:opacity-40"
+          className="rounded border border-(--color-border) bg-(--color-bg-elevated) px-2 py-0.5 text-[12px] text-(--color-fg-secondary) hover:bg-(--color-bg-hover) hover:text-(--color-fg) disabled:opacity-40"
         >
           Add
         </button>

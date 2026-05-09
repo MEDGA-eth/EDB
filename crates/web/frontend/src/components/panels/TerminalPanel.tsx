@@ -223,21 +223,24 @@ function TerminalPanelInner() {
       <Toolbar testid="terminal-toolbar">
         <ToolbarButton
           icon={Trash2}
-          label="Clear history"
+          label="Clear"
+          showLabel
           testid="terminal-clear"
           onClick={clear}
           disabled={history.length === 0}
         />
         <ToolbarButton
           icon={Copy}
-          label="Copy last result"
+          label="Copy last"
+          showLabel
           testid="terminal-copy-last"
           onClick={() => void copyLast()}
           disabled={history.length === 0}
         />
         <ToolbarButton
           icon={Eye}
-          label="Save last input as watch expression"
+          label="Save as watch"
+          showLabel
           testid="terminal-save-watch"
           onClick={saveLastAsWatch}
           disabled={lastInputText() === null}
@@ -246,6 +249,7 @@ function TerminalPanelInner() {
         <ToolbarButton
           icon={ArrowDownToLine}
           label="Scroll to bottom"
+          showLabel
           testid="terminal-scroll-bottom"
           onClick={scrollToBottom}
         />
