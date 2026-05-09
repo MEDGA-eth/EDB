@@ -510,9 +510,17 @@ export const BreakpointLocation = z
       : { kind: 'Source', ...d.Source },
   );
 
+/**
+ * Internal breakpoint shape. `enabled` is a UI-only toggle that defaults
+ * to `true` (treated as enabled when missing). It gates
+ * `useBreakpointHits` so a disabled breakpoint behaves as if it were not
+ * registered — the engine's wire format has no such field, so we strip
+ * it in {@link breakpointToWire} before sending.
+ */
 export const Breakpoint = z.object({
   loc: BreakpointLocation.nullable(),
   condition: z.string().nullable(),
+  enabled: z.boolean().optional(),
 });
 export type Breakpoint = z.infer<typeof Breakpoint>;
 

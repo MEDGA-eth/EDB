@@ -1,6 +1,48 @@
 import type { QueryClient } from '@tanstack/react-query';
+import { z } from 'zod';
 import { useSession } from '../store/session';
-import type { SnapshotInfo } from './types';
+import { rpc } from './rpc';
+import { breakpointToWire, type Breakpoint, type SnapshotInfo } from './types';
+
+const HitsSchema = z.array(z.number().int().nonnegative());
+
+/**
+ * Stable hash that mirrors `useBreakpointHits.stableHash` so cached
+ * `bp-hits` queries are reused. Excludes the `enabled` field — toggling
+ * a breakpoint should not refetch hits, only gate consumption.
+ */
+function bpHashKey(bp: Breakpoint): string {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { enabled: _omit, ...rest } = bp;
+  return JSON.stringify(rest, Object.keys(rest).sort());
+}
+
+async function gatherEnabledHits(qc: QueryClient): Promise<number[]> {
+  const bps = useSession.getState().breakpoints.filter((bp) => bp.enabled !== false);
+  const all: number[] = [];
+  for (const bp of bps) {
+    const key = ['bp-hits', bpHashKey(bp)] as const;
+    // Prefer cache so a hotkey press doesn't pay another roundtrip when
+    // useBreakpointHits has already loaded the same query. Fall through
+    // to fetchQuery only on a true cache miss.
+    const cached = qc.getQueryData<number[]>(key);
+    if (cached) {
+      for (const h of cached) all.push(h);
+      continue;
+    }
+    try {
+      const hits = await qc.fetchQuery({
+        queryKey: key,
+        queryFn: () => rpc('edb_getBreakpointHits', HitsSchema, [breakpointToWire(bp)]),
+        staleTime: 30_000,
+      });
+      for (const h of hits) all.push(h);
+    } catch {
+      // best-effort: a single failed breakpoint shouldn't block continue
+    }
+  }
+  return all;
+}
 
 /**
  * The "execution context" passed to every command. We keep this small —
@@ -202,6 +244,41 @@ export const COMMANDS: Command[] = [
       if (!snap) return;
       const target = walkUntilFrameChange(queryClient, cur, 'prev', snap.frame_id[0]);
       if (typeof target === 'number') setSnapshot(target);
+    },
+  },
+  {
+    id: 'nav.continue',
+    label: 'Continue (run to next breakpoint)',
+    group: 'Navigation',
+    hint: 'c',
+    enabled: ({ snapshotCount }) =>
+      snapshotCount > 0 && useSession.getState().currentSnapshotId < snapshotCount - 1,
+    run: async ({ queryClient, snapshotCount }) => {
+      const cur = useSession.getState().currentSnapshotId;
+      const hits = await gatherEnabledHits(queryClient);
+      const forward = hits.filter((h) => h > cur);
+      if (forward.length > 0) {
+        setSnapshot(Math.min(...forward));
+      } else if (snapshotCount > 0) {
+        setSnapshot(snapshotCount - 1);
+      }
+    },
+  },
+  {
+    id: 'nav.reverse-continue',
+    label: 'Reverse continue (run back to previous breakpoint)',
+    group: 'Navigation',
+    hint: 'C',
+    enabled: () => useSession.getState().currentSnapshotId > 0,
+    run: async ({ queryClient }) => {
+      const cur = useSession.getState().currentSnapshotId;
+      const hits = await gatherEnabledHits(queryClient);
+      const backward = hits.filter((h) => h < cur);
+      if (backward.length > 0) {
+        setSnapshot(Math.max(...backward));
+      } else {
+        setSnapshot(0);
+      }
     },
   },
   {

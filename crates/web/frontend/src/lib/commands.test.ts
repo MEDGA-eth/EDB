@@ -192,6 +192,52 @@ describe('command registry', () => {
     expect(useSession.getState().currentSnapshotId).toBe(0);
   });
 
+  test('nav.continue jumps to next breakpoint hit ahead of currentId', async () => {
+    const qc = new QueryClient();
+    const addr = '0x' + '0'.repeat(40);
+    useSession
+      .getState()
+      .addBreakpoint({ loc: { kind: 'Opcode', bytecode_address: addr, pc: 1 }, condition: null });
+    // Pre-populate the bp-hits cache so fetchQuery returns synchronously
+    // without an actual network call (no fetch mock in scope).
+    const bp = useSession.getState().breakpoints[0];
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { enabled: _omit, ...rest } = bp;
+    qc.setQueryData(['bp-hits', JSON.stringify(rest, Object.keys(rest).sort())], [3, 7, 12]);
+    useSession.setState({ currentSnapshotId: 5 });
+    await getCommand('nav.continue')!.run(ctx({ queryClient: qc, snapshotCount: 20 }));
+    expect(useSession.getState().currentSnapshotId).toBe(7);
+  });
+
+  test('nav.continue jumps to last when no breakpoint hits ahead', async () => {
+    const qc = new QueryClient();
+    useSession.setState({ currentSnapshotId: 3 });
+    await getCommand('nav.continue')!.run(ctx({ queryClient: qc, snapshotCount: 8 }));
+    expect(useSession.getState().currentSnapshotId).toBe(7);
+  });
+
+  test('nav.reverse-continue jumps to most recent prior hit', async () => {
+    const qc = new QueryClient();
+    const addr = '0x' + '0'.repeat(40);
+    useSession
+      .getState()
+      .addBreakpoint({ loc: { kind: 'Opcode', bytecode_address: addr, pc: 1 }, condition: null });
+    const bp = useSession.getState().breakpoints[0];
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { enabled: _omit, ...rest } = bp;
+    qc.setQueryData(['bp-hits', JSON.stringify(rest, Object.keys(rest).sort())], [2, 4, 9]);
+    useSession.setState({ currentSnapshotId: 7 });
+    await getCommand('nav.reverse-continue')!.run(ctx({ queryClient: qc, snapshotCount: 20 }));
+    expect(useSession.getState().currentSnapshotId).toBe(4);
+  });
+
+  test('nav.reverse-continue falls back to 0 with no prior hits', async () => {
+    const qc = new QueryClient();
+    useSession.setState({ currentSnapshotId: 5 });
+    await getCommand('nav.reverse-continue')!.run(ctx({ queryClient: qc, snapshotCount: 10 }));
+    expect(useSession.getState().currentSnapshotId).toBe(0);
+  });
+
   test('nav.reverse-step-out walks prev_id until frame_id[0] differs', () => {
     const qc = new QueryClient();
     qc.setQueryData(['snapshot', 3], { id: 3, frame_id: [1, 0], next_id: 4, prev_id: 2 });

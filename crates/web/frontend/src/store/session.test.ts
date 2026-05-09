@@ -155,6 +155,30 @@ describe('useSession', () => {
     expect(useSession.getState().traceCollapseTick).toBe(1);
   });
 
+  test('setBreakpointCondition updates the condition for a single bp', () => {
+    const s = useSession.getState();
+    const addr = '0x' + '0'.repeat(40);
+    s.addBreakpoint({ loc: { kind: 'Opcode', bytecode_address: addr, pc: 1 }, condition: null });
+    s.setBreakpointCondition(0, 'x > 0');
+    expect(useSession.getState().breakpoints[0].condition).toBe('x > 0');
+    s.setBreakpointCondition(0, null);
+    expect(useSession.getState().breakpoints[0].condition).toBeNull();
+  });
+
+  test('setBreakpointEnabled / enableAll / disableAll toggle enabled flag', () => {
+    const s = useSession.getState();
+    const addr = '0x' + '0'.repeat(40);
+    s.addBreakpoint({ loc: { kind: 'Opcode', bytecode_address: addr, pc: 1 }, condition: null });
+    s.addBreakpoint({ loc: { kind: 'Opcode', bytecode_address: addr, pc: 2 }, condition: null });
+    expect(useSession.getState().breakpoints[0].enabled).toBe(true);
+    s.setBreakpointEnabled(0, false);
+    expect(useSession.getState().breakpoints[0].enabled).toBe(false);
+    s.disableAllBreakpoints();
+    expect(useSession.getState().breakpoints.every((bp) => bp.enabled === false)).toBe(true);
+    s.enableAllBreakpoints();
+    expect(useSession.getState().breakpoints.every((bp) => bp.enabled === true)).toBe(true);
+  });
+
   test('clearBreakpoints empties the list', () => {
     const s = useSession.getState();
     s.addBreakpoint({ loc: { kind: 'Opcode', bytecode_address: '0x' + '0'.repeat(40), pc: 1 }, condition: null });
