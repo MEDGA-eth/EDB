@@ -2,18 +2,32 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 
 const HELP_MD = `
-### Navigation
-- **n / Next snapshot** — go forward one step
-- **p / Prev snapshot** — go back one step
-- **N / next call** — jump to next message-call
-- **P / prev call** — jump to previous message-call
+### Debugger shortcuts (VSCode-style)
+- **F5** — continue
+- **Shift+F5** — stop (run to end)
+- **Cmd/Ctrl+Shift+F5** — restart (jump to first snapshot)
+- **Alt+F5** — reverse continue
+- **F10** — step over
+- **Alt+F10** — reverse step over
+- **F11** — step into (next snapshot)
+- **Shift+F11** — step out
+- **Cmd/Ctrl+P** — toggle command palette
+- **Cmd/Ctrl+Shift+P** — palette in command-mode
 
-### Terminal
-- \`expr\` — evaluate a Solidity expression at the current snapshot
+### Terminal commands
+- \`<expr>\` — evaluate a Solidity expression at the current snapshot
+- \`continue\` / \`c\` — run to next breakpoint
+- \`step\` / \`s\` — step into (next snapshot)
+- \`next\` / \`n\` — same as step (single snapshot forward)
+- \`over\` / \`o\` — step over
+- \`out\` — step out
+- \`goto <n>\` — jump to snapshot N
 - \`break <addr>:<line>\` — set a source-line breakpoint
 - \`break <addr>:pc=<pc>\` — set an opcode breakpoint
 - \`bp\` — list breakpoints
 - \`unbreak <n>\` — remove breakpoint #n
+- \`clear\` — clear terminal history
+- \`help\` — show this help
 `;
 
 export function HelpOverlay() {

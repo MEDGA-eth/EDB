@@ -23,8 +23,10 @@
   --dv-paneview-header-border-color: var(--color-border);
 
   --dv-separator-border: var(--color-border);
-  --dv-sash-color: transparent;
+  --dv-sash-color: var(--color-border);
   --dv-active-sash-color: var(--color-accent);
+  --dv-sash-size: 4px;
+  --dv-sash-hover-size: 4px;
 
   --dv-tabs-container-scrollbar-color: var(--color-fg-tertiary);
   --dv-icon-hover-background-color: var(--color-bg-hover);
@@ -48,4 +50,15 @@
 .dockview-theme-edb .dv-watermark {
   background-color: var(--color-bg-elevated);
   color: var(--color-fg-tertiary);
+}
+
+/* Make sashes feel like real grab handles — wider hover hit-zone with a
+   visible accent bar on hover so users discover the resize affordance. */
+.dockview-theme-edb .dv-sash:hover,
+.dockview-theme-edb .dv-sash.dv-active {
+  background-color: var(--color-accent);
+}
+.dockview-theme-edb .dv-sash {
+  background-color: var(--color-border);
+  transition: background-color 120ms ease;
 }

@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import { ArrowDownToLine, Copy, Eye, Trash2, X } from 'lucide-react';
 import { useEvalExpr } from '../../hooks/useEvalExpr';
+import { useSnapshotCount } from '../../hooks/useSnapshotCount';
+import { runTermCommand } from '../../lib/termCommands';
 import { formatSolValue, type EvalResult } from '../../lib/types';
 import { useSession } from '../../store/session';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -65,6 +68,8 @@ function TerminalPanelInner() {
   const clear = useSession((s) => s.clearTerminal);
   const addWatch = useSession((s) => s.addWatchExpression);
   const evalExpr = useEvalExpr();
+  const qc = useQueryClient();
+  const snapshotCountQ = useSnapshotCount();
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Monotonically-increasing submission counter — used to pair an input
@@ -161,6 +166,20 @@ function TerminalPanelInner() {
     append({ kind: 'input', ts, text: input, submissionId });
     const expr = input;
     setInput('');
+
+    // First try built-in commands (step / goto / bp / …). They run
+    // synchronously and return either a markdown message or nothing.
+    const cmdResult = runTermCommand(expr, {
+      queryClient: qc,
+      snapshotCount: snapshotCountQ.data ?? 0,
+    });
+    if (cmdResult.handled) {
+      if (cmdResult.message) {
+        append({ kind: 'message', ts: Date.now(), text: cmdResult.message });
+      }
+      return;
+    }
+
     const controller = new AbortController();
     controllersRef.current.set(submissionId, controller);
     setPendingCount(controllersRef.current.size);
@@ -244,7 +263,7 @@ function TerminalPanelInner() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           className="flex-1 bg-transparent font-mono outline-none"
-          placeholder="Solidity expression…"
+          placeholder="Solidity expression or command (type `help`)"
         />
         {pendingCount > 0 && (
           <button
@@ -270,6 +289,12 @@ function TerminalLine({ entry }: { entry: import('../../store/session').Terminal
     return (
       <div data-testid="term-error" className="text-(--color-danger)">
         ⨯ {entry.message} ({entry.code})
+      </div>
+    );
+  if (entry.kind === 'message')
+    return (
+      <div data-testid="term-message" className="text-(--color-fg-secondary)">
+        <ReactMarkdown>{entry.text}</ReactMarkdown>
       </div>
     );
   return (

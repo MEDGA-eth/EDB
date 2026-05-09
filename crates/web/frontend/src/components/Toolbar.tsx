@@ -16,7 +16,7 @@ export function Toolbar({
       role="toolbar"
       data-testid={testid}
       className={
-        'flex h-8 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-bg) px-2 ' +
+        'flex h-9 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-bg) px-2 ' +
         (className ?? '')
       }
     >
@@ -27,10 +27,10 @@ export function Toolbar({
 
 /** Vertical 1-px divider used between groups of buttons. */
 export function ToolbarDivider() {
-  return <span aria-hidden className="mx-1 h-4 w-px bg-(--color-border)" />;
+  return <span aria-hidden className="mx-1 h-5 w-px bg-(--color-border)" />;
 }
 
-/** A 24×24 icon button with tooltip + active/disabled states. */
+/** Icon button with tooltip + active/disabled states. */
 export interface ToolbarButtonProps
   extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'aria-label'> {
   icon: LucideIcon;
@@ -55,7 +55,7 @@ export function ToolbarButton({
       aria-pressed={active}
       data-testid={testid}
       className={
-        'flex h-6 w-6 items-center justify-center rounded-[var(--radius)] ' +
+        'flex h-7 w-7 items-center justify-center rounded-[var(--radius)] ' +
         'text-(--color-fg-secondary) transition-transform duration-75 ' +
         'hover:bg-(--color-bg-hover) hover:text-(--color-fg) ' +
         'active:scale-95 ' +
@@ -65,7 +65,7 @@ export function ToolbarButton({
       }
       {...rest}
     >
-      <Icon size={14} />
+      <Icon size={16} aria-hidden />
     </button>
   );
 }
@@ -73,7 +73,7 @@ export function ToolbarButton({
 /** A small inline label used as a section title inside a toolbar (optional). */
 export function ToolbarLabel({ children }: { children: ReactNode }) {
   return (
-    <span className="text-[10px] font-display font-semibold tracking-wide text-(--color-fg-tertiary) uppercase">
+    <span className="text-[11px] font-display font-semibold tracking-wide text-(--color-fg-tertiary) uppercase">
       {children}
     </span>
   );

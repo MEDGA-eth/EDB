@@ -10,13 +10,19 @@ describe('<ActivityBar />', () => {
     useSession.setState({ activeActivity: 'explorer' });
   });
 
-  test('renders all five activity buttons', () => {
+  test('renders the four activity buttons', () => {
     render(<ActivityBar />);
     expect(screen.getByTestId('activity-explorer')).toBeTruthy();
     expect(screen.getByTestId('activity-trace')).toBeTruthy();
     expect(screen.getByTestId('activity-variables')).toBeTruthy();
-    expect(screen.getByTestId('activity-terminal')).toBeTruthy();
     expect(screen.getByTestId('activity-breakpoints')).toBeTruthy();
+  });
+
+  test('shows hover label next to active icon', () => {
+    useSession.setState({ activeActivity: 'trace' });
+    render(<ActivityBar />);
+    // Each item has a span with the textual label (sr-only-ish but rendered in DOM)
+    expect(screen.getByText('Trace')).toBeTruthy();
   });
 
   test('clicking sets activeActivity in the store', async () => {
@@ -26,9 +32,9 @@ describe('<ActivityBar />', () => {
   });
 
   test('active item has aria-pressed=true', () => {
-    useSession.setState({ activeActivity: 'terminal' });
+    useSession.setState({ activeActivity: 'breakpoints' });
     render(<ActivityBar />);
-    expect(screen.getByTestId('activity-terminal').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId('activity-breakpoints').getAttribute('aria-pressed')).toBe('true');
     expect(screen.getByTestId('activity-explorer').getAttribute('aria-pressed')).toBe('false');
   });
 
