@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { ArrowDownToLine, Copy, Trash2 } from 'lucide-react';
+import { ArrowDownToLine, Copy, Trash2, X } from 'lucide-react';
 import { useEvalExpr } from '../../hooks/useEvalExpr';
 import { useSession } from '../../store/session';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -47,6 +47,17 @@ function TerminalPanelInner() {
   const evalExpr = useEvalExpr();
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Monotonically-increasing submission counter — used to pair an input
+  // entry with its result/error so concurrent evals render in input-order
+  // even when the server replies out-of-order.
+  const submissionCounterRef = useRef(0);
+  // Active AbortControllers, keyed by submissionId, so the user can cancel
+  // a specific in-flight eval. We only display one Cancel button at a time
+  // (the most recent submission), which is the common case.
+  const controllersRef = useRef<Map<number, AbortController>>(new Map());
+  // Re-render trigger when the in-flight set changes — refs alone don't
+  // notify React so we mirror "is anything pending" into state.
+  const [pendingCount, setPendingCount] = useState(0);
 
   function scrollToBottom() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -56,6 +67,17 @@ function TerminalPanelInner() {
   useEffect(() => {
     scrollToBottom();
   }, [history.length]);
+
+  // Abort everything still in-flight on unmount so we don't dangle fetches.
+  useEffect(() => {
+    const controllers = controllersRef.current;
+    return () => {
+      for (const c of controllers.values()) {
+        try { c.abort(); } catch { /* ignore */ }
+      }
+      controllers.clear();
+    };
+  }, []);
 
   async function copyLast() {
     const last = [...history].reverse().find((h) => h.kind === 'result' || h.kind === 'error');
@@ -87,25 +109,59 @@ function TerminalPanelInner() {
     }
   }
 
+  function cancelLatest() {
+    const map = controllersRef.current;
+    if (map.size === 0) return;
+    // Highest submissionId is the most recent.
+    let latestId = -1;
+    for (const k of map.keys()) if (k > latestId) latestId = k;
+    const c = map.get(latestId);
+    if (c) c.abort();
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim()) return;
     const ts = Date.now();
-    append({ kind: 'input', ts, text: input });
+    submissionCounterRef.current += 1;
+    const submissionId = submissionCounterRef.current;
+    append({ kind: 'input', ts, text: input, submissionId });
     const expr = input;
     setInput('');
+    const controller = new AbortController();
+    controllersRef.current.set(submissionId, controller);
+    setPendingCount(controllersRef.current.size);
     try {
-      const value = await evalExpr.mutateAsync({ id, expr });
-      append({ kind: 'result', ts: Date.now(), expr, value });
+      const value = await evalExpr.mutateAsync({ id, expr, signal: controller.signal });
+      append({ kind: 'result', ts: Date.now(), expr, value, submissionId });
     } catch (e) {
-      const err = e as { code?: number; message?: string };
-      append({
-        kind: 'error',
-        ts: Date.now(),
-        expr,
-        code: err.code ?? -1,
-        message: err.message ?? String(e),
-      });
+      // AbortError gets a friendlier "Cancelled" surface — not a normal error.
+      const isAbort =
+        (typeof DOMException !== 'undefined' && e instanceof DOMException && e.name === 'AbortError') ||
+        (e instanceof Error && e.name === 'AbortError');
+      if (isAbort) {
+        append({
+          kind: 'error',
+          ts: Date.now(),
+          expr,
+          code: 0,
+          message: 'Cancelled',
+          submissionId,
+        });
+      } else {
+        const err = e as { code?: number; message?: string };
+        append({
+          kind: 'error',
+          ts: Date.now(),
+          expr,
+          code: err.code ?? -1,
+          message: err.message ?? String(e),
+          submissionId,
+        });
+      }
+    } finally {
+      controllersRef.current.delete(submissionId);
+      setPendingCount(controllersRef.current.size);
     }
   }
 
@@ -141,7 +197,7 @@ function TerminalPanelInner() {
           <TerminalLine key={`${h.ts}-${i}`} entry={h} />
         ))}
       </div>
-      <form onSubmit={submit} className="flex gap-2 border-t border-(--color-border) bg-(--color-bg) p-2">
+      <form onSubmit={submit} className="flex items-center gap-2 border-t border-(--color-border) bg-(--color-bg) p-2">
         <span className="text-(--color-accent) font-bold">›</span>
         <input
           data-testid="terminal-input"
@@ -150,6 +206,19 @@ function TerminalPanelInner() {
           className="flex-1 bg-transparent font-mono outline-none"
           placeholder="Solidity expression…"
         />
+        {pendingCount > 0 && (
+          <button
+            type="button"
+            data-testid="terminal-cancel"
+            onClick={cancelLatest}
+            aria-label="Cancel evaluation"
+            title="Cancel evaluation"
+            className="inline-flex items-center gap-1 rounded border border-(--color-border) bg-(--color-bg-elevated) px-2 py-0.5 text-xs text-(--color-fg-secondary) hover:bg-(--color-bg-hover) hover:text-(--color-fg)"
+          >
+            <X size={10} aria-hidden />
+            Cancel
+          </button>
+        )}
       </form>
     </div>
   );

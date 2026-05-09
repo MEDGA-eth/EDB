@@ -12,6 +12,9 @@ export const HEALTHCHECK_INTERVAL_MS = 2000;
 /** Consecutive missed probes before the session is marked ended. */
 export const HEALTHCHECK_FAILURE_THRESHOLD = 3;
 
+/** Per-probe abort threshold (ms). Beyond this we treat the probe as a miss. */
+export const HEALTHCHECK_TIMEOUT_MS = 1500;
+
 /** Maximum number of "recently used" command-palette entries to remember. */
 export const PALETTE_RECENT_LIMIT = 10;
 

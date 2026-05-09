@@ -3,10 +3,16 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { Breakpoint } from '../lib/types';
 import type { Theme } from '../lib/theme';
 
+/**
+ * Concurrent eval ordering: each user submission gets a monotonically-
+ * increasing `submissionId`. The matching result/error entry inherits the
+ * same id so we can pair them up even when responses land out-of-order.
+ * Optional for back-compat with older persisted history.
+ */
 export type TerminalEntry =
-  | { kind: 'input'; ts: number; text: string }
-  | { kind: 'result'; ts: number; expr: string; value: unknown }
-  | { kind: 'error'; ts: number; expr: string; code: number; message: string };
+  | { kind: 'input'; ts: number; text: string; submissionId?: number }
+  | { kind: 'result'; ts: number; expr: string; value: unknown; submissionId?: number }
+  | { kind: 'error'; ts: number; expr: string; code: number; message: string; submissionId?: number };
 
 export type ConnectionState = 'connected' | 'degraded' | 'offline';
 export type PanelTab = 'code' | 'trace' | 'display' | 'terminal';

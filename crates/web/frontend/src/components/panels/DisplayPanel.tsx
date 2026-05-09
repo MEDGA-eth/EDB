@@ -45,7 +45,14 @@ function DisplayPanelInner() {
   const [tab, setTab] = useState<Tab>('vars');
   const qc = useQueryClient();
 
-  if (error) return <ErrorCard message={(error as Error).message} onRetry={() => refetch()} />;
+  if (error)
+    return (
+      <ErrorCard
+        message={(error as Error).message}
+        cause={error}
+        onRetry={() => refetch()}
+      />
+    );
 
   // `useSnapshotInfo` is currently schema-less (z.unknown), so we narrow defensively.
   const snap = data as SnapshotInfo | undefined;
@@ -105,10 +112,10 @@ function DisplayPanelInner() {
             aria-selected={tab === key}
             data-testid={`display-tab-${key}`}
             onClick={() => setTab(key)}
-            className={`px-3 py-1 text-sm ${
+            className={`px-3 py-1 text-sm border-b-2 -mb-px ${
               tab === key
-                ? 'text-(--color-accent) font-semibold'
-                : 'text-(--color-fg-secondary)'
+                ? 'border-(--color-accent) text-(--color-accent) font-semibold'
+                : 'border-transparent text-(--color-fg-secondary)'
             }`}
           >
             {label}

@@ -29,7 +29,15 @@ export function useGlobalKeybinds(): void {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
       if (mod && !e.altKey && (e.key === 'p' || e.key === 'P')) {
-        // Inside an editor / input: let the local component handle it.
+        // If the palette is already open, always toggle — even though its
+        // own input is editable, the user still expects Cmd+P to close it.
+        if (useSession.getState().paletteOpen) {
+          e.preventDefault();
+          e.stopPropagation();
+          useSession.getState().togglePalette();
+          return;
+        }
+        // Otherwise, inside an editor / input: let the local component handle it.
         if (isEditableTarget(e.target)) return;
         e.preventDefault();
         e.stopPropagation();

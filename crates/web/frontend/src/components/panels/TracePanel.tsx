@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ChevronsDown, ChevronsRight, Crosshair, RefreshCw } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronsDown,
+  ChevronsRight,
+  Crosshair,
+  RefreshCw,
+} from 'lucide-react';
 import { useTrace } from '../../hooks/useTrace';
 import { useSession } from '../../store/session';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -54,7 +61,14 @@ function TracePanelInner() {
         <div className="p-4 text-(--color-fg-tertiary)">Loading trace…</div>
       </div>
     );
-  if (error) return <ErrorCard message={(error as Error).message} onRetry={() => refetch()} />;
+  if (error)
+    return (
+      <ErrorCard
+        message={(error as Error).message}
+        cause={error}
+        onRetry={() => refetch()}
+      />
+    );
   if (!data) return null;
 
   // Keyboard nav: ↑/↓ moves focus between entry buttons; Enter selects;
@@ -141,6 +155,10 @@ function TracePanelInner() {
   );
 }
 
+// TODO(perf): virtualize for traces with thousands of entries.
+// Real mainnet traces are typically <500 entries; this rendering
+// pattern handles them fine. Revisit with @tanstack/react-virtual
+// if a pathological trace shows up.
 function TraceNode({
   entry,
   depth,
@@ -184,7 +202,7 @@ function TraceNode({
             aria-expanded={open}
             className="mr-1 inline-flex h-4 w-4 items-center justify-center text-(--color-fg-tertiary) hover:text-(--color-fg)"
           >
-            {open ? '▾' : '▸'}
+            {open ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
           </button>
         ) : (
           <span className="mr-1 inline-block h-4 w-4" />

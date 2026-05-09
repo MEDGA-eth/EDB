@@ -21,7 +21,7 @@ const editorComponents: Record<string, React.FunctionComponent<IDockviewPanelPro
 
 /** Title shown on a file tab. Centralises the `<disasm>` special-case. */
 function tabTitle(path: string): string {
-  return path === '<disasm>' ? '<disasm>' : (path.split('/').pop() ?? path);
+  return path === '<disasm>' ? '(disassembly)' : (path.split('/').pop() ?? path);
 }
 
 export function EditorArea() {

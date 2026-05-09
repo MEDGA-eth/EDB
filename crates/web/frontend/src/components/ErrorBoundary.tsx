@@ -20,6 +20,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <ErrorCard
           message={`${this.props.label ?? 'Component'} crashed: ${this.state.error.message}`}
+          cause={this.state.error}
           onRetry={this.reset}
         />
       );
