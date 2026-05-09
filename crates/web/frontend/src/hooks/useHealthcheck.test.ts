@@ -32,17 +32,24 @@ describe('useHealthcheck', () => {
     await waitFor(() => expect(useSession.getState().sessionEnded).toBe(true), { timeout: 8000 });
   });
 
-  test('cancels and removes queries on false→true sessionEnded edge', async () => {
+  test('cancels in-flight queries but preserves cache on false→true sessionEnded edge', async () => {
     mockFetch([{ ok: true }]);
     const { wrapper, client } = makeWrapper();
-    // Pre-seed cache: this should be evicted when the session ends.
+    // Pre-seed cache: this is intentionally NOT evicted on a transient
+    // flap so a reconnect doesn't have to refetch everything from scratch.
     client.setQueryData(['snapshot', 0], 'cached-value');
     expect(client.getQueryData<string>(['snapshot', 0])).toBe('cached-value');
+    const cancelSpy = mock(() => Promise.resolve());
+    const origCancel = client.cancelQueries.bind(client);
+    client.cancelQueries = ((...args: unknown[]) => {
+      cancelSpy();
+      return origCancel(...(args as Parameters<typeof origCancel>));
+    }) as typeof client.cancelQueries;
     renderHook(() => useHealthcheck(), { wrapper });
     await waitFor(() => expect(useSession.getState().connection).toBe('connected'));
     useSession.getState().setSessionEnded(true);
-    await waitFor(() =>
-      expect(client.getQueryData<string>(['snapshot', 0])).toBeUndefined(),
-    );
+    await waitFor(() => expect(cancelSpy).toHaveBeenCalled());
+    // Cache value survives the flap.
+    expect(client.getQueryData<string>(['snapshot', 0])).toBe('cached-value');
   });
 });

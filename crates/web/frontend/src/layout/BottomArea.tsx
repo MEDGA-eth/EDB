@@ -77,12 +77,20 @@ export function BottomArea() {
     // shape into localStorage.
     disposablesRef.current.push(
       api.onDidLayoutChange(() => {
+        let json: string;
         try {
-          const json = JSON.stringify({ version: LAYOUT_VERSION, layout: api.toJSON() });
-          setLayoutJson(json);
+          json = JSON.stringify({ version: LAYOUT_VERSION, layout: api.toJSON() });
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn('[edb-web] failed to serialise dockview layout', e);
+          return;
+        }
+        setLayoutJson(json);
+        try {
           localStorage.setItem(LAYOUT_KEY, json);
-        } catch {
-          // ignore
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn('[edb-web] failed to persist dockview layout', e);
         }
       }),
     );

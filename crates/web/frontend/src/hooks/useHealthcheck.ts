@@ -2,16 +2,25 @@ import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSession } from '../store/session';
 import { Health } from '../lib/types';
-import { HEALTHCHECK_FAILURE_THRESHOLD, HEALTHCHECK_INTERVAL_MS } from '../lib/constants';
+import {
+  HEALTHCHECK_FAILURE_THRESHOLD,
+  HEALTHCHECK_INTERVAL_MS,
+  HEALTHCHECK_TIMEOUT_MS,
+} from '../lib/constants';
 
 async function probeHealth(): Promise<boolean> {
+  // Wrap with an AbortController so a hung server can't stall the loop
+  // until the next interval — count it as a miss instead.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), HEALTHCHECK_TIMEOUT_MS);
   try {
-    const res = await fetch('/health');
+    const res = await fetch('/health', { signal: controller.signal });
     if (!res.ok) return false;
     const v = await res.json();
     Health.parse(v);
     return true;
   } catch { return false; }
+  finally { clearTimeout(timer); }
 }
 
 export function useHealthcheck() {
@@ -24,13 +33,16 @@ export function useHealthcheck() {
   // false → true transition (preventing infinite invalidation loops).
   const prevEndedRef = useRef<boolean>(sessionEnded);
 
-  // When sessionEnded flips false → true, cancel any in-flight queries and
-  // drop their cached results so a reconnected session can't surface stale
-  // data from a previous engine.
+  // When sessionEnded flips false → true, cancel any in-flight queries so
+  // their late responses don't pollute the cache after reconnect. We
+  // intentionally do NOT removeQueries() here — that's too aggressive for
+  // a transient flap (a single tab nap or wifi blip), and the next user
+  // interaction will refetch anyway. Trade: small staleness window for
+  // resilience. If we later need "engine replaced" semantics for an actual
+  // engine restart (different version), fold that in then.
   useEffect(() => {
     if (!prevEndedRef.current && sessionEnded) {
       void queryClient.cancelQueries();
-      queryClient.removeQueries();
     }
     prevEndedRef.current = sessionEnded;
   }, [sessionEnded, queryClient]);

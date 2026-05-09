@@ -40,8 +40,11 @@ function pushRecent(id: string) {
   while (cur.length > PALETTE_RECENT_LIMIT) cur.pop();
   try {
     localStorage.setItem(RECENT_KEY, JSON.stringify(cur));
-  } catch {
-    // ignore
+  } catch (e) {
+    // QuotaExceededError, SecurityError (private mode), etc. — match the
+    // theme.ts pattern so failures aren't silent.
+    // eslint-disable-next-line no-console
+    console.warn('[edb-web] failed to persist palette recents', e);
   }
 }
 

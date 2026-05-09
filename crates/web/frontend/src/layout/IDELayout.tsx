@@ -119,7 +119,7 @@ export function IDELayout() {
             className="h-2 cursor-row-resize border-t border-b border-(--color-border) bg-(--color-bg)"
             aria-hidden
           />
-          <div className="h-[40%] min-h-[160px] overflow-hidden" data-testid="bottom-region">
+          <div className="h-[30%] min-h-[160px] overflow-hidden" data-testid="bottom-region">
             <BottomArea />
           </div>
         </div>

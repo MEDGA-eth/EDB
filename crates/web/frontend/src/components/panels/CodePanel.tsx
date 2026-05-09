@@ -26,7 +26,14 @@ function CodePanelInner() {
         Loading…
       </div>
     );
-  if (error) return <ErrorCard message={(error as Error).message} onRetry={() => refetch()} />;
+  if (error)
+    return (
+      <ErrorCard
+        message={(error as Error).message}
+        cause={error}
+        onRetry={() => refetch()}
+      />
+    );
   if (!data) return null;
 
   if (data.kind === 'Opcodes') return <OpcodesView disasm={data.disasm} />;

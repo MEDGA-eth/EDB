@@ -79,7 +79,7 @@ function FileExplorerInner() {
       if (isExpanded && entry && entry.status === 'ok') {
         for (const f of entry.files) {
           const label =
-            f.path === DISASM_PATH ? '<disasm>' : (f.path.split('/').pop() ?? f.path);
+            f.path === DISASM_PATH ? '(disassembly)' : (f.path.split('/').pop() ?? f.path);
           list.push({
             kind: 'file',
             id: `file:${addr}::${f.path}`,

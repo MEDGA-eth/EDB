@@ -24,6 +24,17 @@ export class SchemaError extends Error {
 let nextId = 1;
 const ENDPOINT = '/';
 
+/** Optional per-call options. */
+export interface RpcOptions {
+  /**
+   * Caller-owned AbortSignal forwarded to `fetch`. When the signal aborts,
+   * the call rejects with the underlying `AbortError`. Special-case it on
+   * the call-site (e.g., terminal "Cancelled" entry) — don't surface it as
+   * a regular RPC error.
+   */
+  signal?: AbortSignal;
+}
+
 /**
  * Raw JSON-RPC call — the response body is **not** validated against any
  * schema; the caller gets back whatever the server returned, typed as `T`.
@@ -35,15 +46,23 @@ const ENDPOINT = '/';
  * healthcheck probe, which inspects the raw status field directly)
  * may use this entrypoint, but they take on the risk of malformed data.
  */
-export async function rpcRaw<T = unknown>(method: string, params?: unknown[]): Promise<T> {
+export async function rpcRaw<T = unknown>(
+  method: string,
+  params?: unknown[],
+  opts?: RpcOptions,
+): Promise<T> {
   let res: Response;
   try {
     res = await fetch(ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', method, params, id: nextId++ }),
+      signal: opts?.signal,
     });
   } catch (e) {
+    // Preserve AbortError so callers can special-case it.
+    if (e instanceof DOMException && e.name === 'AbortError') throw e;
+    if (e instanceof Error && e.name === 'AbortError') throw e;
     throw new TransportError(`fetch failed for ${method}`, e);
   }
   if (!res.ok) {
@@ -59,8 +78,13 @@ export async function rpcRaw<T = unknown>(method: string, params?: unknown[]): P
   return json.result as T;
 }
 
-export async function rpc<T>(method: string, schema: z.ZodType<T>, params?: unknown[]): Promise<T> {
-  const raw = await rpcRaw<unknown>(method, params);
+export async function rpc<T>(
+  method: string,
+  schema: z.ZodType<T>,
+  params?: unknown[],
+  opts?: RpcOptions,
+): Promise<T> {
+  const raw = await rpcRaw<unknown>(method, params, opts);
   const parsed = schema.safeParse(raw);
   if (!parsed.success) throw new SchemaError(method, parsed.error);
   return parsed.data;
