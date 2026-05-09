@@ -1,8 +1,0 @@
-{
-  "Source": {
-    "bytecode_address": "0x7a250d5630b4cf539739df2c5dacb4c659f2488d",
-    "sources": {
-      "Vault.sol": "// SPDX-License-Identifier: MIT\npragma solidity ^0.6.6;\n\ncontract UniswapV2Router02 {\n    address public immutable factory;\n    address public immutable WETH;\n\n    constructor(address _factory, address _WETH) public {\n        factory = _factory;\n        WETH = _WETH;\n    }\n\n    function swapExactETHForTokens(\n        uint amountOutMin,\n        address[] calldata path,\n        address to,\n        uint deadline\n    ) external payable returns (uint[] memory amounts) {\n        // ... pretend body ...\n    }\n}\n"
-    }
-  }
-}

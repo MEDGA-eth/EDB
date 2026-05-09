@@ -1,0 +1,123 @@
+{
+  "bytecode_address": "0x6b4207a321319d5740d2375471953ac95d803598",
+  "detail": {
+    "Hook": {
+      "frame_id": [
+        6,
+        3
+      ],
+      "id": 150,
+      "length": 63,
+      "locals": {
+        "x": {
+          "type": "Uint",
+          "value": {
+            "bits": 256,
+            "value": "0x0"
+          }
+        },
+        "y": {
+          "type": "Uint",
+          "value": {
+            "bits": 256,
+            "value": "0x3"
+          }
+        },
+        "z": {
+          "type": "Uint",
+          "value": {
+            "bits": 256,
+            "value": "0x0"
+          }
+        }
+      },
+      "offset": 4305,
+      "path": "Contract",
+      "state_variables": {
+        "DOMAIN_SEPARATOR": {
+          "type": "FixedBytes",
+          "value": {
+            "size": 32,
+            "value": "0x35da85a0611267a504c5d1ed9524036b741a41219802579b5cb96becaf15bea2"
+          }
+        },
+        "blockTimestampLast": {
+          "type": "Uint",
+          "value": {
+            "bits": 32,
+            "value": "0x68ba3d17"
+          }
+        },
+        "factory": {
+          "type": "Address",
+          "value": "0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f"
+        },
+        "kLast": {
+          "type": "Uint",
+          "value": {
+            "bits": 256,
+            "value": "0x0"
+          }
+        },
+        "price0CumulativeLast": {
+          "type": "Uint",
+          "value": {
+            "bits": 256,
+            "value": "0x2c19f637645e0b43381572a0"
+          }
+        },
+        "price1CumulativeLast": {
+          "type": "Uint",
+          "value": {
+            "bits": 256,
+            "value": "0xb0fdce6670f6661663d2587ad1f71989916a5fbf59c"
+          }
+        },
+        "reserve0": {
+          "type": "Uint",
+          "value": {
+            "bits": 112,
+            "value": "0xe9eef00c0537c84bd23a8781f3"
+          }
+        },
+        "reserve1": {
+          "type": "Uint",
+          "value": {
+            "bits": 112,
+            "value": "0x19cedced25e9de4c2"
+          }
+        },
+        "token0": {
+          "type": "Address",
+          "value": "0x7beb8f36650e9327d8c52735e3b3c9d1521576e3"
+        },
+        "token1": {
+          "type": "Address",
+          "value": "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+        },
+        "totalSupply": {
+          "type": "Uint",
+          "value": {
+            "bits": 256,
+            "value": "0x10f750d77464cb671e9ef5"
+          }
+        },
+        "unlocked": {
+          "type": "Uint",
+          "value": {
+            "bits": 256,
+            "value": "0x0"
+          }
+        }
+      }
+    }
+  },
+  "frame_id": [
+    6,
+    3
+  ],
+  "id": 150,
+  "next_id": 151,
+  "prev_id": 149,
+  "target_address": "0x6b4207a321319d5740d2375471953ac95d803598"
+}
