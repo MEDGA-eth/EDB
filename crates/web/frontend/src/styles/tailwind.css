@@ -18,22 +18,26 @@
   --text-base: 15px;
   --text-base--line-height: 22px;
 
-  /* light theme tokens (default) */
-  --color-bg-root: #f5f0e8;
-  --color-bg: #faf6f0;
+  /* light theme tokens (default)
+     Tuned to read crisply on a typical sRGB display. The previous palette
+     was very warm/yellow which fights with code colours; we keep the
+     cream personality for chrome surfaces but bump foreground contrast
+     and pull bg-root toward a near-paper neutral. */
+  --color-bg-root: #f4f1e9;
+  --color-bg: #fbfaf6;
   --color-bg-elevated: #ffffff;
-  --color-bg-hover: #efe8dc;
-  --color-bg-active: #e6ddd0;
-  --color-fg: #2a1e0e;
-  --color-fg-secondary: rgba(42, 30, 14, 0.7);
-  --color-fg-tertiary: rgba(42, 30, 14, 0.48);
-  --color-border: rgba(100, 70, 30, 0.12);
-  --color-border-strong: rgba(100, 70, 30, 0.22);
-  --color-accent: #e04832;
-  --color-accent-dim: rgba(224, 72, 50, 0.1);
-  --color-success: #22c55e;
-  --color-warn: #d97706;
-  --color-danger: #dc2626;
+  --color-bg-hover: #ece5d4;
+  --color-bg-active: #ddd2bb;
+  --color-fg: #1f160a;                            /* darker than before for AA contrast */
+  --color-fg-secondary: rgba(31, 22, 10, 0.78);   /* was 0.70 — hairline lift on labels */
+  --color-fg-tertiary: rgba(31, 22, 10, 0.55);    /* was 0.48 — secondary text now legible */
+  --color-border: rgba(60, 42, 18, 0.18);         /* was rgba(100,70,30,0.12) — visible w/o noise */
+  --color-border-strong: rgba(60, 42, 18, 0.32);
+  --color-accent: #c2410c;                        /* a warmer, less screaming red-orange */
+  --color-accent-dim: rgba(194, 65, 12, 0.12);
+  --color-success: #15803d;
+  --color-warn: #b45309;
+  --color-danger: #b91c1c;
 
   /* syntax (light)
      A ramp tuned for variety, not a sea of pinks. The previous palette

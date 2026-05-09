@@ -3,18 +3,21 @@
   <img src="./resources/edb-banner.png" alt="EDB Banner" width="80%" />
 </p>
 
-<h1 align="center">EDB: The Ethereum Project Debugger 🔍</h1>
+<h1 align="center">
+  <img src="./resources/edb-icon.svg" alt="" width="36" height="36" align="absmiddle" />
+  &nbsp;EDB &nbsp;·&nbsp; The Ethereum Project Debugger
+</h1>
 
 <p align="center">
   <strong>Source-level time-travel debugger for Ethereum smart contracts</strong>
 </p>
 
 <p align="center">
-  <a href="#installation">Installation</a> •
-  <a href="#quickstart">Quickstart</a> •
-  <a href="#why-edb">Why EDB?</a> •
-  <a href="#sponsors">Sponsors</a> •
-  <a href="https://t.me/edb_feedback">TG Q&A</a>
+  <a href="#installation"><img src="https://img.shields.io/badge/-📦%20Install-047857?style=for-the-badge&labelColor=064e3b" alt="Install" /></a>
+  <a href="#quickstart"><img src="https://img.shields.io/badge/-🚀%20Quickstart-0e7490?style=for-the-badge&labelColor=164e63" alt="Quickstart" /></a>
+  <a href="#why-edb"><img src="https://img.shields.io/badge/-💡%20Why%20EDB%3F-7c3aed?style=for-the-badge&labelColor=4c1d95" alt="Why EDB?" /></a>
+  <a href="#sponsors"><img src="https://img.shields.io/badge/-✨%20Sponsors-e04832?style=for-the-badge&labelColor=9a3412" alt="Sponsors" /></a>
+  <a href="https://t.me/edb_feedback"><img src="https://img.shields.io/badge/-💬%20Telegram%20Q%26A-26a5e4?style=for-the-badge&labelColor=075481&logo=telegram&logoColor=white" alt="Telegram Q&amp;A" /></a>
 </p>
 
 EDB bridges the gap between high-level Solidity code and low-level EVM execution, providing four essential debugging features that have been missing from the Ethereum ecosystem:

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { AlertTriangle, Plus, X } from 'lucide-react';
 import { useSession } from '../../../store/session';
 import { useWatchValue } from '../../../hooks/useWatchValue';
-import { formatSolValue, type EvalResult } from '../../../lib/types';
+import { formatSolValue, type EvalResult, type SolValue } from '../../../lib/types';
+import { highlightSolidity } from '../../../lib/solHighlight';
 import { ErrorBoundary } from '../../ErrorBoundary';
 
 /**
@@ -13,55 +14,102 @@ import { ErrorBoundary } from '../../ErrorBoundary';
  * branches render with the same warning icon affordance so the error path
  * never looks like a crashed row to the user.
  */
+function watchTypeLabel(v: SolValue | null): string | null {
+  if (!v) return null;
+  if (v.type === 'Uint') return `uint${v.value.bits}`;
+  if (v.type === 'Int') return `int${v.value.bits}`;
+  if (v.type === 'FixedBytes') return `bytes${v.value.size}`;
+  if (v.type === 'Bool') return 'bool';
+  if (v.type === 'Address') return 'address';
+  if (v.type === 'String') return 'string';
+  if (v.type === 'Bytes') return 'bytes';
+  return v.type;
+}
+
 function WatchRow({ expr, snapshotId }: { expr: string; snapshotId: number }) {
   const { data, isLoading, error } = useWatchValue(expr, snapshotId);
   const remove = useSession((s) => s.removeWatchExpression);
-
-  function renderError(message: string, testid: string) {
-    return (
-      <span
-        data-testid={testid}
-        title={message}
-        className="inline-flex items-center gap-1 text-(--color-danger)"
-      >
-        <AlertTriangle size={12} aria-hidden />
-        <span className="truncate">{message}</span>
-      </span>
-    );
-  }
-
-  function renderValue() {
-    if (isLoading) return <span className="text-(--color-fg-tertiary)">…</span>;
-    if (error) return renderError((error as Error).message, `watch-rpc-error-${expr}`);
-    if (!data) return <span className="text-(--color-fg-tertiary)">(no value)</span>;
-    const r = data as EvalResult;
-    if (r.kind === 'Err') return renderError(r.error, `watch-eval-error-${expr}`);
-    return <span className="text-(--color-fg)">{formatSolValue(r.value)}</span>;
-  }
+  const r = (data as EvalResult | undefined) ?? null;
+  const okType = r?.kind === 'Ok' ? watchTypeLabel(r.value) : null;
+  const status: 'loading' | 'ok' | 'rpc-error' | 'eval-error' | 'empty' = isLoading
+    ? 'loading'
+    : error
+      ? 'rpc-error'
+      : !r
+        ? 'empty'
+        : r.kind === 'Err'
+          ? 'eval-error'
+          : 'ok';
 
   return (
     <li
       data-testid={`watch-row-${expr}`}
-      className="flex items-center gap-2 border-b border-(--color-border) px-2 py-1"
+      className="rounded-md border border-(--color-border) bg-(--color-bg-elevated)/60 px-3 py-2 hover:border-(--color-border-strong) transition"
     >
-      <code
-        className="max-w-[40%] truncate font-mono text-(--color-syn-keyword)"
-        title={expr}
-      >
-        {expr}
-      </code>
-      <span className="shrink-0 text-(--color-fg-tertiary)">·</span>
-      <span className="flex-1 truncate font-mono text-sm">{renderValue()}</span>
-      <button
-        type="button"
-        title="Remove watch"
-        aria-label={`Remove watch for ${expr}`}
-        data-testid={`watch-remove-${expr}`}
-        onClick={() => remove(expr)}
-        className="flex h-5 w-5 items-center justify-center text-(--color-fg-tertiary) hover:text-(--color-danger)"
-      >
-        <X size={12} aria-hidden />
-      </button>
+      <div className="flex items-baseline justify-between gap-2">
+        {/* Expression with the same Solidity highlighter the terminal uses
+            so identifiers, keywords and numbers read consistently across
+            both surfaces. */}
+        <code
+          className="break-all font-mono text-[13px]"
+          title={expr}
+          data-testid={`watch-expr-${expr}`}
+        >
+          {highlightSolidity(expr)}
+        </code>
+        <div className="flex items-center gap-1.5">
+          {okType && (
+            <span
+              className="shrink-0 rounded-full px-2 py-0.5 font-mono text-[11px] tracking-wide text-(--color-syn-type-std)"
+              style={{
+                backgroundColor: 'var(--color-bg)',
+                border: '1px solid var(--color-border)',
+              }}
+            >
+              {okType}
+            </span>
+          )}
+          <button
+            type="button"
+            title="Remove watch"
+            aria-label={`Remove watch for ${expr}`}
+            data-testid={`watch-remove-${expr}`}
+            onClick={() => remove(expr)}
+            className="flex h-5 w-5 items-center justify-center rounded text-(--color-fg-tertiary) hover:bg-(--color-bg-hover) hover:text-(--color-danger)"
+          >
+            <X size={14} aria-hidden />
+          </button>
+        </div>
+      </div>
+      <div className="mt-1.5 font-mono text-[13px] leading-relaxed">
+        {status === 'loading' && (
+          <span className="text-(--color-fg-tertiary)">evaluating…</span>
+        )}
+        {status === 'rpc-error' && (
+          <span
+            data-testid={`watch-rpc-error-${expr}`}
+            className="inline-flex items-center gap-1 text-(--color-danger)"
+            title={(error as Error).message}
+          >
+            <AlertTriangle size={14} aria-hidden /> {(error as Error).message}
+          </span>
+        )}
+        {status === 'empty' && (
+          <span className="text-(--color-fg-tertiary)">(no value)</span>
+        )}
+        {status === 'eval-error' && r?.kind === 'Err' && (
+          <span
+            data-testid={`watch-eval-error-${expr}`}
+            className="inline-flex items-center gap-1 text-(--color-danger)"
+            title={r.error}
+          >
+            <AlertTriangle size={14} aria-hidden /> {r.error}
+          </span>
+        )}
+        {status === 'ok' && r?.kind === 'Ok' && (
+          <span className="text-(--color-fg)">{formatSolValue(r.value)}</span>
+        )}
+      </div>
     </li>
   );
 }
@@ -98,7 +146,7 @@ function WatchViewInner({ snapshotId }: { snapshotId: number }) {
           re-evaluated on every snapshot change.
         </p>
       ) : (
-        <ul className="flex-1 overflow-auto">
+        <ul className="flex-1 overflow-auto flex flex-col gap-1.5 p-1" role="list">
           {watches.map((expr) => (
             <WatchRow key={expr} expr={expr} snapshotId={snapshotId} />
           ))}

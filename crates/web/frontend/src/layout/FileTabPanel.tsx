@@ -185,8 +185,14 @@ function SolidityView({
   function addBreakpointAtCursor() {
     const view = viewRef.current;
     if (!view || !file) return;
-    const head = view.state.selection.main.head;
-    const line = view.state.doc.lineAt(head).number;
+    // CodeMirror 'select-line' (or any forward range selection that ends at a
+    // line break) puts `head` at the START of the next line, which causes
+    // lineAt(head) to return that next line — off by one in the user's eyes.
+    // Use `from` (the lower edge of the range) so selecting a whole line
+    // sets the breakpoint on THAT line, not the one below it.
+    const sel = view.state.selection.main;
+    const pos = sel.from;
+    const line = view.state.doc.lineAt(pos).number;
     addBreakpoint({
       loc: { kind: 'Source', bytecode_address: addr, file_path: file.path, line_number: line },
       condition: null,

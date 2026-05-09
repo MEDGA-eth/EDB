@@ -103,18 +103,20 @@ function DisplayPanelInner() {
         <ToolbarButton
           icon={RefreshCw}
           label="Refresh"
+          showLabel
           testid="display-refresh"
           onClick={refreshActive}
         />
         <ToolbarButton
           icon={Copy}
-          label="Copy active tab"
+          label="Copy"
+          showLabel
           testid="display-copy"
           onClick={copyActive}
         />
         <ToolbarDivider />
-        <span className="font-display text-[11px] text-(--color-fg-tertiary)">
-          snapshot {id}
+        <span className="font-display text-[12px] text-(--color-fg-tertiary)">
+          snapshot <span className="font-mono">{id + 1}</span>
         </span>
       </Toolbar>
       <div

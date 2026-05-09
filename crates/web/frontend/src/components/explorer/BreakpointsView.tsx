@@ -47,21 +47,23 @@ function BreakpointsViewInner() {
 
   return (
     <div data-testid="breakpoints-view" className="flex h-full flex-col">
-      <div className="flex h-7 items-center justify-between gap-2 border-b border-(--color-border) bg-(--color-bg) px-2">
-        <span className="font-display text-[11px] font-semibold tracking-wide text-(--color-fg-secondary) uppercase">
+      <div className="flex flex-wrap h-auto min-h-9 items-center justify-between gap-2 border-b border-(--color-border) bg-(--color-bg) px-2 py-1">
+        <span className="font-display text-[12px] font-semibold tracking-wide text-(--color-fg-secondary) uppercase">
           {breakpoints.length} breakpoint{breakpoints.length === 1 ? '' : 's'}
         </span>
         <div className="flex items-center gap-1">
           <ToolbarButton
             icon={Eye}
-            label="Enable all breakpoints"
+            label="Enable all"
+            showLabel
             testid="bp-enable-all"
             onClick={enableAll}
             disabled={breakpoints.length === 0}
           />
           <ToolbarButton
             icon={EyeOff}
-            label="Disable all breakpoints"
+            label="Disable all"
+            showLabel
             testid="bp-disable-all"
             onClick={disableAll}
             disabled={breakpoints.length === 0}
@@ -69,7 +71,8 @@ function BreakpointsViewInner() {
           <ToolbarDivider />
           <ToolbarButton
             icon={Trash2}
-            label="Clear all breakpoints"
+            label="Clear all"
+            showLabel
             testid="bp-clear-all"
             onClick={clear}
             disabled={breakpoints.length === 0}
@@ -143,25 +146,26 @@ function BreakpointRow({
       data-testid={`bp-row-${idx}`}
       data-enabled={enabled ? 'true' : 'false'}
       className={
-        'flex flex-col gap-1 border-b border-(--color-border) px-2 py-1.5 text-xs hover:bg-(--color-bg-hover) ' +
+        'flex flex-col gap-1.5 border-b border-(--color-border) px-2 py-2 text-[13px] hover:bg-(--color-bg-hover) ' +
         (enabled ? '' : 'opacity-60')
       }
     >
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5">
         <button
           type="button"
-          title={enabled ? 'Disable breakpoint' : 'Enable breakpoint'}
+          title={enabled ? 'Toggle off (mute this breakpoint)' : 'Toggle on (re-enable this breakpoint)'}
           aria-label={enabled ? `Disable breakpoint ${idx + 1}` : `Enable breakpoint ${idx + 1}`}
           aria-pressed={!enabled}
           data-testid={`bp-toggle-${idx}`}
           onClick={onToggleEnabled}
-          className="flex h-5 w-5 items-center justify-center text-(--color-fg-tertiary) hover:text-(--color-fg)"
+          className="inline-flex h-6 items-center gap-1 rounded px-1.5 text-[11px] text-(--color-fg-tertiary) hover:bg-(--color-bg-hover) hover:text-(--color-fg)"
         >
-          {enabled ? <Eye size={12} aria-hidden /> : <EyeOff size={12} aria-hidden />}
+          {enabled ? <Eye size={14} aria-hidden /> : <EyeOff size={14} aria-hidden />}
+          <span>{enabled ? 'On' : 'Off'}</span>
         </button>
         <button
           type="button"
-          title="Jump to first hit"
+          title="Jump to first snapshot that hits this breakpoint"
           aria-label={`Jump to first hit of breakpoint ${idx + 1}`}
           onClick={onJump}
           data-testid={`bp-jump-${idx}`}
@@ -171,17 +175,21 @@ function BreakpointRow({
         </button>
         <button
           type="button"
-          title="Remove breakpoint"
+          title="Remove this breakpoint"
           aria-label={`Remove breakpoint ${idx + 1}`}
           data-testid={`bp-remove-${idx}`}
           onClick={onRemove}
-          className="flex h-5 w-5 items-center justify-center text-(--color-fg-tertiary) hover:text-(--color-danger)"
+          className="inline-flex h-6 items-center gap-1 rounded px-1.5 text-[11px] text-(--color-fg-tertiary) hover:bg-(--color-bg-hover) hover:text-(--color-danger)"
         >
-          <X size={12} aria-hidden />
+          <X size={14} aria-hidden /> <span>Remove</span>
         </button>
       </div>
-      <div className="flex items-center gap-1 pl-6">
-        <CircleSlash2 size={10} className="text-(--color-fg-tertiary)" aria-hidden />
+      <div
+        className="flex items-center gap-1.5 pl-1"
+        title="Optional condition — the breakpoint only fires when this Solidity expression evaluates to true at the snapshot."
+      >
+        <CircleSlash2 size={12} className="text-(--color-fg-tertiary)" aria-hidden />
+        <span className="text-[11px] text-(--color-fg-tertiary)">if</span>
         <input
           data-testid={`bp-condition-${idx}`}
           aria-label={`Condition for breakpoint ${idx + 1}`}
@@ -192,7 +200,7 @@ function BreakpointRow({
           onKeyDown={(e) => {
             if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
           }}
-          className="flex-1 rounded border border-(--color-border) bg-(--color-bg) px-1.5 py-0.5 font-mono text-[11px] outline-none focus:border-(--color-accent)"
+          className="flex-1 rounded border border-(--color-border) bg-(--color-bg) px-1.5 py-0.5 font-mono text-[12px] outline-none focus:border-(--color-accent)"
         />
       </div>
     </li>
