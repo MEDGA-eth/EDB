@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import { ArrowDownToLine, Copy, Eye, Trash2, X } from 'lucide-react';
 import { useEvalExpr } from '../../hooks/useEvalExpr';
 import { useSnapshotCount } from '../../hooks/useSnapshotCount';
+import { highlightSolidity } from '../../lib/solHighlight';
 import { runTermCommand } from '../../lib/termCommands';
 import { formatSolValue, type EvalResult } from '../../lib/types';
 import { useSession } from '../../store/session';
@@ -284,7 +285,12 @@ function TerminalPanelInner() {
 }
 
 function TerminalLine({ entry }: { entry: import('../../store/session').TerminalEntry }) {
-  if (entry.kind === 'input') return <div data-testid="term-input">› {entry.text}</div>;
+  if (entry.kind === 'input')
+    return (
+      <div data-testid="term-input">
+        <span className="text-(--color-accent)">›</span> {highlightSolidity(entry.text)}
+      </div>
+    );
   if (entry.kind === 'error')
     return (
       <div data-testid="term-error" className="text-(--color-danger)">
@@ -299,7 +305,10 @@ function TerminalLine({ entry }: { entry: import('../../store/session').Terminal
     );
   return (
     <div data-testid="term-result">
-      <ReactMarkdown>{`\`${entry.expr}\` →\n\n\`\`\`\n${formatEvalResult(entry.value)}\n\`\`\``}</ReactMarkdown>
+      <div className="opacity-70">{highlightSolidity(entry.expr)}{' →'}</div>
+      <pre className="my-1 whitespace-pre-wrap rounded bg-(--color-bg-elevated) px-2 py-1 text-(--color-fg)">
+        {formatEvalResult(entry.value)}
+      </pre>
     </div>
   );
 }

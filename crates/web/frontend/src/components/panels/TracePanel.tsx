@@ -281,7 +281,7 @@ function TracePanelInner() {
         role="tree"
         aria-label="Call trace"
         onKeyDown={onKey}
-        className="flex-1 overflow-auto p-2 font-mono text-sm"
+        className="flex-1 overflow-auto p-2 font-body text-[13px] leading-[1.5]"
       >
         {filteredRoots.map((n) => (
           <TraceNode
@@ -325,7 +325,7 @@ function EventsList({ events, indent }: { events: LogData[]; indent: number }) {
         <span className="ml-1 text-(--color-fg-tertiary)">{open ? '▾' : '▸'}</span>
       </button>
       {open && (
-        <ul className="mt-1 list-none space-y-0.5 text-xs text-(--color-fg-secondary)">
+        <ul className="mt-1 list-none space-y-0.5 text-[12px] text-(--color-fg-secondary)">
           {events.map((ev, i) => (
             <li key={i} data-testid={`trace-event-${i}`}>
               <span className="text-(--color-syn-type)">

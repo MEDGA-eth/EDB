@@ -34,8 +34,10 @@ describe('<IDELayout />', () => {
     expect(screen.getByTestId('activity-bar')).toBeTruthy();
     expect(screen.getByTestId('side-bar')).toBeTruthy();
     expect(screen.getByTestId('status-bar')).toBeTruthy();
-    // No files → editor-empty placeholder
-    expect(screen.getByTestId('editor-empty')).toBeTruthy();
+    // The unified MainArea is always mounted (it hosts the display + terminal
+    // tabs even when no files are open). Dockview renders its watermark
+    // inside that container.
+    expect(screen.getByTestId('main-area')).toBeTruthy();
     await waitFor(() => expect(screen.getByTestId('explorer-empty')).toBeTruthy());
   });
 

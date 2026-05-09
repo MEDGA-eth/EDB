@@ -7,6 +7,17 @@
   --font-body: "Nunito", sans-serif;
   --font-mono: "Fira Code", ui-monospace, monospace;
 
+  /* Typography ramp tuned for an IDE. The defaults Tailwind ships with
+     (12px / 14px) read as cramped at native zoom in dense panels; bump
+     each notch by ~1px so toolbars, trees, and status text stay legible
+     without inflating headlines. */
+  --text-xs: 13px;
+  --text-xs--line-height: 18px;
+  --text-sm: 14px;
+  --text-sm--line-height: 20px;
+  --text-base: 15px;
+  --text-base--line-height: 22px;
+
   /* light theme tokens (default) */
   --color-bg-root: #f5f0e8;
   --color-bg: #faf6f0;
@@ -24,21 +35,26 @@
   --color-warn: #d97706;
   --color-danger: #dc2626;
 
-  /* syntax */
-  --color-syn-keyword: #be185d;
-  --color-syn-string: #0f766e;
-  --color-syn-number: #b45309;
-  --color-syn-comment: rgba(42, 30, 14, 0.38);
-  --color-syn-type: #0f766e;
-  --color-syn-func: #6d28d9;
-  --color-syn-control: #c026d3;
-  --color-syn-modifier: #be123c;
-  --color-syn-self: #db2777;
-  --color-syn-atom: #b45309;
-  --color-syn-constant: #c2410c;
-  --color-syn-doc: #0d9488;
-  --color-syn-type-std: #0891b2;
-  --color-syn-escape: #db2777;
+  /* syntax (light)
+     A ramp tuned for variety, not a sea of pinks. The previous palette
+     painted 5 distinct token kinds the same magenta; this one walks the
+     wheel: blue keywords, green strings, amber numbers, cyan types,
+     purple functions, etc. Each token kind gets a colour with at least
+     one hue-step of separation from its neighbours. */
+  --color-syn-keyword: #1d4ed8;        /* blue 700  — for / if / return / contract */
+  --color-syn-string:  #15803d;        /* green 700 — string literals */
+  --color-syn-number:  #b45309;        /* amber 700 — numeric literals */
+  --color-syn-comment: rgba(42, 30, 14, 0.42);
+  --color-syn-type:    #0e7490;        /* cyan 700  — user-defined types */
+  --color-syn-func:    #6d28d9;        /* violet 700 — function names */
+  --color-syn-control: #b91c1c;        /* red 700   — break / continue / revert */
+  --color-syn-modifier:#0d9488;        /* teal 600  — visibility / mutability */
+  --color-syn-self:    #92400e;        /* brown 700 — this / super */
+  --color-syn-atom:    #c2410c;        /* orange 700 — true / false / null */
+  --color-syn-constant:#9a3412;        /* orange 800 — UPPER_CASE constants */
+  --color-syn-doc:     #475569;        /* slate 600  — natspec @ tags */
+  --color-syn-type-std:#0369a1;        /* sky 700    — uint256 / address / bytes */
+  --color-syn-escape:  #be185d;        /* pink 700   — only one pink, used sparingly */
 
   /* shape */
   --radius: 12px;
@@ -63,20 +79,21 @@
   --color-success: #4ade80;
   --color-warn: #fbbf24;
   --color-danger: #f87171;
-  --color-syn-keyword: #f472b6;
-  --color-syn-string: #5eead4;
-  --color-syn-number: #fbbf24;
+  /* dark theme: same hue-spread, brightened for the cream-on-cocoa palette */
+  --color-syn-keyword: #93c5fd;        /* blue 300  */
+  --color-syn-string:  #86efac;        /* green 300 */
+  --color-syn-number:  #fbbf24;        /* amber 400 */
   --color-syn-comment: rgba(245, 236, 220, 0.45);
-  --color-syn-type: #5eead4;
-  --color-syn-func: #c4b5fd;
-  --color-syn-control: #f0abfc;
-  --color-syn-modifier: #fda4af;
-  --color-syn-self: #f9a8d4;
-  --color-syn-atom: #fbbf24;
-  --color-syn-constant: #fdba74;
-  --color-syn-doc: #5eead4;
-  --color-syn-type-std: #67e8f9;
-  --color-syn-escape: #f9a8d4;
+  --color-syn-type:    #67e8f9;        /* cyan 300  */
+  --color-syn-func:    #c4b5fd;        /* violet 300 */
+  --color-syn-control: #fca5a5;        /* red 300    */
+  --color-syn-modifier:#5eead4;        /* teal 300   */
+  --color-syn-self:    #fdba74;        /* orange 300 */
+  --color-syn-atom:    #fdba74;        /* orange 300 */
+  --color-syn-constant:#fed7aa;        /* orange 200 */
+  --color-syn-doc:     #cbd5e1;        /* slate 300  */
+  --color-syn-type-std:#7dd3fc;        /* sky 300    */
+  --color-syn-escape:  #f0abfc;        /* fuchsia 300 (only sparing use)*/
 }
 
 html, body, #root {
