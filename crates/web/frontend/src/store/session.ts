@@ -12,11 +12,15 @@ import type { Theme } from '../lib/theme';
 export type TerminalEntry =
   | { kind: 'input'; ts: number; text: string; submissionId?: number }
   | { kind: 'result'; ts: number; expr: string; value: unknown; submissionId?: number }
-  | { kind: 'error'; ts: number; expr: string; code: number; message: string; submissionId?: number };
+  | { kind: 'error'; ts: number; expr: string; code: number; message: string; submissionId?: number }
+  // `message` is plain output from a built-in command (`bp`, `goto`, `help`, …).
+  // Distinct from `result` so renderers can format them as a simple line of
+  // markdown rather than a code-fenced eval value.
+  | { kind: 'message'; ts: number; text: string };
 
 export type ConnectionState = 'connected' | 'degraded' | 'offline';
 export type PanelTab = 'code' | 'trace' | 'display' | 'terminal';
-export type ActivityKind = 'explorer' | 'trace' | 'variables' | 'terminal' | 'breakpoints';
+export type ActivityKind = 'explorer' | 'trace' | 'variables' | 'breakpoints';
 
 /** Call-type buckets used to filter the trace tree. */
 export type TraceCallFilter =

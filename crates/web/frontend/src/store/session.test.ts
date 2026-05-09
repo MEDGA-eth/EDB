@@ -243,7 +243,7 @@ describe('useSession', () => {
 
   test('persistence excludes per-session fields', () => {
     const s = useSession.getState();
-    s.setActivity('terminal');
+    s.setActivity('breakpoints');
     s.openFile({ addr: '0x' + 'a'.repeat(40), path: 'p.sol' });
     s.setLayoutJson('{"l":true}');
     const raw = localStorage.getItem('edb-web:session')!;

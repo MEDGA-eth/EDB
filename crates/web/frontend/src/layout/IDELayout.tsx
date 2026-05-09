@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityBar } from './ActivityBar';
 import { StatusBar } from './StatusBar';
+import { DebugToolbar } from './DebugToolbar';
 import { EditorArea } from './EditorArea';
 import { BottomArea } from './BottomArea';
 import { FileExplorer } from '../components/explorer/FileExplorer';
@@ -89,6 +90,43 @@ export function IDELayout() {
   const noSnapshots = snapshotCountQ.isSuccess && snapshotCountQ.data === 0;
   const showEmptyBanner = traceIsEmpty && noSnapshots;
 
+  const mainRef = useRef<HTMLDivElement | null>(null);
+  // Bottom-region height as a fraction of the main split (0–1). Persisted to
+  // localStorage so the user's resize sticks across reloads.
+  const [bottomFrac, setBottomFrac] = useState<number>(() => {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('edb-web:bottom-frac') : null;
+    const n = raw ? parseFloat(raw) : NaN;
+    return Number.isFinite(n) && n > 0.05 && n < 0.9 ? n : 0.32;
+  });
+
+  const onSplitterDown = useCallback((startEvt: React.PointerEvent<HTMLDivElement>) => {
+    const main = mainRef.current;
+    if (!main) return;
+    startEvt.preventDefault();
+    const rect = main.getBoundingClientRect();
+    const target = startEvt.currentTarget;
+    target.setPointerCapture(startEvt.pointerId);
+    const onMove = (e: PointerEvent) => {
+      const top = e.clientY - rect.top;
+      const frac = 1 - Math.min(Math.max(top / rect.height, 0.1), 0.85);
+      setBottomFrac(frac);
+    };
+    const onUp = (e: PointerEvent) => {
+      target.releasePointerCapture(e.pointerId);
+      target.removeEventListener('pointermove', onMove);
+      target.removeEventListener('pointerup', onUp);
+      target.removeEventListener('pointercancel', onUp);
+      try { localStorage.setItem('edb-web:bottom-frac', String(bottomFracRef.current)); } catch { /* ignore */ }
+    };
+    target.addEventListener('pointermove', onMove);
+    target.addEventListener('pointerup', onUp);
+    target.addEventListener('pointercancel', onUp);
+  }, []);
+
+  // Mirror current frac into a ref so onUp can persist without depending on state.
+  const bottomFracRef = useRef(bottomFrac);
+  useEffect(() => { bottomFracRef.current = bottomFrac; }, [bottomFrac]);
+
   return (
     <div className="flex h-full flex-col bg-(--color-bg-root)" data-testid="ide-layout">
       {showEmptyBanner && (
@@ -102,6 +140,7 @@ export function IDELayout() {
           {' '}to load one.
         </div>
       )}
+      <DebugToolbar />
       <div className="flex flex-1 overflow-hidden">
         {/* activity bar (left) */}
         <div style={{ width: ACTIVITY_WIDTH_PX }} className="shrink-0">
@@ -110,8 +149,8 @@ export function IDELayout() {
         {/* sidebar */}
         <SideBar activity={activity} />
         {/* main split: editor (top) + bottom panel */}
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-hidden" data-testid="editor-region">
+        <div ref={mainRef} className="flex flex-1 flex-col overflow-hidden">
+          <div className="overflow-hidden" data-testid="editor-region" style={{ flex: `1 1 ${(1 - bottomFrac) * 100}%`, minHeight: 80 }}>
             {/*
               The editor area stays mounted across window resizes — dockview
               observes its container and handles its own layout. Re-mounting
@@ -120,10 +159,19 @@ export function IDELayout() {
             <EditorArea />
           </div>
           <div
-            className="h-2 cursor-row-resize border-t border-b border-(--color-border) bg-(--color-bg)"
-            aria-hidden
-          />
-          <div className="h-[30%] min-h-[160px] overflow-hidden" data-testid="bottom-region">
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize bottom panel"
+            data-testid="bottom-splitter"
+            onPointerDown={onSplitterDown}
+            className="group relative h-1.5 shrink-0 cursor-row-resize bg-(--color-border) transition hover:bg-(--color-accent) active:bg-(--color-accent)"
+          >
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 -top-1 -bottom-1 group-hover:bg-(--color-accent)/20"
+            />
+          </div>
+          <div className="overflow-hidden" data-testid="bottom-region" style={{ flex: `0 0 ${bottomFrac * 100}%`, minHeight: 120 }}>
             <BottomArea />
           </div>
         </div>

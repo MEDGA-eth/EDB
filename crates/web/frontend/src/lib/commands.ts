@@ -149,7 +149,7 @@ export const COMMANDS: Command[] = [
     id: 'nav.next',
     label: 'Next snapshot',
     group: 'Navigation',
-    hint: 'n',
+    hint: 'F11',
     enabled: ({ snapshotCount }) => useSession.getState().currentSnapshotId < snapshotCount - 1,
     run: ({ snapshotCount }) => useSession.getState().nextSnapshot(snapshotCount),
   },
@@ -157,7 +157,7 @@ export const COMMANDS: Command[] = [
     id: 'nav.prev',
     label: 'Previous snapshot',
     group: 'Navigation',
-    hint: 'p',
+    hint: '⇧F11',
     enabled: () => useSession.getState().currentSnapshotId > 0,
     run: () => useSession.getState().prevSnapshot(),
   },
@@ -181,7 +181,7 @@ export const COMMANDS: Command[] = [
     id: 'nav.step-over',
     label: 'Step over',
     group: 'Navigation',
-    hint: 'o',
+    hint: 'F10',
     enabled: ({ queryClient }) =>
       hasNeighbour(queryClient, useSession.getState().currentSnapshotId, 'next'),
     run: ({ queryClient }) => {
@@ -195,7 +195,7 @@ export const COMMANDS: Command[] = [
     id: 'nav.step-out',
     label: 'Step out',
     group: 'Navigation',
-    hint: 'O',
+    hint: '⇧F11',
     enabled: ({ queryClient }) => {
       const cur = useSession.getState().currentSnapshotId;
       const snap = getCachedSnapshot(queryClient, cur);
@@ -215,7 +215,7 @@ export const COMMANDS: Command[] = [
     id: 'nav.reverse-step-over',
     label: 'Reverse step over',
     group: 'Navigation',
-    hint: 'b',
+    hint: '⌥F10',
     enabled: ({ queryClient }) =>
       useSession.getState().currentSnapshotId > 0 &&
       hasNeighbour(queryClient, useSession.getState().currentSnapshotId, 'prev'),
@@ -230,7 +230,7 @@ export const COMMANDS: Command[] = [
     id: 'nav.reverse-step-out',
     label: 'Reverse step out',
     group: 'Navigation',
-    hint: 'B',
+    hint: '⌥⇧F11',
     enabled: ({ queryClient }) => {
       const cur = useSession.getState().currentSnapshotId;
       if (cur === 0) return false;
@@ -250,7 +250,7 @@ export const COMMANDS: Command[] = [
     id: 'nav.continue',
     label: 'Continue (run to next breakpoint)',
     group: 'Navigation',
-    hint: 'c',
+    hint: 'F5',
     enabled: ({ snapshotCount }) =>
       snapshotCount > 0 && useSession.getState().currentSnapshotId < snapshotCount - 1,
     run: async ({ queryClient, snapshotCount }) => {
@@ -268,7 +268,7 @@ export const COMMANDS: Command[] = [
     id: 'nav.reverse-continue',
     label: 'Reverse continue (run back to previous breakpoint)',
     group: 'Navigation',
-    hint: 'C',
+    hint: '⌥F5',
     enabled: () => useSession.getState().currentSnapshotId > 0,
     run: async ({ queryClient }) => {
       const cur = useSession.getState().currentSnapshotId;
@@ -285,7 +285,7 @@ export const COMMANDS: Command[] = [
     id: 'nav.next-call',
     label: 'Next call',
     group: 'Navigation',
-    hint: 'N',
+    hint: '⌥→',
     enabled: (c) =>
       typeof c.nextCallId === 'number' && c.nextCallId !== useSession.getState().currentSnapshotId,
     run: (c) => {
@@ -296,12 +296,29 @@ export const COMMANDS: Command[] = [
     id: 'nav.prev-call',
     label: 'Previous call',
     group: 'Navigation',
-    hint: 'P',
+    hint: '⌥←',
     enabled: (c) =>
       typeof c.prevCallId === 'number' && c.prevCallId !== useSession.getState().currentSnapshotId,
     run: (c) => {
       if (typeof c.prevCallId === 'number') setSnapshot(c.prevCallId);
     },
+  },
+  {
+    id: 'nav.restart',
+    label: 'Restart (jump to first snapshot)',
+    group: 'Navigation',
+    hint: '⇧⌘F5',
+    enabled: () => useSession.getState().currentSnapshotId !== 0,
+    run: () => setSnapshot(0),
+  },
+  {
+    id: 'nav.stop',
+    label: 'Stop (run to end)',
+    group: 'Navigation',
+    hint: '⇧F5',
+    enabled: ({ snapshotCount }) =>
+      snapshotCount > 0 && useSession.getState().currentSnapshotId !== snapshotCount - 1,
+    run: ({ snapshotCount }) => setSnapshot(clamp(snapshotCount - 1, snapshotCount)),
   },
   // ── View ────────────────────────────────────────────────────
   {

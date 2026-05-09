@@ -1,4 +1,4 @@
-import { Folder, Network, Eye, Terminal, Circle, Search } from 'lucide-react';
+import { Folder, Network, Eye, Circle, Search } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useSession, type ActivityKind } from '../store/session';
 
@@ -12,7 +12,6 @@ const ITEMS: Item[] = [
   { key: 'explorer', label: 'Explorer', Icon: Folder },
   { key: 'trace', label: 'Trace', Icon: Network },
   { key: 'variables', label: 'Variables', Icon: Eye },
-  { key: 'terminal', label: 'Terminal', Icon: Terminal },
   { key: 'breakpoints', label: 'Breakpoints', Icon: Circle },
 ];
 
@@ -22,7 +21,7 @@ export function ActivityBar() {
   const setPaletteOpen = useSession((s) => s.setPaletteOpen);
   return (
     <nav
-      className="flex w-12 flex-col border-r border-(--color-border) bg-(--color-bg)"
+      className="flex w-16 flex-col border-r border-(--color-border) bg-(--color-bg)"
       data-testid="activity-bar"
       aria-label="Activity bar"
     >
@@ -37,7 +36,7 @@ export function ActivityBar() {
             aria-label={label}
             aria-pressed={isActive}
             data-testid={`activity-${key}`}
-            className={`relative flex h-12 items-center justify-center text-(--color-fg-secondary) transition hover:text-(--color-fg) ${
+            className={`relative flex h-16 flex-col items-center justify-center gap-1 text-(--color-fg-secondary) transition hover:text-(--color-fg) ${
               isActive ? 'text-(--color-fg) bg-(--color-accent)/10' : ''
             }`}
           >
@@ -47,7 +46,8 @@ export function ActivityBar() {
                 className="absolute top-0 bottom-0 left-0 w-[3px] bg-(--color-accent)"
               />
             )}
-            <Icon size={20} />
+            <Icon size={20} aria-hidden />
+            <span className="text-[10px] font-medium leading-none">{label}</span>
           </button>
         );
       })}
@@ -58,9 +58,10 @@ export function ActivityBar() {
           title="Open command palette (Ctrl+P)"
           aria-label="Open command palette"
           data-testid="activity-palette"
-          className="flex h-12 items-center justify-center text-(--color-fg-secondary) transition hover:text-(--color-fg)"
+          className="flex h-16 flex-col items-center justify-center gap-1 text-(--color-fg-secondary) transition hover:text-(--color-fg)"
         >
-          <Search size={20} />
+          <Search size={20} aria-hidden />
+          <span className="text-[10px] font-medium leading-none">Search</span>
         </button>
       </div>
     </nav>
