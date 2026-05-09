@@ -6,7 +6,10 @@ test('boots into the IDE shell with bottom panels and updates URL on Next', asyn
   await expect(page.getByTestId('activity-bar')).toBeVisible();
   await expect(page.getByTestId('side-bar')).toBeVisible();
   await expect(page.getByTestId('status-bar')).toBeVisible();
-  // Bottom panel area renders trace + display + terminal as dockview tabs
+  // Trace lives in the sidebar now (LAYOUT_VERSION 2). Activate the trace
+  // activity to mount its panel before asserting visibility.
+  await page.getByTestId('activity-trace').click();
+  await expect(page.getByTestId('trace-sidebar')).toBeVisible();
   await expect(page.getByTestId('trace-panel')).toBeVisible();
 
   // Step the snapshot id forward 3 times by writing the URL hash directly.

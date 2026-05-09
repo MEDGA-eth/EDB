@@ -79,3 +79,9 @@ html, body, #root {
 .syn-num  { color: var(--color-syn-number); }
 .syn-addr { color: var(--color-syn-type); }
 .syn-comment { color: var(--color-syn-comment); font-style: italic; }
+
+/* Subtle current-line highlight applied via CodeMirror line decoration. */
+.cm-edb-current-line {
+  background-color: var(--color-accent-dim) !important;
+  box-shadow: inset 2px 0 var(--color-accent);
+}

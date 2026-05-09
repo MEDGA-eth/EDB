@@ -48,27 +48,22 @@ export function BottomArea() {
     if (!restored) {
       // Idempotent: under React 19 StrictMode, `onReady` runs twice in dev.
       // Skip any default panel that already exists from the previous mount.
-      if (!api.getPanel('trace')) {
-        api.addPanel({ id: 'trace', component: 'trace', title: 'Trace' });
-      }
+      // Trace lives in the sidebar now (LAYOUT_VERSION 2); the `trace`
+      // component stays registered below for backward compat with v1
+      // persisted layouts that still reference it.
       if (!api.getPanel('display')) {
-        api.addPanel({
-          id: 'display',
-          component: 'display',
-          title: 'Display',
-          position: { referencePanel: 'trace', direction: 'within' },
-        });
+        api.addPanel({ id: 'display', component: 'display', title: 'Display' });
       }
       if (!api.getPanel('terminal')) {
         api.addPanel({
           id: 'terminal',
           component: 'terminal',
           title: 'Terminal',
-          position: { referencePanel: 'trace', direction: 'within' },
+          position: { referencePanel: 'display', direction: 'within' },
         });
       }
-      // make Trace the visible tab
-      api.getPanel('trace')?.api.setActive();
+      // make Display the visible tab
+      api.getPanel('display')?.api.setActive();
     }
 
     // Subscribe AFTER default-panel setup completes so the partial-init

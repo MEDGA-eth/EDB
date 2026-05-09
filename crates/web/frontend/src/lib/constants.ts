@@ -24,8 +24,12 @@ export const PALETTE_RESULT_CAP = 60;
 /**
  * Bumped any time the persisted dockview-layout shape changes incompatibly.
  * On restore, mismatches drop the saved layout and re-seed defaults.
+ *
+ * History:
+ *   1: initial bottom-panel layout (Trace + Display + Terminal tabs).
+ *   2: Trace moved to the sidebar; bottom defaults to Display + Terminal only.
  */
-export const LAYOUT_VERSION = 1;
+export const LAYOUT_VERSION = 2;
 
 /** Width of the activity bar (icon column on the left), in CSS pixels. */
 export const ACTIVITY_WIDTH_PX = 48;

@@ -10,7 +10,9 @@ test('command palette navigates between snapshots', async ({ page }) => {
 
   // Wait for the IDE shell to be up — both the status bar (with snapshot
   // label) and the trace panel must be mounted before we drive the palette.
+  // Trace now lives in the sidebar; activate it so the panel mounts.
   await expect(page.getByTestId('status-bar')).toBeVisible();
+  await page.getByTestId('activity-trace').click();
   await expect(page.getByTestId('trace-panel')).toBeVisible();
   await expect(page.getByTestId('snapshot-label')).toContainText('/ 196');
 

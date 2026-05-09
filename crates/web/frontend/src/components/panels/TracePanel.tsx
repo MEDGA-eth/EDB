@@ -9,11 +9,16 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useTrace } from '../../hooks/useTrace';
+import { useSnapshotInfo } from '../../hooks/useSnapshotInfo';
 import { useSession } from '../../store/session';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { ErrorCard } from '../ErrorCard';
 import { Toolbar, ToolbarButton, ToolbarDivider } from '../Toolbar';
-import type { CallType, LogData, TraceEntry } from '../../lib/types';
+import { rpc } from '../../lib/rpc';
+import { DISASM_PATH } from '../../layout/FileTabPanel';
+import { traceEntryIdOf } from '../../lib/types';
+import type { CallType, LogData, SnapshotInfo, TraceEntry } from '../../lib/types';
+import { SnapshotInfo as SnapshotInfoSchema } from '../../lib/types';
 
 interface TreeNode {
   entry: TraceEntry;
@@ -107,6 +112,8 @@ function TracePanelInner() {
   const expandTick = useSession((s) => s.traceExpandTick);
   const collapseTick = useSession((s) => s.traceCollapseTick);
   const currentId = useSession((s) => s.currentSnapshotId);
+  const { data: currentSnap } = useSnapshotInfo(currentId);
+  const currentFrameId = currentSnap ? traceEntryIdOf(currentSnap.frame_id) : null;
   const qc = useQueryClient();
   const containerRef = useRef<HTMLDivElement | null>(null);
   /** "force open" version pulses to expand-all; "force close" pulses to collapse-all */
@@ -222,6 +229,7 @@ function TracePanelInner() {
             forceOpen={forceOpen}
             forceClose={forceClose}
             currentId={currentId}
+            currentFrameId={currentFrameId}
           />
         ))}
       </div>
@@ -280,14 +288,18 @@ function TraceNode({
   forceOpen,
   forceClose,
   currentId,
+  currentFrameId,
 }: {
   node: TreeNode;
   depth: number;
   forceOpen: number;
   forceClose: number;
   currentId: number;
+  currentFrameId: number | null;
 }) {
   const setSnap = useSession((s) => s.setSnapshotId);
+  const openFile = useSession((s) => s.openFile);
+  const qc = useQueryClient();
   const [open, setOpen] = useState(true);
 
   useEffect(() => {
@@ -302,13 +314,50 @@ function TraceNode({
   // every executed entry has a non-null first_snapshot_id; CREATE failures
   // can be null, in which case we fall back to the trace id (rare).
   const targetSnapshotId = entry.first_snapshot_id ?? entry.id;
-  const isCurrent = targetSnapshotId === currentId;
+  // Highlight by frame: an entry is "current" when the active snapshot's
+  // frame_id[0] points to it. This matches focus on the running call rather
+  // than just the first snapshot of each entry.
+  const isCurrent = currentFrameId !== null
+    ? entry.id === currentFrameId
+    : targetSnapshotId === currentId;
   const hasKids = node.children.length > 0;
   const label = callTypeLabel(entry.call_type);
   const labelColor = callTypeColorVar(entry.call_type);
   const target = entry.target_label ?? shortAddr(entry.target);
   const failed = isCallFailure(entry);
   const indent = depth * 16 + 4;
+
+  /**
+   * Click handler: jump to the first snapshot for this entry AND reveal
+   * the source/disasm view for the entry's `code_address`. The path comes
+   * from the cached snapshot if available, else we kick off a fetch and
+   * open the file once it lands. Best-effort — the snapshot navigation
+   * always happens, file-open piggybacks on cache.
+   */
+  function handleSelect() {
+    setSnap(targetSnapshotId);
+    const cached = qc.getQueryData<SnapshotInfo>(['snapshot', targetSnapshotId]);
+    const addr = entry.code_address;
+    if (cached) {
+      const path = cached.detail.kind === 'Hook' ? cached.detail.path : DISASM_PATH;
+      openFile({ addr, path });
+      return;
+    }
+    // Best-effort fetch: open file once snapshot resolves; ignore failures.
+    qc.fetchQuery({
+      queryKey: ['snapshot', targetSnapshotId] as const,
+      queryFn: () => rpc('edb_getSnapshotInfo', SnapshotInfoSchema, [targetSnapshotId]),
+      staleTime: 30_000,
+    }).then(
+      (snap) => {
+        const path = snap.detail.kind === 'Hook' ? snap.detail.path : DISASM_PATH;
+        openFile({ addr, path });
+      },
+      () => {
+        // best-effort: opening fails silently if the snapshot fetch errors
+      },
+    );
+  }
 
   return (
     <>
@@ -337,12 +386,13 @@ function TraceNode({
           type="button"
           data-testid={`trace-entry-${entry.id}`}
           data-failed={failed ? 'true' : undefined}
-          onClick={() => setSnap(targetSnapshotId)}
+          data-current={isCurrent ? 'true' : undefined}
+          onClick={handleSelect}
           aria-label={`Go to trace entry ${entry.id} (${label})${failed ? ' — reverted/errored' : ''}`}
           aria-pressed={isCurrent}
           className={
             'flex-1 rounded px-2 py-0.5 text-left hover:bg-(--color-bg-hover) ' +
-            (isCurrent ? 'bg-(--color-accent-dim) text-(--color-fg)' : '') +
+            (isCurrent ? 'bg-(--color-accent-dim) font-semibold text-(--color-fg) ' : '') +
             (failed ? ' text-(--color-danger)' : '')
           }
         >
@@ -370,6 +420,7 @@ function TraceNode({
             forceOpen={forceOpen}
             forceClose={forceClose}
             currentId={currentId}
+            currentFrameId={currentFrameId}
           />
         ))}
     </>
