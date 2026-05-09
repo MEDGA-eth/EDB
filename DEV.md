@@ -437,11 +437,32 @@ Solidity file open in the editor.
 ### Skipping the bun build
 
 If you don't have `bun` installed, set `EDB_SKIP_WEB_BUILD=1` before any
-`cargo` command. The resulting binary will fall back to a placeholder
-when `--ui=web` is requested. **Don't ship release builds with this set**
-— it produces a binary that panics at runtime when `--ui=web` is used.
-Verify `bun --version` resolves on the build agent before invoking
-`cargo build --release`.
+`cargo` command. The build script writes a placeholder `dist/index.html`
+into the embedded assets, so:
+
+- `cargo build` / `cargo check` succeed.
+- The TUI and CLI work normally.
+- Launching `--ui=web` serves the placeholder page (a single line of HTML
+  saying "edb-web: dist not built"), not the real SPA.
+
+**Don't ship release builds with this flag set** — end users will see the
+placeholder when they run `edb replay --ui=web`. Verify `bun --version`
+resolves on the build agent before invoking `cargo build --release`.
+
+#### Why does cargo say "bun not found on PATH"?
+
+The frontend build script (`crates/web/build.rs`) shells out to `bun`,
+inheriting `PATH` from whoever launched `cargo`. The Bun installer adds
+`export PATH="$HOME/.bun/bin:$PATH"` to your shell rc file, but that line
+only runs in **interactive** shells. If `cargo build` is invoked from a
+non-interactive shell, an IDE task runner that doesn't source your rc, or
+a terminal opened **before** the install line was appended, `bun` will be
+missing. Workarounds:
+
+- `PATH="$HOME/.bun/bin:$PATH" cargo build` — one-off override.
+- Add the export to `~/.zprofile` (login shells) **and** `~/.zshrc`
+  (interactive) so all spawned shells see it.
+- `EDB_SKIP_WEB_BUILD=1 cargo build` — skip the frontend bundle entirely.
 
 ### Security boundary
 
