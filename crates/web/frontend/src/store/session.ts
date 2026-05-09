@@ -18,6 +18,24 @@ export type ConnectionState = 'connected' | 'degraded' | 'offline';
 export type PanelTab = 'code' | 'trace' | 'display' | 'terminal';
 export type ActivityKind = 'explorer' | 'trace' | 'variables' | 'terminal' | 'breakpoints';
 
+/** Call-type buckets used to filter the trace tree. */
+export type TraceCallFilter =
+  | 'CALL'
+  | 'STATICCALL'
+  | 'DELEGATECALL'
+  | 'CALLCODE'
+  | 'CREATE'
+  | 'CREATE2';
+
+export const ALL_TRACE_CALL_FILTERS: readonly TraceCallFilter[] = [
+  'CALL',
+  'STATICCALL',
+  'DELEGATECALL',
+  'CALLCODE',
+  'CREATE',
+  'CREATE2',
+];
+
 export interface OpenFile {
   /** stable id used as the dockview panel id; e.g. `${addr}::${path}` */
   id: string;
@@ -52,6 +70,8 @@ export interface SessionState {
   traceCollapseTick: number;
   /** persisted list of watch expressions (auto-evaluated each snapshot) */
   watchExpressions: string[];
+  /** persisted set of call types to show in the trace tree. Missing → all on. */
+  traceCallFilters: TraceCallFilter[];
 
   setSnapshotId(id: number): void;
   nextSnapshot(max: number): void;
@@ -89,6 +109,9 @@ export interface SessionState {
   addWatchExpression(expr: string): void;
   removeWatchExpression(expr: string): void;
   clearWatchExpressions(): void;
+
+  toggleTraceCallFilter(filter: TraceCallFilter): void;
+  resetTraceCallFilters(): void;
 }
 
 function fileId(addr: string, path: string): string {
@@ -119,6 +142,7 @@ export const useSession = create<SessionState>()(
       traceExpandTick: 0,
       traceCollapseTick: 0,
       watchExpressions: [],
+      traceCallFilters: [...ALL_TRACE_CALL_FILTERS],
 
       setSnapshotId: (id) => set({ currentSnapshotId: Math.max(0, id) }),
       nextSnapshot: (max) =>
@@ -204,6 +228,21 @@ export const useSession = create<SessionState>()(
       removeWatchExpression: (expr) =>
         set({ watchExpressions: get().watchExpressions.filter((e) => e !== expr) }),
       clearWatchExpressions: () => set({ watchExpressions: [] }),
+
+      toggleTraceCallFilter: (filter) => {
+        const cur = get().traceCallFilters;
+        if (cur.includes(filter)) {
+          set({ traceCallFilters: cur.filter((f) => f !== filter) });
+        } else {
+          // Maintain canonical ordering so the persisted shape is stable.
+          const next = ALL_TRACE_CALL_FILTERS.filter(
+            (f) => f === filter || cur.includes(f),
+          );
+          set({ traceCallFilters: [...next] });
+        }
+      },
+      resetTraceCallFilters: () =>
+        set({ traceCallFilters: [...ALL_TRACE_CALL_FILTERS] }),
     }),
     {
       name: PERSIST_KEY,

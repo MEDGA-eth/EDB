@@ -25,6 +25,14 @@ describe('command registry', () => {
       traceExpandTick: 0,
       traceCollapseTick: 0,
       watchExpressions: [],
+      traceCallFilters: [
+        'CALL',
+        'STATICCALL',
+        'DELEGATECALL',
+        'CALLCODE',
+        'CREATE',
+        'CREATE2',
+      ],
     });
   });
   afterEach(() => useSession.setState({ paletteOpen: false }));

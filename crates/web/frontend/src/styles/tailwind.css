@@ -31,6 +31,14 @@
   --color-syn-comment: rgba(42, 30, 14, 0.38);
   --color-syn-type: #0f766e;
   --color-syn-func: #6d28d9;
+  --color-syn-control: #c026d3;
+  --color-syn-modifier: #be123c;
+  --color-syn-self: #db2777;
+  --color-syn-atom: #b45309;
+  --color-syn-constant: #c2410c;
+  --color-syn-doc: #0d9488;
+  --color-syn-type-std: #0891b2;
+  --color-syn-escape: #db2777;
 
   /* shape */
   --radius: 12px;
@@ -61,6 +69,14 @@
   --color-syn-comment: rgba(245, 236, 220, 0.45);
   --color-syn-type: #5eead4;
   --color-syn-func: #c4b5fd;
+  --color-syn-control: #f0abfc;
+  --color-syn-modifier: #fda4af;
+  --color-syn-self: #f9a8d4;
+  --color-syn-atom: #fbbf24;
+  --color-syn-constant: #fdba74;
+  --color-syn-doc: #5eead4;
+  --color-syn-type-std: #67e8f9;
+  --color-syn-escape: #f9a8d4;
 }
 
 html, body, #root {
