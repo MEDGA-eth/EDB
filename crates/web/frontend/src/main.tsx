@@ -5,7 +5,16 @@ import App from './App';
 import './styles/tailwind.css';
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: Infinity, retry: false, refetchOnWindowFocus: false } },
+  defaultOptions: {
+    queries: {
+      staleTime: Infinity,
+      // Cap memory growth: queries unobserved for 30 minutes get evicted from
+      // the cache, so long time-travel sessions don't grow unboundedly.
+      gcTime: 30 * 60 * 1000,
+      retry: false,
+      refetchOnWindowFocus: false,
+    },
+  },
 });
 
 const rootEl = document.getElementById('root');
