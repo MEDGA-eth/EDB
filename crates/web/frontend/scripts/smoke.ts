@@ -37,13 +37,16 @@ const treeitems = await page.locator('[role="treeitem"]').count();
 if (treeitems === 0) throw new Error('explorer has no treeitems');
 console.log(`  ✓ ${treeitems} treeitem(s)`);
 
-console.log('3. Trace panel shows entries from real trace');
-const traceTab = page.locator('.dv-tab').filter({ hasText: /^Trace$/ }).first();
-await traceTab.click();
+console.log('3. Trace sidebar shows entries from real trace');
+// Trace lives in the sidebar now; click the activity-bar trace icon to show it.
+await page.locator('[data-testid="activity-trace"]').click();
 await page.waitForTimeout(500);
 const traceEntries = await page.locator('[data-testid^="trace-entry-"]').count();
 if (traceEntries === 0) throw new Error('no trace entries');
 console.log(`  ✓ ${traceEntries} trace entries`);
+// Switch back to explorer for the screenshot
+await page.locator('[data-testid="activity-explorer"]').click();
+await page.waitForTimeout(300);
 
 console.log('4. Snapshot navigation via URL hash');
 await page.evaluate(() => {
