@@ -37,7 +37,20 @@ EDB bridges the gap between high-level Solidity code and low-level EVM execution
 
 ### Prerequisites
 
-- **Ethereum RPC endpoint** - Public (like Infura/Alchemy) or local node
+- **Rust** (stable, 2024 edition) — install via [rustup.rs](https://rustup.rs)
+- **[Bun](https://bun.sh)** — bundles the embedded web UI at compile time. Install with:
+  ```bash
+  curl -fsSL https://bun.sh/install | bash
+  ```
+  After install, ensure `bun --version` resolves in the same shell you'll
+  run `cargo build` from. The Bun installer writes its `PATH` export to
+  `~/.zshrc` / `~/.bashrc`, so a fresh terminal (or `source` of that file)
+  is needed before building.
+
+  *Don't want to install Bun?* Set `EDB_SKIP_WEB_BUILD=1` before any
+  `cargo` command. The web UI ships a "not built" placeholder; the TUI and
+  CLI still work.
+- **Ethereum RPC endpoint** — public (Infura / Alchemy) or local node
 
 ### One-line Install
 
@@ -52,7 +65,7 @@ curl -sSL https://install.edb.sh | bash
 git clone https://github.com/edb-rs/edb
 cd edb
 
-# Build all components
+# Build all components (requires bun on PATH — see Prerequisites)
 cargo build --release
 
 # Install binaries
