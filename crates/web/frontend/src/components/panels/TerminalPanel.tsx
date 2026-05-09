@@ -38,8 +38,27 @@ function TerminalPanelInner() {
     let text = '';
     if (last.kind === 'result') text = `${last.expr} → ${JSON.stringify(last.value, null, 2)}`;
     else if (last.kind === 'error') text = `${last.expr} ⨯ ${last.message} (${last.code})`;
-    if (navigator.clipboard?.writeText) {
+    if (!navigator.clipboard?.writeText) {
+      append({
+        kind: 'error',
+        ts: Date.now(),
+        expr: '(copy)',
+        code: -1,
+        message: 'Clipboard API not available in this context.',
+      });
+      return;
+    }
+    try {
       await navigator.clipboard.writeText(text);
+    } catch (e) {
+      const err = e as { message?: string };
+      append({
+        kind: 'error',
+        ts: Date.now(),
+        expr: '(copy)',
+        code: -1,
+        message: `Clipboard write failed: ${err.message ?? String(e)}`,
+      });
     }
   }
 
@@ -92,7 +111,9 @@ function TerminalPanelInner() {
       </Toolbar>
       <div ref={scrollRef} className="flex-1 overflow-auto p-3 font-mono text-sm">
         {history.map((h, i) => (
-          <TerminalLine key={i} entry={h} />
+          // `ts` collisions are vanishingly rare in practice; fall back to the
+          // index when two entries share the same millisecond.
+          <TerminalLine key={`${h.ts}-${i}`} entry={h} />
         ))}
       </div>
       <form onSubmit={submit} className="flex gap-2 border-t border-(--color-border) bg-(--color-bg) p-2">

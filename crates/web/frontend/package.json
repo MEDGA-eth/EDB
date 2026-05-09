@@ -11,7 +11,6 @@
     "mocks:gen": "bun run scripts/gen-mocks.ts"
   },
   "dependencies": {
-    "@codemirror/lang-javascript": "^6.2.2",
     "@codemirror/state": "^6.5.0",
     "@codemirror/view": "^6.34.1",
     "@replit/codemirror-lang-solidity": "^6.0.2",

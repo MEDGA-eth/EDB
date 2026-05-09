@@ -24,6 +24,7 @@ export function HelpOverlay() {
         type="button"
         data-testid="help-open"
         onClick={() => setOpen(true)}
+        aria-label="Open help"
         className="rounded-[var(--radius)] px-3 py-1 hover:bg-(--color-bg-hover)"
       >
         ?

@@ -18,6 +18,7 @@ export function ThemeToggle() {
     <button
       type="button"
       aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+      aria-pressed={theme === 'dark'}
       onClick={toggle}
       className="rounded-[var(--radius)] px-3 py-1 text-fg-secondary hover:bg-bg-hover"
       data-testid="theme-toggle"

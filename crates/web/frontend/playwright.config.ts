@@ -12,7 +12,10 @@ export default defineConfig({
   webServer: {
     command: 'bun run dev --mode=mock',
     url: 'http://127.0.0.1:5173',
-    reuseExistingServer: !process.env.CI,
+    // Always start a fresh server. Reusing a stale dev server (especially
+    // one with cached, pre-audit fixture data) was the silent failure
+    // mode that motivated this audit, so we eat the boot cost every time.
+    reuseExistingServer: false,
     timeout: 60_000,
   },
 });
