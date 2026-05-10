@@ -1,5 +1,5 @@
 <h1 align="center">
-  EDB <img src="./resources/edb-icon.svg" alt="" height="32" />
+  EDB <img src="./resources/edb-icon.svg" alt="" height="22" />
   &nbsp;·&nbsp; The Ethereum Project Debugger
 </h1>
 
@@ -72,7 +72,7 @@ Debug any transaction from mainnet or testnets:
 edb --rpc-urls <RPC_ENDPOINTS> replay 0x5bedd885ff628e935fe47dacb6065c6ac80514a85ec6444578fd1ba092904096
 
 # …or with the new browser UI
-edb --rpc-urls <RPC_ENDPOINTS> replay --ui=web 0x5bedd885ff628e935fe47dacb6065c6ac80514a85ec6444578fd1ba092904096
+edb --rpc-urls <RPC_ENDPOINTS> --ui=web replay 0x5bedd885ff628e935fe47dacb6065c6ac80514a85ec6444578fd1ba092904096
 ```
 
 The `RPC_ENDPOINTS` should be a comma-separated list of RPC endpoint URLs.
