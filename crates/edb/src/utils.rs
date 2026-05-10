@@ -92,7 +92,6 @@ pub fn find_tui_binary() -> Result<PathBuf> {
 
 /// TUI-specific options
 #[derive(Debug, Default, Args)]
-#[command(next_help_heading = "Terminal UI Options (only apply with --ui=tui)")]
 pub struct TuiOptions {}
 
 pub async fn start_tui(_options: &TuiOptions, rpc_server_addr: SocketAddr) -> Result<()> {
@@ -104,7 +103,6 @@ pub async fn start_tui(_options: &TuiOptions, rpc_server_addr: SocketAddr) -> Re
     tracing::debug!("Found TUI binary at: {:?}", tui_binary);
 
     // Spawn TUI as a child process with inherited stdio
-    // Mouse capture is disabled by default (--mouse flag is not passed).
     let mut cmd = tokio::process::Command::new(&tui_binary);
     cmd.arg("--url").arg(format!("http://{rpc_server_addr}"));
 

@@ -120,13 +120,6 @@ pub enum Commands {
     },
 }
 
-impl Commands {
-    /// Whether the command launches a user interface (TUI or Web).
-    pub fn runs_ui(&self) -> bool {
-        matches!(self, Self::Replay { .. } | Self::Test { .. })
-    }
-}
-
 /// Which user interface to use after engine startup
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Ui {
