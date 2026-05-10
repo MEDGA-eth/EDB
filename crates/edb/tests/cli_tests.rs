@@ -111,3 +111,10 @@ fn test_test_subcommand_takes_qualified_name() {
         .success()
         .stdout(predicate::str::contains("CONTRACT::TEST_FN"));
 }
+
+#[test]
+fn test_server_requires_rpc_urls() {
+    edb_common::logging::ensure_test_logging(None);
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("edb");
+    cmd.arg("server").assert().failure().stderr(predicate::str::contains("--rpc-urls"));
+}

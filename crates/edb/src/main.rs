@@ -105,6 +105,12 @@ pub enum Commands {
         /// Port for the WebSocket server
         #[arg(long, default_value = "9001")]
         ws_port: u16,
+        /// Upstream RPC URLs (comma-separated)
+        #[arg(long, required = true)]
+        rpc_urls: String,
+        /// Port for the RPC proxy server
+        #[arg(long, default_value = "8546")]
+        proxy_port: u16,
     },
     /// Show RPC proxy provider status
     ProxyStatus {
@@ -171,9 +177,12 @@ async fn main() -> Result<()> {
             )
             .await
         }
-        Commands::Server { ws_port } => {
+        Commands::Server { ws_port, rpc_urls, proxy_port } => {
             tracing::info!("Starting WebSocket server on port {}", ws_port);
-            cmd::start_server(*ws_port, &cli).await
+            tracing::info!("Ensuring RPC proxy is running...");
+            proxy::ensure_proxy_running(rpc_urls, *proxy_port, cli.disable_cache).await?;
+            let effective_rpc_url = format!("http://127.0.0.1:{proxy_port}");
+            cmd::start_server(*ws_port, &cli, &effective_rpc_url).await
         }
         Commands::ProxyStatus { proxy_port } => cmd::show_proxy_status(*proxy_port).await,
     }
