@@ -1,10 +1,6 @@
-<!-- Project Banner -->
-<p align="center">
-  <img src="./resources/edb-banner.png" alt="EDB Banner" width="80%" />
-</p>
-
 <h1 align="center">
-  EDB &nbsp;·&nbsp; The Ethereum Project Debugger
+  EDB<sup><img src="./resources/edb-icon.svg" alt="" height="22" /></sup>
+  &nbsp;·&nbsp; The Ethereum Project Debugger
 </h1>
 
 <p align="center">
@@ -39,20 +35,9 @@ EDB bridges the gap between high-level Solidity code and low-level EVM execution
 
 ### Prerequisites
 
-- **Rust** (stable, 2024 edition) — install via [rustup.rs](https://rustup.rs)
-- **[Bun](https://bun.sh)** — bundles the embedded web UI at compile time. Install with:
-  ```bash
-  curl -fsSL https://bun.sh/install | bash
-  ```
-  After install, ensure `bun --version` resolves in the same shell you'll
-  run `cargo build` from. The Bun installer writes its `PATH` export to
-  `~/.zshrc` / `~/.bashrc`, so a fresh terminal (or `source` of that file)
-  is needed before building.
-
-  *Don't want to install Bun?* Set `EDB_SKIP_WEB_BUILD=1` before any
-  `cargo` command. The web UI ships a "not built" placeholder; the TUI and
-  CLI still work.
-- **Ethereum RPC endpoint** — public (Infura / Alchemy) or local node
+- **Rust** (stable, 2024 edition): [rustup.rs](https://rustup.rs)
+- **[Bun](https://bun.sh)**: required to build the embedded web UI
+- **Ethereum RPC endpoint**: public (Infura / Alchemy) or local node
 
 ### One-line Install
 
@@ -67,7 +52,7 @@ curl -sSL https://install.edb.sh | bash
 git clone https://github.com/edb-rs/edb
 cd edb
 
-# Build all components (requires bun on PATH — see Prerequisites)
+# Build all components (requires bun on PATH; see Prerequisites)
 cargo build --release
 
 # Install binaries
@@ -107,14 +92,14 @@ Type `?` in the TUI to view the help page.
 
 #### Web UI (`--ui=web`)
 
-`edb --ui=web replay <tx>` opens a browser-based debugger that shares the engine's port (no extra binary). Both light and dark themes ship by default.
-
-<p align="center">
-  <img src="resources/edb-web.png" alt="EDB Web UI screenshot (light theme)" width="98%" style="border: 1px solid #ddd; border-radius: 8px;">
-</p>
+`edb --ui=web replay <tx>` opens a browser-based debugger that shares the engine's port (no extra binary). Both dark and light themes ship by default.
 
 <p align="center">
   <img src="resources/edb-web-dark.png" alt="EDB Web UI screenshot (dark theme)" width="98%" style="border: 1px solid #ddd; border-radius: 8px;">
+</p>
+
+<p align="center">
+  <img src="resources/edb-web.png" alt="EDB Web UI screenshot (light theme)" width="98%" style="border: 1px solid #ddd; border-radius: 8px;">
 </p>
 
 For development setup and architecture details, see [DEV.md](DEV.md) and [ARCH.md](ARCH.md).
