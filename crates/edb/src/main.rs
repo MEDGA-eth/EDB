@@ -71,7 +71,7 @@ pub struct Cli {
     pub tui_options: TuiOptions,
 
     /// User interface to launch after engine startup
-    #[arg(long, value_enum, default_value = "tui")]
+    #[arg(long, value_enum, default_value = "web")]
     pub ui: Ui,
 
     /// Command to execute
@@ -82,14 +82,15 @@ pub struct Cli {
 impl Cli {
     /// Validate CLI arguments and warn about misused options
     pub fn validate(&self) {
-        // Warn if TUI options are used with non-TUI mode
-        if !self.command.enables_tui() && self.tui_options.disable_mouse {
-            tracing::warn!("--disable-mouse flag has no effect when not using TUI");
-            eprintln!("Warning: --disable-mouse flag has no effect when not using TUI");
-        }
-        if !self.command.enables_tui() && self.ui == Ui::Web {
-            tracing::warn!("--ui=web only applies to commands that launch a UI (replay, test)");
-            eprintln!("Warning: --ui=web has no effect for this command");
+        // Warn if TUI-specific options are used with non-TUI configurations.
+        // Note: --ui no longer triggers a warning when given to a non-UI
+        // subcommand (server, proxy-status) — those subcommands ignore the
+        // flag silently, and after the Web-default flip, the previous
+        // warning would fire on every default invocation.
+        let runs_ui = self.command.runs_ui();
+        if self.tui_options.disable_mouse && !(runs_ui && self.ui == Ui::Tui) {
+            tracing::warn!("--disable-mouse only applies to --ui=tui");
+            eprintln!("Warning: --disable-mouse only applies to --ui=tui");
         }
     }
 
@@ -132,8 +133,8 @@ pub enum Commands {
 }
 
 impl Commands {
-    /// Whether the command enables a TUI
-    pub fn enables_tui(&self) -> bool {
+    /// Whether the command launches a user interface (TUI or Web).
+    pub fn runs_ui(&self) -> bool {
         matches!(self, Self::Replay { .. } | Self::Test { .. })
     }
 }
@@ -141,9 +142,9 @@ impl Commands {
 /// Which user interface to use after engine startup
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum Ui {
-    /// Terminal UI (default)
+    /// Terminal UI
     Tui,
-    /// Browser UI on the engine's port
+    /// Browser UI on the engine's port (default)
     Web,
 }
 

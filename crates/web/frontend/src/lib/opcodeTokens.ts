@@ -25,3 +25,20 @@ export function tokenize(line: string): OpcodeToken[] {
   if (comment) out.push({ kind: 'comment', text: comment });
   return out;
 }
+
+/**
+ * Find the line index in a disasm string corresponding to a given PC.
+ * The disasm format is `${pc.toString(16).padStart(4,'0')}: <opcode>` per
+ * line (see `disasmFromCodes` in lib/types.ts), so we just match the
+ * leading 4-hex prefix. Returns -1 when the PC isn't present (e.g. PC
+ * mid-PUSH-data, or a snapshot whose code we don't have yet).
+ */
+export function pcLineIndex(disasm: string, pc: number): number {
+  if (!Number.isFinite(pc) || pc < 0) return -1;
+  const prefix = `${pc.toString(16).padStart(4, '0')}:`;
+  const lines = disasm.split('\n');
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i].startsWith(prefix)) return i;
+  }
+  return -1;
+}

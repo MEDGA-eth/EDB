@@ -67,6 +67,11 @@ export interface SessionState {
 
   /* command-palette + global view toggles */
   paletteOpen: boolean;
+  /** Optional initial query to seed the input with on next open. Used by
+   *  the Cmd/Ctrl+Shift+P shortcut to land directly in command-mode (the
+   *  palette interprets a leading `>` as command-only filtering). The
+   *  palette consumes and clears this on mount. */
+  paletteInitialQuery: string;
   wordWrap: boolean;
   showLineNumbers: boolean;
   /** trace expand/collapse "epoch", bumping forces panels to re-evaluate */
@@ -103,6 +108,11 @@ export interface SessionState {
 
   setPaletteOpen(open: boolean): void;
   togglePalette(): void;
+  /** Open the palette and seed `paletteInitialQuery`. Pass `'>'` from the
+   *  Cmd+Shift+P shortcut to land in command-mode. Cleared after the
+   *  palette consumes it on mount. */
+  openPaletteWith(initialQuery: string): void;
+  consumePaletteInitialQuery(): string;
   setWordWrap(on: boolean): void;
   toggleWordWrap(): void;
   setShowLineNumbers(on: boolean): void;
@@ -141,6 +151,7 @@ export const useSession = create<SessionState>()(
       layoutJson: null,
 
       paletteOpen: false,
+      paletteInitialQuery: '',
       wordWrap: false,
       showLineNumbers: true,
       traceExpandTick: 0,
@@ -213,8 +224,19 @@ export const useSession = create<SessionState>()(
       setActiveFile: (id) => set({ activeFileId: id }),
       setLayoutJson: (json) => set({ layoutJson: json }),
 
-      setPaletteOpen: (open) => set({ paletteOpen: open }),
-      togglePalette: () => set({ paletteOpen: !get().paletteOpen }),
+      setPaletteOpen: (open) =>
+        set({ paletteOpen: open, ...(open ? {} : { paletteInitialQuery: '' }) }),
+      togglePalette: () => {
+        const next = !get().paletteOpen;
+        set({ paletteOpen: next, ...(next ? {} : { paletteInitialQuery: '' }) });
+      },
+      openPaletteWith: (initialQuery) =>
+        set({ paletteOpen: true, paletteInitialQuery: initialQuery }),
+      consumePaletteInitialQuery: () => {
+        const q = get().paletteInitialQuery;
+        if (q) set({ paletteInitialQuery: '' });
+        return q;
+      },
       setWordWrap: (on) => set({ wordWrap: on }),
       toggleWordWrap: () => set({ wordWrap: !get().wordWrap }),
       setShowLineNumbers: (on) => set({ showLineNumbers: on }),
@@ -263,6 +285,7 @@ export const useSession = create<SessionState>()(
         openFiles: [],
         activeFileId: null,
         paletteOpen: false,
+        paletteInitialQuery: '',
         traceExpandTick: 0,
         traceCollapseTick: 0,
       }),

@@ -720,7 +720,7 @@ export default function IdeMock({ stage, anim, dim }: IdeMockProps) {
             </div>
             <div className="ide-decompile-title">Bytecode &rarr; Solidity</div>
             <div className="ide-decompile-text">
-              EDB will lift bytecode-only contracts into readable, fully-steppable
+              EDB will lift bytecode contracts into readable, fully-steppable
               pseudo-Solidity, so unverified calls debug just like your own.
             </div>
           </div>
@@ -817,7 +817,7 @@ function iconFor(id: string): React.ReactNode {
 
 function VariablesPane({ revealed }: { revealed: number }) {
   const localsLabel = (
-    <div className="ide-pane-section">
+    <div className="ide-pane-section ide-pane-locals">
       <div className="ide-pane-title">LOCALS</div>
       <div className="ide-pane-body">
         <div className="ide-pane-empty">
@@ -913,7 +913,7 @@ function ExplorerSideView({ decompileSoon }: { decompileSoon: boolean }) {
           <span className="ide-tree-twist">▾</span>
           <span className="ide-bytecode-file">
             <span className="ide-tree-mono">0x9bf1…a213</span>
-            <span className="ide-tree-tag is-bytecode">bytecode-only</span>
+            <span className="ide-tree-tag is-bytecode">bytecode</span>
           </span>
         </div>
         <div className="ide-tree-row ide-tree-file">

@@ -109,7 +109,11 @@ function CommandPaletteInner() {
     [queryClient, snapshotCount, nextCallId, prevCallId],
   );
 
-  const [query, setQuery] = useState('');
+  // Seed from session.paletteInitialQuery if the palette was opened via
+  // Cmd+Shift+P (which sets `>` to land in command-mode). Consumed once.
+  const [query, setQuery] = useState(() =>
+    useSession.getState().consumePaletteInitialQuery(),
+  );
   // Debounced query, used only for the (potentially expensive) row build,
   // so the input stays synchronously responsive while typing.
   const debouncedQuery = useDebounced(query, PALETTE_QUERY_DEBOUNCE_MS);

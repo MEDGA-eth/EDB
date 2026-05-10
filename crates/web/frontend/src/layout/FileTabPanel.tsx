@@ -1,11 +1,12 @@
 import { openSearchPanel } from '@codemirror/search';
 import { Bug, Code2, Copy, FileCode2, Hash, Locate, Search, WrapText } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 import { useCodeByAddress } from '../hooks/useCodeByAddress';
 import { useSnapshotInfo } from '../hooks/useSnapshotInfo';
 import { useSolidityEditor } from '../hooks/useSolidityEditor';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { ErrorCard } from '../components/ErrorCard';
-import { tokenize } from '../lib/opcodeTokens';
+import { pcLineIndex, tokenize } from '../lib/opcodeTokens';
 import { Toolbar, ToolbarButton, ToolbarDivider } from '../components/Toolbar';
 import { useSession } from '../store/session';
 
@@ -65,6 +66,25 @@ function FileTabPanelInner({ addr, path }: { addr: string; path: string }) {
 }
 
 function OpcodesView({ addr, disasm }: { addr: string; disasm: string }) {
+  // Mirror CodePanel's OpcodesView: highlight the line whose PC matches
+  // the current snapshot, but only if that snapshot is at THIS address.
+  // Tabs at other addresses stay un-highlighted so the user knows the
+  // active execution context isn't here.
+  const currentSnapshotId = useSession((s) => s.currentSnapshotId);
+  const { data: snap } = useSnapshotInfo(currentSnapshotId);
+  const currentLine = (() => {
+    if (!snap || snap.detail.kind !== 'Opcode') return -1;
+    if (snap.bytecode_address.toLowerCase() !== addr.toLowerCase()) return -1;
+    return pcLineIndex(disasm, snap.detail.pc);
+  })();
+  const lineRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (currentLine < 0) return;
+    lineRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
+  }, [currentLine]);
+  function revealCurrent() {
+    lineRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
+  }
   return (
     <div className="flex h-full flex-col">
       <Toolbar testid="file-toolbar-opcodes">
@@ -76,6 +96,14 @@ function OpcodesView({ addr, disasm }: { addr: string; disasm: string }) {
           onClick={() => {
             if (navigator.clipboard?.writeText) void navigator.clipboard.writeText(disasm);
           }}
+        />
+        <ToolbarButton
+          icon={Locate}
+          label="Reveal current PC"
+          showLabel
+          testid="file-reveal-current"
+          onClick={revealCurrent}
+          disabled={currentLine < 0}
         />
         <ToolbarDivider />
         <span
@@ -93,15 +121,23 @@ function OpcodesView({ addr, disasm }: { addr: string; disasm: string }) {
         data-testid="opcodes-view"
         className="flex-1 overflow-auto p-4 font-mono text-sm leading-relaxed"
       >
-        {disasm.split('\n').map((line, i) => (
-          <div key={i}>
-            {tokenize(line).map((tok, j) => (
-              <span key={j} className={`syn-${tok.kind}`}>
-                {tok.text}
-              </span>
-            ))}
-          </div>
-        ))}
+        {disasm.split('\n').map((line, i) => {
+          const isCurrent = i === currentLine;
+          return (
+            <div
+              key={i}
+              ref={isCurrent ? lineRef : undefined}
+              data-edb-current={isCurrent ? 'true' : undefined}
+              className={isCurrent ? 'opcodes-current-line -mx-4 px-4' : undefined}
+            >
+              {tokenize(line).map((tok, j) => (
+                <span key={j} className={`syn-${tok.kind}`}>
+                  {tok.text}
+                </span>
+              ))}
+            </div>
+          );
+        })}
       </pre>
     </div>
   );
