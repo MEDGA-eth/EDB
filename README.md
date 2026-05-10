@@ -147,7 +147,7 @@ Join our Telegram Q&A group to ask questions, share insights, and connect with o
 </div>
 <br>
 
-EDB is free and open-source, and a little support goes a long way toward keeping it healthy and moving forward. Two ways to chip in:
+EDB is free and open-source — and we're **genuinely short on funding to keep it growing**. If EDB has saved you time, please consider chipping in. Two ways:
 
 <p align="center">
   <a href="https://github.com/sponsors/edb-rs">
