@@ -5,12 +5,13 @@ import {
   type DockviewReadyEvent,
   type IDockviewPanelProps,
 } from 'dockview';
-import { FileTabPanel, type FileTabPanelParams } from './FileTabPanel';
+import { FileTabPanel, DISASM_PATH, type FileTabPanelParams } from './FileTabPanel';
 import { DisplayPanel } from '../components/panels/DisplayPanel';
 import { TerminalPanel } from '../components/panels/TerminalPanel';
 import { useSession } from '../store/session';
 import { LAYOUT_KEY, LAYOUT_VERSION } from '../lib/constants';
 import { setDockviewApi } from '../lib/dockviewBridge';
+import { useSnapshotInfo } from '../hooks/useSnapshotInfo';
 
 interface Disposable {
   dispose(): void;
@@ -212,6 +213,29 @@ export function MainArea() {
     // what brings a buried tab back into view when the user has clicked
     // Display / Terminal between steps.
   }, [activeFileId, currentSnapshotId]);
+
+  // Auto-follow: every snapshot change opens (or focuses) the file/disasm
+  // tab matching the new (bytecode_address, path). Without this, stepping
+  // into a contract whose tab isn't open just removes the highlight from
+  // the currently-visible tab and the user "loses track". We key the
+  // effect on the snap data itself rather than just `currentSnapshotId`
+  // so the follow also fires when the snapshot was navigated to before
+  // its data arrived (subsequent fetch resolution re-runs the effect).
+  const { data: currentSnap } = useSnapshotInfo(currentSnapshotId);
+  useEffect(() => {
+    if (!currentSnap) return;
+    const addr = currentSnap.bytecode_address;
+    const path =
+      currentSnap.detail.kind === 'Hook' ? currentSnap.detail.path : DISASM_PATH;
+    const targetId = `${addr}::${path}`;
+    if (useSession.getState().activeFileId === targetId) {
+      // Already on the right tab; just re-pulse so the view re-centers.
+      useSession.getState().bumpRevealTick();
+      return;
+    }
+    useSession.getState().openFile({ addr, path });
+    useSession.getState().bumpRevealTick();
+  }, [currentSnap]);
 
   return (
     <div className="h-full w-full" data-testid="main-area">
