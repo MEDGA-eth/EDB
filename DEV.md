@@ -409,9 +409,9 @@ and shapes match production.
 
 ### Iterating against a real engine
 
-In one terminal:
+In one terminal (web UI is the default since the launcher flip):
 ```bash
-edb --ui=web replay 0x<tx-hash>
+edb replay 0x<tx-hash>
 ```
 
 In another:
@@ -441,13 +441,15 @@ If you don't have `bun` installed, set `EDB_SKIP_WEB_BUILD=1` before any
 into the embedded assets, so:
 
 - `cargo build` / `cargo check` succeed.
-- The TUI and CLI work normally.
-- Launching `--ui=web` serves the placeholder page (a single line of HTML
-  saying "edb-web: dist not built"), not the real SPA.
+- `--ui=tui` and the CLI work normally.
+- The default web UI (and any explicit `--ui=web` invocation) serves the
+  placeholder page (a single line of HTML saying "edb-web: dist not
+  built"), not the real SPA.
 
-**Don't ship release builds with this flag set** — end users will see the
-placeholder when they run `edb replay --ui=web`. Verify `bun --version`
-resolves on the build agent before invoking `cargo build --release`.
+**Don't ship release builds with this flag set**: since the web UI is the
+default, end users will see the placeholder when they run `edb replay`.
+Verify `bun --version` resolves on the build agent before invoking
+`cargo build --release`.
 
 #### Why does cargo say "bun not found on PATH"?
 

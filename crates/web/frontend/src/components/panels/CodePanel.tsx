@@ -61,19 +61,31 @@ function OpcodesView({
     if (snap.bytecode_address.toLowerCase() !== bytecodeAddress.toLowerCase()) return -1;
     return pcLineIndex(disasm, snap.detail.pc);
   })();
-  const lineRef = useRef<HTMLDivElement | null>(null);
+  // See FileTabPanel.tsx for why we use data-attribute querying instead
+  // of a single swappable ref: the single-ref pattern dropped to null on
+  // backward navigation (Reverse Step) because React processed the newly
+  // current div first and then the previously-current div, the latter
+  // clearing the shared ref.
+  const preRef = useRef<HTMLPreElement | null>(null);
+  function scrollCurrentIntoView() {
+    const el = preRef.current?.querySelector<HTMLDivElement>(
+      '[data-edb-current="true"]',
+    );
+    el?.scrollIntoView({ block: 'center', behavior: 'auto' });
+  }
   useEffect(() => {
     if (currentLine < 0) return;
-    lineRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
+    scrollCurrentIntoView();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLine]);
   function revealCurrent() {
-    lineRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
+    scrollCurrentIntoView();
   }
-  // Pulse from the global Locate-Current button.
+  // Pulse from the global "Where am I?" button.
   const revealTick = useSession((s) => s.revealTick);
   useEffect(() => {
     if (revealTick === 0 || currentLine < 0) return;
-    lineRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
+    scrollCurrentIntoView();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealTick]);
   return (
@@ -96,6 +108,7 @@ function OpcodesView({
         />
       </Toolbar>
       <pre
+        ref={preRef}
         data-testid="opcodes-view"
         className="flex-1 overflow-auto p-4 font-mono text-sm leading-relaxed"
       >
@@ -104,7 +117,6 @@ function OpcodesView({
           return (
             <div
               key={i}
-              ref={isCurrent ? lineRef : undefined}
               data-edb-current={isCurrent ? 'true' : undefined}
               className={isCurrent ? 'opcodes-current-line -mx-4 px-4' : undefined}
             >

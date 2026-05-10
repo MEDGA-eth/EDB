@@ -17,7 +17,7 @@ import { useSession } from '../store/session';
  * - Cmd/Ctrl+Shift+F5 → restart (jump to snapshot 0)
  * - Alt+F5        → reverse continue
  * - F10           → step over
- * - Alt+F10       → reverse step over
+ * - Alt+F10       → reverse step (pop navigation history)
  * - F11           → step into (single snapshot forward)
  * - Shift+F11     → step out
  *
