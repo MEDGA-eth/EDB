@@ -2217,16 +2217,22 @@ a { color: inherit; }
    mounts on desktop.
    ══════════════════════════════════════════════════════════════ */
 .mobile-sheet {
+  /* Above .mobile-nav-btn (z 950) and rotate-overlay-style chrome so the
+     entire viewport is a click-to-dismiss zone — the first click on a
+     chevron only closes the sheet; the next one advances the stage. */
   position: fixed;
   inset: 0;
-  z-index: 900;
+  z-index: 1000;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 24px;
+  gap: 8px;
   background: color-mix(in srgb, var(--bg-root) 75%, transparent);
   backdrop-filter: blur(6px);
   animation: mobile-sheet-in 240ms ease;
+  cursor: pointer;
 }
 @keyframes mobile-sheet-in {
   from { opacity: 0; }
@@ -2347,21 +2353,29 @@ a { color: inherit; }
   color: var(--fg);
   line-height: 1.5;
 }
-.mobile-sheet-dismiss {
-  margin-top: 12px;
+.mobile-sheet-hint {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 4px 12px;
   border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-elevated) 85%, transparent);
   border: 1.5px dashed var(--border-strong);
-  background: transparent;
   color: var(--fg-tertiary);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  cursor: pointer;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+  animation: mobile-sheet-hint-pulse 1.8s ease-in-out 1.6s infinite;
+}
+@keyframes mobile-sheet-hint-pulse {
+  0%, 100% { opacity: 0.55; transform: translateY(0); }
+  50%      { opacity: 1;    transform: translateY(-2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-sheet-hint { animation: none; opacity: 0.85; }
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -2453,6 +2467,20 @@ a { color: inherit; }
   .ide-subtab { padding: 3px 8px; font-size: 10px; }
   .ide-pane-title { font-size: 9px; }
   .ide-pane-empty { font-size: 9.5px; }
+
+  /* Side-by-side: place the bottom panel (Display/Terminal) to the RIGHT
+     of the code editor instead of underneath. Saves vertical room on
+     phone landscape. File tabs and the editor toolbar still span both
+     columns. */
+  .ide-main {
+    grid-template-rows: 28px 28px 1fr;
+    grid-template-columns: 1fr 1fr;
+  }
+  .ide-main > .ide-tabs       { grid-column: 1 / -1; grid-row: 1; }
+  .ide-main > .ide-edtoolbar  { grid-column: 1 / -1; grid-row: 2; }
+  .ide-main > .ide-code       { grid-column: 1; grid-row: 3; border-right: 1.5px solid var(--ide-border); min-width: 0; overflow-x: auto; }
+  .ide-main > .ide-bottom     { grid-column: 2; grid-row: 3; min-width: 0; }
+  .ide-main > .ide-bottom .ide-subtabs { overflow-x: auto; }
 
   .ide-status { font-size: 9.5px; gap: 8px; padding: 0 10px; }
 
