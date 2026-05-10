@@ -4,8 +4,7 @@
 </p>
 
 <h1 align="center">
-  <img src="./resources/edb-icon.svg" alt="" width="36" height="36" align="absmiddle" />
-  &nbsp;EDB &nbsp;·&nbsp; The Ethereum Project Debugger
+  EDB &nbsp;·&nbsp; The Ethereum Project Debugger
 </h1>
 
 <p align="center">
