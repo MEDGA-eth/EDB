@@ -2111,3 +2111,117 @@ a { color: inherit; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Rotate-phone overlay. Shown by RotateOverlay when the device
+   matches `(orientation: portrait) and (max-width: 720px) and
+   (pointer: coarse)`. Sits above the shell at z-index 1000 and
+   fades in/out cleanly. The overlay is JS-gated so this CSS does
+   not branch on viewport size.
+   ══════════════════════════════════════════════════════════════ */
+.rotate-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg-root) 96%, transparent) 0%,
+    var(--bg-root) 100%);
+  backdrop-filter: blur(8px);
+  animation: rotate-overlay-in 320ms ease;
+}
+@keyframes rotate-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.rotate-card {
+  background: var(--bg-elevated);
+  border: 2px solid var(--border-strong);
+  border-radius: 18px;
+  padding: 28px 24px 22px;
+  max-width: 320px;
+  width: 100%;
+  text-align: center;
+  box-shadow: var(--shadow-pop);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.rotate-illustration {
+  color: var(--accent-warm);
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rotate-phone {
+  transform-origin: 60px 60px;
+  animation: rotate-phone-pulse 2.4s ease-in-out infinite;
+}
+@keyframes rotate-phone-pulse {
+  0%, 35%   { transform: rotate(0deg); }
+  60%, 100% { transform: rotate(-90deg); }
+}
+
+.rotate-caption {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rotate-caption strong {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+.rotate-caption span {
+  color: var(--fg-secondary);
+}
+
+.rotate-skip {
+  background: transparent;
+  border: none;
+  color: var(--fg-tertiary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 150ms ease;
+  padding: 4px 8px;
+}
+.rotate-skip:hover { color: var(--accent-warm); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rotate-overlay { animation: none; }
+  .rotate-phone   { animation: none; transform: rotate(-45deg); }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MOBILE OVERRIDES — single source of truth
+   ──────────────────────────────────────────────────────────────
+   All mobile-specific tweaks (font sizes, padding, layout) live
+   inside the @media block below. Desktop styles upstream MUST
+   NOT use @media (max-width: ...). If you find yourself wanting
+   to add a viewport-conditional rule elsewhere, it goes here.
+   The breakpoint matches the matchMedia query in
+   src/components/RotateOverlay.tsx so JS and CSS agree on what
+   "mobile" means.
+   ══════════════════════════════════════════════════════════════ */
+@media (max-width: 720px) {
+  /* (empty — future mobile-only rules go here) */
+}

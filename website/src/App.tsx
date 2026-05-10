@@ -3,6 +3,7 @@ import { STAGES } from './data/stages';
 import IdeMock from './components/IdeMock';
 import HeroStage, { FUND_MAILTO } from './components/Hero';
 import StrengthsStage from './components/Strengths';
+import RotateOverlay from './components/RotateOverlay';
 
 type RingPos = {
   left: number;
@@ -100,7 +101,8 @@ export default function App() {
   const isLast = idx === STAGES.length - 1;
 
   return (
-    <div className="shell">
+    <>
+      <div className="shell">
       {/* header. Wordmark on the left (click = back to welcome), transport
           toggle on the right. */}
       <div className="shell-header">
@@ -251,6 +253,8 @@ export default function App() {
         )}
       </div>
     </div>
+    <RotateOverlay />
+    </>
   );
 }
 
