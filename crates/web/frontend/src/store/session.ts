@@ -77,10 +77,11 @@ export interface SessionState {
   /** trace expand/collapse "epoch", bumping forces panels to re-evaluate */
   traceExpandTick: number;
   traceCollapseTick: number;
-  /** "reveal current location" pulse. Bumped by the toolbar's Locate button
-   *  so file/opcode views re-scroll to the active snapshot's line/PC even
-   *  when neither the active file nor the snapshot id changed (e.g. user
-   *  clicks Locate twice in a row, or the matching tab was already open). */
+  /** "reveal current location" pulse. Bumped by the toolbar's
+   *  "Where am I?" button so file/opcode views re-scroll to the active
+   *  snapshot's line/PC even when neither the active file nor the
+   *  snapshot id changed (e.g. user clicks twice in a row, or the
+   *  matching tab was already open). */
   revealTick: number;
   /** Navigation history: stack of snapshot ids visited prior to the current
    *  one, most-recent last. `setSnapshotId` pushes the prior id on every

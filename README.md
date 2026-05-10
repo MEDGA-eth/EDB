@@ -40,7 +40,7 @@ EDB bridges the gap between high-level Solidity code and low-level EVM execution
 curl -sSL https://install.edb.sh | bash
 ```
 
-The installer downloads a pre-built binary for your platform — no Rust or Bun toolchain needed.
+The installer downloads a pre-built binary for your platform, so no Rust or Bun toolchain is required.
 
 ### Build from Source
 
@@ -79,7 +79,7 @@ edb --rpc-urls <RPC_ENDPOINTS> --ui=tui replay 0x5bedd885ff628e935fe47dacb6065c6
 
 `<RPC_ENDPOINTS>` is a comma-separated list of Ethereum RPC URLs (public endpoints like Infura/Alchemy, or a local node). EDB queries these to fetch the on-chain state needed to replay the transaction; more endpoints means faster replay.
 
-> If none is provided, EDB falls back to the ten most popular public RPC endpoints, which may be slow and unreliable — bring your own keys for the best experience.
+> If none is provided, EDB falls back to the ten most popular public RPC endpoints, which may be slow and unreliable. Bring your own keys for the best experience.
 
 #### Web UI (default)
 
@@ -147,7 +147,7 @@ Join our Telegram Q&A group to ask questions, share insights, and connect with o
 </div>
 <br>
 
-EDB is free and open-source — and we're **genuinely short on funding to keep it growing**. If EDB has saved you time, please consider chipping in. Two ways:
+EDB is free and open-source, and we're **genuinely short on funding to keep it growing**. If EDB has saved you time, please consider chipping in. Two ways:
 
 <p align="center">
   <a href="https://github.com/sponsors/edb-rs">
@@ -155,6 +155,6 @@ EDB is free and open-source — and we're **genuinely short on funding to keep i
   </a>
   &nbsp;
   <a href="mailto:zz@cs.columbia.edu?subject=EDB%20%C2%B7%20saying%20hi&body=Hi%20Zhuo%2C%0A%0AI%20represent%20%5BCOMPANY%5D%2C%20and%20we%20use%20EDB%20%2F%20are%20interested%20in%20the%20project.%20Could%20we%20set%20up%20a%20quick%20chat%3F%0A%0AThanks%2C%0A%5BYOUR%20NAME%5D%0A">
-    <img src="https://img.shields.io/badge/-🏢%20Sponsor%20as%20a%20company-d4608a?style=for-the-badge&labelColor=831843" alt="Sponsor as a company — email Zhuo" />
+    <img src="https://img.shields.io/badge/-🏢%20Sponsor%20as%20a%20company-d4608a?style=for-the-badge&labelColor=831843" alt="Sponsor as a company, email Zhuo" />
   </a>
 </p>

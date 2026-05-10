@@ -77,21 +77,37 @@ function OpcodesView({ addr, disasm }: { addr: string; disasm: string }) {
     if (snap.bytecode_address.toLowerCase() !== addr.toLowerCase()) return -1;
     return pcLineIndex(disasm, snap.detail.pc);
   })();
-  const lineRef = useRef<HTMLDivElement | null>(null);
+  // Look up the highlighted row by data-attribute instead of swapping a
+  // single ref between sibling divs. The single-ref approach broke on
+  // *backward* navigation (Reverse Step): React's commit processed the
+  // newly-current div first (assigning the ref) and then the previously-
+  // current div (clearing the ref because its `ref={isCurrent ? lineRef
+  // : undefined}` flipped to undefined), leaving lineRef.current null by
+  // the time useEffect ran. Forward navigation happened to dodge this
+  // because the target div was DOM-later than the old one, so the null-
+  // then-set order ended with a valid ref. Querying by data attribute
+  // is order-independent and always picks up the live currently-marked
+  // element.
+  const preRef = useRef<HTMLPreElement | null>(null);
+  function scrollCurrentIntoView() {
+    const el = preRef.current?.querySelector<HTMLDivElement>(
+      '[data-edb-current="true"]',
+    );
+    el?.scrollIntoView({ block: 'center', behavior: 'auto' });
+  }
   useEffect(() => {
     if (currentLine < 0) return;
-    lineRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
+    scrollCurrentIntoView();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLine]);
   function revealCurrent() {
-    lineRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
+    scrollCurrentIntoView();
   }
-  // Pulse from the global Locate-Current button. Each bump re-runs the
-  // scroll-into-view so the highlighted PC re-centers even if it was
-  // already visible (or already scrolled offscreen by the user).
+  // Pulse from the global "Where am I?" button.
   const revealTick = useSession((s) => s.revealTick);
   useEffect(() => {
     if (revealTick === 0 || currentLine < 0) return;
-    lineRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
+    scrollCurrentIntoView();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealTick]);
   return (
@@ -127,6 +143,7 @@ function OpcodesView({ addr, disasm }: { addr: string; disasm: string }) {
         </span>
       </Toolbar>
       <pre
+        ref={preRef}
         data-testid="opcodes-view"
         className="flex-1 overflow-auto p-4 font-mono text-sm leading-relaxed"
       >
@@ -135,7 +152,6 @@ function OpcodesView({ addr, disasm }: { addr: string; disasm: string }) {
           return (
             <div
               key={i}
-              ref={isCurrent ? lineRef : undefined}
               data-edb-current={isCurrent ? 'true' : undefined}
               className={isCurrent ? 'opcodes-current-line -mx-4 px-4' : undefined}
             >
@@ -239,7 +255,7 @@ function SolidityView({
     }
   }
 
-  // Global Locate-Current pulse. Re-scroll on every bump as long as the
+  // Global "Where am I?" pulse. Re-scroll on every bump as long as the
   // active snapshot lands in this (addr, path); otherwise stay put — the
   // matching tab elsewhere handles the reveal.
   const revealTick = useSession((s) => s.revealTick);
