@@ -233,6 +233,18 @@ export default function IdeMock({ stage, anim, dim }: IdeMockProps) {
 
   const ideRootRef = useRef<HTMLDivElement>(null);
 
+  /* Keep the active code line in view. Mostly relevant on mobile, where
+     the side-by-side layout makes the code column shorter; harmless on
+     desktop because `block: 'nearest'` is a no-op when the line is
+     already visible. */
+  useEffect(() => {
+    const root = ideRootRef.current;
+    if (!root) return;
+    const el = root.querySelector<HTMLElement>(`.ide-code [data-line="${activeLine}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  }, [activeLine]);
+
   /* ── per-stage animation choreography ── */
   useEffect(() => {
     let cancelled = false;
@@ -809,9 +821,8 @@ function VariablesPane({ revealed }: { revealed: number }) {
       <div className="ide-pane-title">LOCALS</div>
       <div className="ide-pane-body">
         <div className="ide-pane-empty">
-          No locals bound at this snapshot. Local variables appear as the
-          function body assigns them. Step forward (F11) to watch them
-          populate.
+          No locals here yet. Step forward (<kbd>F11</kbd>) and they'll
+          populate as the function body runs.
         </div>
       </div>
     </div>
@@ -1003,7 +1014,7 @@ function VariablesSideView() {
       <div className="ide-sb-scroll">
         <div className="ide-sb-section">
           <h3 className="ide-sb-section-head">Locals</h3>
-          <div className="ide-sb-empty">No locals bound at this snapshot. Step forward (F11) to watch them populate.</div>
+          <div className="ide-sb-empty">No locals yet. Step <kbd>F11</kbd>.</div>
         </div>
         <div className="ide-sb-section">
           <h3 className="ide-sb-section-head">State Variables</h3>

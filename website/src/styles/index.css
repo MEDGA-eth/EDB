@@ -2242,10 +2242,10 @@ a { color: inherit; }
   background: var(--bg-elevated);
   border: 2px solid color-mix(in srgb, var(--rail-color, var(--accent-warm)) 50%, var(--border-strong));
   border-radius: 16px;
-  padding: 18px 20px 14px;
-  max-width: 480px;
+  padding: 14px 22px 14px;
+  max-width: min(820px, calc(100vw - 32px));
   width: 100%;
-  max-height: 80vh;
+  max-height: calc(100vh - 80px);
   overflow-y: auto;
   box-shadow:
     0 0 28px color-mix(in srgb, var(--rail-color, var(--accent-warm)) 18%, transparent),
@@ -2466,7 +2466,24 @@ a { color: inherit; }
   .ide-bottom-body { padding: 6px 10px; font-size: 10.5px; }
   .ide-subtab { padding: 3px 8px; font-size: 10px; }
   .ide-pane-title { font-size: 9px; }
-  .ide-pane-empty { font-size: 9.5px; }
+  .ide-pane-empty { font-size: 9.5px; padding: 5px 8px; }
+
+  /* Variables / Watch sidebar (right activity-bar pane on mobile): shrink
+     fonts and tighten padding so the cards fit in the 160px-wide column. */
+  .ide-sb-scroll { padding: 6px 7px 8px; gap: 8px; }
+  .ide-sb-section { gap: 4px; }
+  .ide-sb-section-head { font-size: 9px; margin: 0 2px; }
+  .ide-sb-empty { font-size: 9.5px; padding: 5px 7px; line-height: 1.4; border-radius: 6px; }
+  .ide-sb-list { gap: 4px; }
+  .ide-sb-card { padding: 5px 7px; border-radius: 6px; }
+  .ide-sb-card-head { gap: 5px; }
+  .ide-sb-card-name { font-size: 10.5px; }
+  .ide-sb-card-expr { font-size: 10px; }
+  .ide-sb-type-chip { font-size: 8.5px; padding: 0 5px; }
+  .ide-sb-card-val { font-size: 10px; margin-top: 2px; line-height: 1.35; }
+  .ide-sb-watch-input { padding: 4px 6px; margin-top: 4px; }
+  .ide-sb-watch-field { font-size: 10px; }
+  .ide-sb-watch-add { font-size: 9px; padding: 1px 5px; }
 
   /* Side-by-side: place the bottom panel (Display/Terminal) to the RIGHT
      of the code editor instead of underneath. Saves vertical room on
