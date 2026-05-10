@@ -1,25 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { STAGES, type Stage } from './data/stages';
+import { STAGES } from './data/stages';
 import IdeMock from './components/IdeMock';
-import HeroStage from './components/Hero';
+import HeroStage, { FUND_MAILTO } from './components/Hero';
 import StrengthsStage from './components/Strengths';
-import CtaStage from './components/Footer';
 
-const AUTO_KEY = 'edb-website:auto';
-const AUTO_INTERVAL_MS = 5500;
-
-type CalloutPos = {
-  ringLeft: number; ringTop: number; ringW: number; ringH: number;
-  cardLeft: number; cardTop: number; cardTransform: string;
+type RingPos = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 } | null;
 
 export default function App() {
   const [idx, setIdx] = useState(0);
-  const [auto, setAuto] = useState<boolean>(() => {
-    if (typeof localStorage === 'undefined') return false;
-    return localStorage.getItem(AUTO_KEY) === '1';
-  });
-  const [pos, setPos] = useState<CalloutPos>(null);
+  const [ring, setRing] = useState<RingPos>(null);
 
   const stage = STAGES[idx]!;
   const ideMockRootRef = useRef<HTMLDivElement>(null);
@@ -47,81 +41,48 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  /* auto-advance */
-  useEffect(() => {
-    if (!auto) return;
-    if (typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const id = setInterval(() => {
-      setIdx((i) => (i + 1) % STAGES.length);
-    }, AUTO_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [auto]);
+  /* (auto-advance was here; the header now hosts a permanent funding-request
+     pill instead, so the keep-the-ask-visible job is handled by surface
+     real estate rather than a toggle that times out.) */
 
-  useEffect(() => {
-    try { localStorage.setItem(AUTO_KEY, auto ? '1' : '0'); } catch { /* ignore */ }
-  }, [auto]);
-
-  /* callout positioning */
+  /* ring positioning. The colored highlight on the IDE; the description
+     text now lives in the right rail. */
   useEffect(() => {
     const root = ideMockRootRef.current;
-    if (!root) { setPos(null); return; }
-    if (stage.kind !== 'tour' || !stage.target) { setPos(null); return; }
+    if (!root) { setRing(null); return; }
+    if (stage.kind !== 'tour' || !stage.target) { setRing(null); return; }
 
     const compute = () => {
       const sel = stage.target!.kind === 'selector' ? stage.target!.selector : null;
       if (!sel) return;
-      const el = root.querySelector(sel) as HTMLElement | null;
-      if (!el) { setPos(null); return; }
-      const r = el.getBoundingClientRect();
+      // Comma-separated selectors are unioned into one ring rect, so a stage
+      // can highlight a related group (e.g., all three step buttons).
+      const els = root.querySelectorAll(sel);
+      if (els.length === 0) { setRing(null); return; }
+      let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+      els.forEach((el) => {
+        const cr = (el as HTMLElement).getBoundingClientRect();
+        l = Math.min(l, cr.left);
+        t = Math.min(t, cr.top);
+        r = Math.max(r, cr.right);
+        b = Math.max(b, cr.bottom);
+      });
       const rootR = root.getBoundingClientRect();
-      const ringLeft = r.left - rootR.left - 4;
-      const ringTop = r.top - rootR.top - 4;
-      const ringW = r.width + 8;
-      const ringH = r.height + 8;
-      const G = 14;
-      const cardW = Math.min(320, Math.max(230, rootR.width * 0.26));
-      const cardH = 160;
-      let cardLeft = 0; let cardTop = 0;
-      let baseTx = { x: 0, y: 0 };
-      switch (stage.side) {
-        case 'right':
-          cardLeft = ringLeft + ringW + G; cardTop = ringTop + ringH / 2;
-          baseTx = { x: 0, y: -50 }; break;
-        case 'left':
-          cardLeft = ringLeft - G; cardTop = ringTop + ringH / 2;
-          baseTx = { x: -100, y: -50 }; break;
-        case 'top':
-          cardLeft = ringLeft + ringW / 2; cardTop = ringTop - G;
-          baseTx = { x: -50, y: -100 }; break;
-        case 'bottom':
-        default:
-          cardLeft = ringLeft + ringW / 2; cardTop = ringTop + ringH + G;
-          baseTx = { x: -50, y: 0 }; break;
-      }
-      // clamp inside the mock root
-      const PAD = 8;
-      const boxLeft = cardLeft + (baseTx.x / 100) * cardW;
-      const boxTop = cardTop + (baseTx.y / 100) * cardH;
-      let nudgeX = 0, nudgeY = 0;
-      if (boxLeft < PAD) nudgeX = PAD - boxLeft;
-      else if (boxLeft + cardW > rootR.width - PAD)
-        nudgeX = rootR.width - PAD - cardW - boxLeft;
-      if (boxTop < PAD) nudgeY = PAD - boxTop;
-      else if (boxTop + cardH > rootR.height - PAD)
-        nudgeY = rootR.height - PAD - cardH - boxTop;
-      const cardTransform = `translate(calc(${baseTx.x}% + ${nudgeX}px), calc(${baseTx.y}% + ${nudgeY}px))`;
-      setPos({ ringLeft, ringTop, ringW, ringH, cardLeft, cardTop, cardTransform });
+      setRing({
+        left: l - rootR.left - 4,
+        top: t - rootR.top - 4,
+        width: (r - l) + 8,
+        height: (b - t) + 8,
+      });
     };
     compute();
     const ro = new ResizeObserver(compute);
     ro.observe(root);
     window.addEventListener('resize', compute);
-    /* second pass after layout settles */
+    /* second pass after layout settles (animations move things) */
     const t = setTimeout(compute, 80);
     return () => { ro.disconnect(); window.removeEventListener('resize', compute); clearTimeout(t); };
   }, [stage]);
-
-  const onSegmentClick = useCallback((i: number) => setIdx(i), []);
 
   const tourCount = useMemo(() => STAGES.filter((s) => s.kind === 'tour').length, []);
   const tourPos = useMemo(() => {
@@ -130,103 +91,187 @@ export default function App() {
     return n;
   }, [idx]);
 
+  const onPrev = useCallback(() => setIdx((i) => Math.max(i - 1, 0)), []);
+  const onNext = useCallback(
+    () => setIdx((i) => Math.min(i + 1, STAGES.length - 1)),
+    [],
+  );
+  const isFirst = idx === 0;
+  const isLast = idx === STAGES.length - 1;
+
   return (
     <div className="shell">
-      {/* progress strip */}
-      <div className="shell-progress" role="navigation" aria-label="Tour stages">
-        <div className="progress-wordmark">edb</div>
-        <div className="progress-track">
-          {STAGES.map((s, i) => (
-            <button
-              key={s.id}
-              type="button"
-              className={`progress-seg ${i === idx ? 'is-active' : ''}`}
-              style={{ ['--seg-color' as string]: s.color } as React.CSSProperties}
-              onClick={() => onSegmentClick(i)}
-              aria-current={i === idx}
-              title={s.label}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-        <span className="progress-counter">
-          {stage.kind === 'tour' ? `${tourPos}/${tourCount}` : `· ${stage.label}`}
-        </span>
+      {/* header. Wordmark on the left (click = back to welcome), transport
+          toggle on the right. */}
+      <div className="shell-header">
         <button
           type="button"
-          className={`progress-auto ${auto ? 'is-on' : ''}`}
-          onClick={() => setAuto((v) => !v)}
-          aria-pressed={auto}
-          title="Auto-advance every ~5 seconds"
+          className="shell-wordmark"
+          onClick={() => setIdx(0)}
+          aria-label="Back to the welcome page"
+          title="Back to the welcome page"
         >
-          {auto ? '▶ Auto' : '⏸ Auto'}
+          <span className="shell-wordmark-mark">edb</span>
+          <span className="shell-wordmark-sub">The Ethereum Project Debugger</span>
         </button>
+        <div className="shell-header-tools">
+          <a
+            className="shell-link"
+            href="https://github.com/edb-rs/edb"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="github.com/edb-rs/edb"
+          >
+            <GhIcon /> edb-rs/edb
+          </a>
+          <a
+            className="shell-fund"
+            href={FUND_MAILTO}
+            aria-label="Send a funding inquiry to zz@cs.columbia.edu"
+            title="EDB needs funding · click to send a sponsorship email"
+          >
+            <span aria-hidden>🙏</span>
+            Sponsor EDB
+          </a>
+        </div>
       </div>
 
-      {/* stage area */}
-      <div className="shell-stage" data-kind={stage.kind} data-stage={stage.id}>
-        {/* IDE mock — mounted once, dimmed for panel stages */}
-        <div className="ide-mock-wrap" ref={ideMockRootRef}>
-          <IdeMock stage={stage.id} anim={stage.kind === 'tour' ? (stage.anim ?? 'idle') : 'idle'} dim={stage.kind !== 'tour'} />
-
-          {/* ring + callout overlay (only when target available) */}
-          {stage.kind === 'tour' && pos && (
-            <>
+      {/* body. IDE on the left, info rail on the right (rail hidden on panel stages). */}
+      <div
+        className="shell-body"
+        data-kind={stage.kind}
+        data-stage={stage.id}
+      >
+        <div className="shell-stage">
+          {/* the IDE mock is mounted once and dimmed for panel stages */}
+          <div className="ide-mock-wrap" ref={ideMockRootRef}>
+            <IdeMock
+              stage={stage.id}
+              anim={stage.kind === 'tour' ? (stage.anim ?? 'idle') : 'idle'}
+              dim={stage.kind !== 'tour'}
+            />
+            {stage.kind === 'tour' && ring && (
               <div
                 className="tour-ring"
-                style={{
-                  left: pos.ringLeft, top: pos.ringTop,
-                  width: pos.ringW, height: pos.ringH,
-                  ['--ring-color' as string]: stage.color,
-                } as React.CSSProperties}
+                style={
+                  {
+                    left: ring.left,
+                    top: ring.top,
+                    width: ring.width,
+                    height: ring.height,
+                    ['--ring-color' as string]: stage.color,
+                  } as React.CSSProperties
+                }
                 aria-hidden
               />
-              <div
-                key={stage.id}
-                className="tour-callout"
-                style={{
-                  left: pos.cardLeft, top: pos.cardTop,
-                  transform: pos.cardTransform,
-                }}
-              >
-                <div className="tour-callout-card" style={{ ['--callout-color' as string]: stage.color } as React.CSSProperties}>
-                  <div className="tour-callout-badge">
-                    <span className="num">{tourPos}</span>
-                    <span>{stage.badge}</span>
-                  </div>
-                  <div className="tour-callout-title">{stage.title}</div>
-                  <div className="tour-callout-text" dangerouslySetInnerHTML={{ __html: renderInline(stage.body) }} />
-                </div>
+            )}
+          </div>
+
+          {/* panel stages (welcome / outro) overlay the dimmed mock */}
+          <div className="panel-wrap">
+            {stage.id === 'welcome' && <HeroStage />}
+            {stage.id === 'outro' && <StrengthsStage onRestart={() => setIdx(0)} />}
+          </div>
+        </div>
+
+        {/* info rail (only rendered for tour stages; panel stages get the
+            full body width so the hero / strengths / cta breathe). */}
+        {stage.kind === 'tour' && (
+        <aside
+          className="shell-rail"
+          aria-label="Stage description"
+          style={{ ['--rail-color' as string]: stage.color } as React.CSSProperties}
+        >
+              <div className="rail-num">
+                <span className="rail-num-cur">{String(tourPos).padStart(2, '0')}</span>
+                <span className="rail-num-sep">/</span>
+                <span className="rail-num-tot">{String(tourCount).padStart(2, '0')}</span>
               </div>
-            </>
-          )}
-        </div>
-
-        {/* panel content (hero, strengths, cta) */}
-        <div className="panel-wrap">
-          {stage.id === 'welcome' && <HeroStage />}
-          {stage.id === 'strengths' && <StrengthsStage />}
-          {stage.id === 'cta' && <CtaStage />}
-        </div>
-      </div>
-
-      {/* footer status */}
-      <div className="shell-status">
-        <span>← / → to navigate</span>
-        <span>· Space ▶</span>
-        <span>· Home/End to jump</span>
-        <span style={{ marginLeft: 'auto' }}>
-          built at <a href="https://daplab.cs.columbia.edu/" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', fontWeight: 700 }}>DAPLab @ Columbia</a> · <a href="https://github.com/edb-rs/edb" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', fontWeight: 700 }}>edb-rs/edb</a>
-        </span>
+              <div className="rail-badge-row">
+                <span className="rail-back-arrow" aria-hidden>
+                  <BackArrow />
+                </span>
+                <span className="rail-badge">{stage.badge}</span>
+              </div>
+              <h2 className="rail-title">{stage.title}</h2>
+              <p
+                className="rail-body"
+                dangerouslySetInnerHTML={{ __html: renderInline(stage.body) }}
+              />
+              <div className="rail-spacer" />
+              <div className="rail-stage-pips" aria-hidden>
+                {STAGES.map((s, i) => {
+                  if (s.kind !== 'tour') return null;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className={`rail-pip ${i === idx ? 'is-active' : ''}`}
+                      style={{ ['--pip-color' as string]: s.color } as React.CSSProperties}
+                      onClick={() => setIdx(i)}
+                      title={s.label}
+                      aria-label={`Jump to ${s.label}`}
+                    />
+                  );
+                })}
+              </div>
+              <div className="rail-nav">
+                <button
+                  type="button"
+                  className="rail-nav-btn"
+                  onClick={onPrev}
+                  disabled={isFirst}
+                  aria-label="Previous stage"
+                >
+                  ← prev
+                </button>
+                <span className="rail-nav-keys">
+                  <span className="kbd">←</span>
+                  <span className="kbd">→</span>
+                </span>
+                <button
+                  type="button"
+                  className="rail-nav-btn"
+                  onClick={onNext}
+                  disabled={isLast}
+                  aria-label="Next stage"
+                >
+                  next →
+                </button>
+              </div>
+        </aside>
+        )}
       </div>
     </div>
   );
 }
 
 function renderInline(s: string): string {
+  // Order matters: bold (`**`) before italic (`*`), and code spans first so we
+  // don't mistake asterisks inside backticks for emphasis markers.
   return s
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+}
+
+function GhIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+    </svg>
+  );
+}
+
+/** Curved back-arrow that points from the rail toward the IDE on the left. */
+function BackArrow() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M27 24 C 27 16, 21 9, 9 7" />
+      <path d="M11 3 L 6 7 L 11 11" />
+    </svg>
+  );
 }
