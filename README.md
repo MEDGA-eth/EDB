@@ -158,3 +158,7 @@ EDB is free and open-source, and we're **genuinely short on funding to keep it g
     <img src="https://img.shields.io/badge/-🏢%20Sponsor%20as%20a%20company-d4608a?style=for-the-badge&labelColor=831843" alt="Sponsor as a company, email Zhuo" />
   </a>
 </p>
+
+<p align="center">
+  <sub><em>Company sponsorships are coordinated through <a href="https://daplab.cs.columbia.edu/">DAPLab @ Columbia University</a>.</em></sub>
+</p>

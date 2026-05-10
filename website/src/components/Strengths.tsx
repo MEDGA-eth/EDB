@@ -95,7 +95,17 @@ export default function StrengthsStage({ onRestart }: { onRestart?: () => void }
             </strong>{' '}
             to keep this project growing. If you&apos;re using EDB at a
             company, or you could sponsor a feature, an integration, or just
-            want to chat, we&apos;d love to hear from you.
+            want to chat, we&apos;d love to hear from you. Company support
+            is coordinated through our lab at{' '}
+            <a
+              href={DAPLAB}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'inherit', fontWeight: 700 }}
+            >
+              Columbia
+            </a>
+            .
           </p>
         </div>
         <div className="outro-cta-actions">
