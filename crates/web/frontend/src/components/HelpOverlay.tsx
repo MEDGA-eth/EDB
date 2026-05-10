@@ -53,7 +53,7 @@ const SECTIONS: Section[] = [
       { keys: 'F11', desc: 'Step Into, advance one snapshot, descend into a CALL' },
       { keys: '⇧F11', desc: 'Step Out, run until the current frame returns' },
       { keys: 'F10', desc: 'Step Over (BETA), same call depth; skip CALL bodies' },
-      { keys: '⌥F10', desc: 'Reverse Step, inverse of Step Over' },
+      { keys: '⌥F10', desc: 'Reverse Step — pop navigation history; undoes any step/continue/click, regardless of how you got here' },
     ],
   },
   {

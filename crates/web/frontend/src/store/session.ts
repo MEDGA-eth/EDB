@@ -82,6 +82,13 @@ export interface SessionState {
    *  when neither the active file nor the snapshot id changed (e.g. user
    *  clicks Locate twice in a row, or the matching tab was already open). */
   revealTick: number;
+  /** Navigation history: stack of snapshot ids visited prior to the current
+   *  one, most-recent last. `setSnapshotId` pushes the prior id on every
+   *  change; `goBack` pops. Drives the Reverse Step button so it's a true
+   *  inverse of *whatever* the user just did (step / continue / trace
+   *  click / palette goto), instead of leaning on the engine's prev_id
+   *  which can leap across contract boundaries. */
+  navHistory: number[];
   /** persisted list of watch expressions (auto-evaluated each snapshot) */
   watchExpressions: string[];
   /** persisted set of call types to show in the trace tree. Missing → all on. */
@@ -90,6 +97,9 @@ export interface SessionState {
   setSnapshotId(id: number): void;
   nextSnapshot(max: number): void;
   prevSnapshot(): void;
+  /** Pop the navigation history; jumps to the previous visited snapshot
+   *  without pushing the current one (so it's a true undo, not a churn). */
+  goBack(): void;
   addBreakpoint(bp: Breakpoint): void;
   removeBreakpoint(idx: number): void;
   clearBreakpoints(): void;
@@ -139,6 +149,10 @@ function fileId(addr: string, path: string): string {
 }
 
 const PERSIST_KEY = 'edb-web:session';
+/** Cap navHistory length so a long debugging session doesn't grow it
+ *  unbounded. 200 is plenty in practice — most "Reverse Step" requests
+ *  unwind a handful of steps, not hundreds. */
+const NAV_HISTORY_CAP = 200;
 
 export const useSession = create<SessionState>()(
   persist<SessionState>(
@@ -163,13 +177,40 @@ export const useSession = create<SessionState>()(
       traceExpandTick: 0,
       traceCollapseTick: 0,
       revealTick: 0,
+      navHistory: [],
       watchExpressions: [],
       traceCallFilters: [...ALL_TRACE_CALL_FILTERS],
 
-      setSnapshotId: (id) => set({ currentSnapshotId: Math.max(0, id) }),
-      nextSnapshot: (max) =>
-        set({ currentSnapshotId: Math.min(get().currentSnapshotId + 1, Math.max(0, max - 1)) }),
-      prevSnapshot: () => set({ currentSnapshotId: Math.max(0, get().currentSnapshotId - 1) }),
+      setSnapshotId: (id) => {
+        const target = Math.max(0, id);
+        const cur = get().currentSnapshotId;
+        if (target === cur) return;
+        // Push the *prior* id onto the history stack so Reverse Step can
+        // undo this navigation. Capped at NAV_HISTORY_CAP entries; older
+        // entries shift off the front. We only push from this single
+        // setter so every navigation route — toolbar steps, palette gotos,
+        // trace clicks, breakpoint hits — flows through one funnel.
+        const hist = get().navHistory;
+        const next = hist.length >= NAV_HISTORY_CAP ? hist.slice(1) : hist.slice();
+        next.push(cur);
+        set({ currentSnapshotId: target, navHistory: next });
+      },
+      nextSnapshot: (max) => {
+        const target = Math.min(get().currentSnapshotId + 1, Math.max(0, max - 1));
+        get().setSnapshotId(target);
+      },
+      prevSnapshot: () => {
+        const target = Math.max(0, get().currentSnapshotId - 1);
+        get().setSnapshotId(target);
+      },
+      goBack: () => {
+        const hist = get().navHistory;
+        if (hist.length === 0) return;
+        const target = hist[hist.length - 1]!;
+        // Pop *without* pushing the current id back, otherwise repeated
+        // Reverse Step clicks would oscillate between two snapshots.
+        set({ currentSnapshotId: target, navHistory: hist.slice(0, -1) });
+      },
       addBreakpoint: (bp) =>
         set({
           breakpoints: [
@@ -297,6 +338,7 @@ export const useSession = create<SessionState>()(
         traceExpandTick: 0,
         traceCollapseTick: 0,
         revealTick: 0,
+        navHistory: [],
       }),
     },
   ),

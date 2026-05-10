@@ -48,7 +48,7 @@ const SHORTCUTS: ShortcutSpec[] = [
   { match: (e) => e.key === 'F5' && e.shiftKey && (e.metaKey || e.ctrlKey), cmdId: '__restart' },
   { match: (e) => e.key === 'F5' && e.altKey, cmdId: 'nav.reverse-continue' },
   { match: (e) => e.key === 'F10' && !e.shiftKey && !e.altKey, cmdId: 'nav.step-over' },
-  { match: (e) => e.key === 'F10' && e.altKey, cmdId: 'nav.reverse-step-over' },
+  { match: (e) => e.key === 'F10' && e.altKey, cmdId: 'nav.go-back' },
   { match: (e) => e.key === 'F11' && !e.shiftKey, cmdId: 'nav.next' },
   { match: (e) => e.key === 'F11' && e.shiftKey, cmdId: 'nav.step-out' },
 ];
