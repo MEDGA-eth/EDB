@@ -77,6 +77,11 @@ export interface SessionState {
   /** trace expand/collapse "epoch", bumping forces panels to re-evaluate */
   traceExpandTick: number;
   traceCollapseTick: number;
+  /** "reveal current location" pulse. Bumped by the toolbar's Locate button
+   *  so file/opcode views re-scroll to the active snapshot's line/PC even
+   *  when neither the active file nor the snapshot id changed (e.g. user
+   *  clicks Locate twice in a row, or the matching tab was already open). */
+  revealTick: number;
   /** persisted list of watch expressions (auto-evaluated each snapshot) */
   watchExpressions: string[];
   /** persisted set of call types to show in the trace tree. Missing → all on. */
@@ -119,6 +124,7 @@ export interface SessionState {
   toggleLineNumbers(): void;
   bumpTraceExpand(): void;
   bumpTraceCollapse(): void;
+  bumpRevealTick(): void;
 
   addWatchExpression(expr: string): void;
   removeWatchExpression(expr: string): void;
@@ -156,6 +162,7 @@ export const useSession = create<SessionState>()(
       showLineNumbers: true,
       traceExpandTick: 0,
       traceCollapseTick: 0,
+      revealTick: 0,
       watchExpressions: [],
       traceCallFilters: [...ALL_TRACE_CALL_FILTERS],
 
@@ -243,6 +250,7 @@ export const useSession = create<SessionState>()(
       toggleLineNumbers: () => set({ showLineNumbers: !get().showLineNumbers }),
       bumpTraceExpand: () => set({ traceExpandTick: get().traceExpandTick + 1 }),
       bumpTraceCollapse: () => set({ traceCollapseTick: get().traceCollapseTick + 1 }),
+      bumpRevealTick: () => set({ revealTick: get().revealTick + 1 }),
 
       addWatchExpression: (expr) => {
         const trimmed = expr.trim();
@@ -288,6 +296,7 @@ export const useSession = create<SessionState>()(
         paletteInitialQuery: '',
         traceExpandTick: 0,
         traceCollapseTick: 0,
+        revealTick: 0,
       }),
     },
   ),
