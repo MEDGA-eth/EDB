@@ -10,29 +10,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.3] - 2026-05-10
 
 ### Added
+
+#### Engine / CLI
 - Support for calldata variables ([#33](https://github.com/edb-rs/edb/pull/33))
-- New `r` and `R` commands in code panel (`run`/`runback` in terminal panels) to run forward/backward until the next breakpoint
-- `edb server` which collectively spawns edb debug server. ([#46](https://github.com/edb-rs/edb/pull/46))
-- `release.yml` for automatic release publishing to GitHub Releases
-- **Browser-based web UI** as the default front-end: file tabs (Dockview), CodeMirror Solidity editor, command palette, debug toolbar with VSCode-style F-key bindings, Variables/Watch sidebar, Display panel (Stack / Memory / Storage / Transient / Calldata / Output), Terminal panel, and reopen menu. Source views auto-scroll to the active line; opcode views highlight the current PC and recover from missed scrolls via a global "Where am I?" toolbar button.
-- **Marketing website** (`website/`) with a fixed-shell tour, IDE mock, mobile-sheet popups, and a rotate-phone overlay; `edb.zzhang.xyz` runs the same bundle.
-- README: online tutor badge, sponsor split (GitHub Sponsors for individuals, mailto for companies, with a subtle DAPLab @ Columbia attribution).
+- `r` / `R` commands in the code panel (`run` / `runback` in terminal panels) to run forward / backward until the next breakpoint
+- `edb server` subcommand that collectively spawns the edb debug server ([#46](https://github.com/edb-rs/edb/pull/46))
+- New `--ui=web` option (and made it the default; see Changed)
+
+#### Browser-based web UI (`crates/web`)
+- **Dockview-based shell** with draggable file tabs and movable Display / Terminal panels (drop-on-edge to split, drop-on-tab to stack) and persisted layouts.
+- **CodeMirror 6 Solidity editor** with the EDB highlight theme, find panel (`Ctrl/Cmd+F`), gutter-click breakpoints, and a "Reveal current" toolbar button that scrolls the active line to center.
+- **Opcode view** with PC-aware current-instruction highlighting (matching accent stripe + dim background as the source view) and a `Reveal current PC` button.
+- **Debug toolbar** with VSCode-style bindings: Continue (F5), Step Into (F11), Step Out (⇧F11), Step Over (F10), Reverse Continue (⌥F5), Reverse Step (⌥F10), Restart (⇧⌘F5), Stop (⇧F5), Prev/Next Call (⌥←/⌥→), and a global "Where am I?" button that opens / focuses the file or disasm tab matching the active snapshot.
+- **Command palette** (`⌘P` / `Ctrl+P` to toggle, `⌘⇧P` for command-mode-prefilled-`>`) with file open, snapshot goto, and every toolbar action.
+- **Variables & Watch** sidebar with type-chipped variable cards and an inline `+` watch input; clicking an address value opens that contract's source in a new tab.
+- **Display panel** with Variables, Watch, Stack, Memory, Storage, Transient, Calldata, and Output tabs. Stack rows show a per-row depth `[N]`, a top-of-stack badge, truncated hex with a full-value tooltip, and click-to-copy. Memory adds an ASCII gutter with 8-byte hex grouping.
+- **Trace panel** with click-to-reveal-source (no snapshot change), right-click context menu (Jump to snapshot N · Reveal source only · Toggle children), and shift-click as a keyboard alternative for Jump.
+- **Breakpoints panel** with conditional and unconditional source / opcode breakpoints, a hit list, and "clear all".
+- **Terminal panel** with a Solidity REPL, terminal commands (`continue`, `step`, `over`, `out`, `goto <n>`, `break <addr>:<line>`, `break <addr>:pc=<pc>`, `bp`, `unbreak <#>`, `clear`, `help`), and an "Eye" chip that promotes the last expression to a watch.
+- **Help overlay** (status-bar `?`) covering stepping shortcuts, palette, trace tree, editor, variables / watch, terminal commands, and layout / panels — all rows verified against live behavior.
+- **Reopen menu** that lights up when a fixed panel (Display / Terminal) has been closed, restoring it next to its sibling.
+- **Status bar** with snapshot counter, connection indicator, theme toggle, and help button.
+- **Theme toggle** with light and dark themes shipped by default.
+- **Navigation history** (`navHistory`) with a 200-entry cap so Reverse Step is a true undo of the user's last navigation (step / continue / palette goto / trace click).
+- **Auto-follow active snapshot**: every snapshot change opens (or focuses) the file / disasm tab matching the new `(bytecode_address, source_path)` and re-pulses the in-tab scroll-to-current effect.
+- **Mobile layout** with stacked code / display, scaled fonts, and a popup sheet for stage hints.
+
+#### Marketing website (`website/`)
+- New fixed-shell SPA with a 10-stage tour, IDE mock, animated tour cursor, and stage-pip navigation; deployed at `edb.zzhang.xyz`.
+- Rich per-stage rail explanations with section headings, bullet lists, and starred recommendations.
+- Mobile-sheet popups for stage explanations on phones; click-anywhere-dismiss + tap-hint pulse.
+- Rotate-phone overlay shown for portrait phones; mobile chevrons for prev / next.
+- Side-by-side Display / Code layout for landscape phones, vertical stack for portrait.
+- Steppy mascot inline with the EDB wordmark in both the website hero and the README header.
+
+#### Documentation / branding
+- Online tutor badge in README pointing at `edb.zzhang.xyz`.
+- Sponsor split: GitHub Sponsors badge for individuals, mailto badge for companies, with a subtle "coordinated through DAPLab @ Columbia" attribution.
+- README header refreshed with new screenshots (web UI light + dark, TUI), Steppy icon, and shorter intro copy.
+- DEV.md notes the `EDB_SKIP_WEB_BUILD=1` escape hatch and bun-not-found troubleshooting.
+- `release.yml` for automatic release publishing to GitHub Releases (Bun installed before `cargo build --release` so prebuilt binaries always include the SPA).
 
 ### Fixed
 - Struct fields are no longer incorrectly treated as variables ([#33](https://github.com/edb-rs/edb/pull/33))
 - Gas limit relaxation is now correctly applied at callsites ([#39](https://github.com/edb-rs/edb/issues/39))
 - Web Memory view rendered nothing for opcode snapshots with empty memory; now shows an explicit `(empty)` placeholder.
-- Web opcode view's auto-scroll lost its target on backward navigation due to a single-ref-swap pattern; replaced with a `data-edb-current` attribute lookup that's order-independent.
-- Web tab focus didn't follow the active snapshot across contracts; `MainArea` now opens (or focuses) the file/disasm tab matching the snapshot on every change.
+- Web opcode view's auto-scroll lost its target on backward navigation due to a single-ref-swap pattern (React's commit cleared the shared ref when the previously-current row's `ref` flipped to `undefined`); replaced with a `data-edb-current` attribute lookup that's order-independent.
+- Web tab focus didn't follow the active snapshot across contracts; `MainArea` now opens (or focuses) the file / disasm tab matching the snapshot on every change.
+- Web reopen menu wasn't reactive to layout changes; subscribes to `layoutJson` so the affordance pops the moment a tab is closed.
+- Help overlay rendered behind the dockview surface in some browsers; z-index now ≥ 100.
+- Editor toolbar metadata wrapped when the source path was long; the file-name pill now truncates and the full path lives on the `title` attribute.
+- Mobile website's hit / watchpoint tags overlapped the source text on narrow viewports; tags now float above the line.
+- Mobile-website empty LOCALS placeholder hidden on phones; STATE VARIABLES alone is enough.
 
 ### Changed
-- `--ui` defaults to `web` (was `tui`); `--ui=tui` is the explicit fallback. Release pipeline already installs Bun, so prebuilt binaries ship with the embedded SPA baked in.
-- Reverse Step (`⌥F10`) is now a true history-pop ("undo my last navigation") instead of the engine's `prev_id`-based reverse-step-over, which could leap across contract boundaries when stepping into call bodies.
-- Update `install.sh` to download the latest release from GitHub Releases first, falling back to source builds when no releases are available.
-- README structure: prerequisites moved under "Build from Source"; RPC endpoint guidance moved into Quickstart; em-dashes removed.
-- Help overlay rows updated to match live menus (trace right-click items, ⌥F10 semantics, command palette command-mode prefill).
-- Display panel: Stack rows show a per-row depth `[N]`, top-of-stack badge, click-to-copy, and truncated hex with full-value tooltip; Memory view adds an ASCII gutter with 8-byte hex grouping.
-- Mobile website (`@media (pointer: coarse)`): trimmed fonts, icons, and structural rows so the IDE mock fits a phone-landscape viewport once browser chrome is accounted for; switched the shell height to `100dvh` so layout tracks the *visible* viewport as chrome shows or hides.
+- `--ui` defaults to `web` (was `tui`); `--ui=tui` is the explicit fallback. The release pipeline already installs Bun, so prebuilt binaries ship with the embedded SPA baked in.
+- Reverse Step (`⌥F10`) is now a true navigation-history pop ("undo my last navigation"). The engine's `prev_id`-based reverse-step-over could leap across contract boundaries when reverse-stepping out of a freshly-entered call body — replaced with a per-session `navHistory` stack populated on every `setSnapshotId`.
+- `install.sh` downloads the latest release from GitHub Releases first, falling back to source builds when no release matches the platform; source builds gate on `bun --version` resolving on PATH.
+- README structure: prerequisites moved under "Build from Source"; RPC endpoint guidance moved into Quickstart; em-dashes removed; sponsor framing reverted to the urgent "short on funding" line; sponsor section split into individual / company badges.
+- Snapshot ids in the web UI surface as 1-based (1 / N) in the status bar and palette while remaining 0-based on the wire.
+- Help overlay rows updated to match live menus (trace right-click items, ⌥F10 history-pop semantics, command palette command-mode prefill).
+- Web UI variable cards replace the previous flat list; trace tree is reveal-only on left-click; activity bar uses a colour palette; toolbars get verbose labels.
+- Mobile website (`@media (pointer: coarse) and ((max-width: 720px) or (max-height: 500px))`): trimmed fonts, icons, structural rows, and ide-mock-wrap padding so the IDE mock fits a phone-landscape viewport once browser chrome is accounted for; switched the shell height to `100dvh` so the layout tracks the *visible* viewport as chrome shows or hides.
+- README, DEV.md, ARCH.md, and HelpOverlay copy aligned with the new defaults / semantics; the in-code `Locate` references renamed to "Where am I?" to match the user-facing label.
 
 ## [0.0.2] - 2024-10-11
 
