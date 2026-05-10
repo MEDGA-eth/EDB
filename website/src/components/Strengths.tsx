@@ -55,15 +55,11 @@ const STRENGTHS: { emoji: string; title: string; body: string; accent: string; h
 export default function StrengthsStage({ onRestart }: { onRestart?: () => void }) {
   return (
     <div className="panel outro-panel">
-      {/* title — only heading on the page, dressed up so it can stand alone */}
+      {/* title — single tight line so the cards have room to breathe */}
       <div className="outro-head">
         <h2 className="outro-title">
-          <span className="outro-title-line">A debugger that finally matches Solidity.</span>
-          <span className="outro-title-line">
-            The <span className="gradient-text">best web2 debugging experience</span>, brought to web3.
-          </span>
+          A debugger that finally <span className="gradient-text">matches Solidity</span>.
         </h2>
-        <span className="shiny-divider outro-shiny" aria-hidden />
       </div>
 
       {/* strength grid */}
