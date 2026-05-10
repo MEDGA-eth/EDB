@@ -75,3 +75,39 @@ fn test_missing_subcommand() {
     let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("edb");
     cmd.assert().failure().stderr(predicate::str::contains("Usage"));
 }
+
+#[test]
+fn test_replay_requires_rpc_urls() {
+    edb_common::logging::ensure_test_logging(None);
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("edb");
+    cmd.arg("replay")
+        .arg("0x0000000000000000000000000000000000000000000000000000000000000000")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("--rpc-urls"));
+}
+
+#[test]
+fn test_rpc_urls_not_at_top_level() {
+    edb_common::logging::ensure_test_logging(None);
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("edb");
+    cmd.arg("--rpc-urls").arg("http://x").arg("--help").assert().failure();
+}
+
+#[test]
+fn test_disable_mouse_flag_removed() {
+    edb_common::logging::ensure_test_logging(None);
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("edb");
+    cmd.arg("--disable-mouse").arg("--help").assert().failure();
+}
+
+#[test]
+fn test_test_subcommand_takes_qualified_name() {
+    edb_common::logging::ensure_test_logging(None);
+    let mut cmd = assert_cmd::cargo::cargo_bin_cmd!("edb");
+    cmd.arg("test")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("CONTRACT::TEST_FN"));
+}
