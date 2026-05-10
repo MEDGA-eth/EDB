@@ -365,28 +365,38 @@ export default function IdeMock({ stage, anim, dim }: IdeMockProps) {
     async function reverseAnim() {
       setActivity('breakpoints');
       while (!cancelled) {
-        // forward run first so the user sees there's somewhere to reverse from
+        // Forward run, recording every visited (snapshot, line) pair so the
+        // reverse phase can replay the path step by step. Without recording,
+        // the reverse loop would keep advancing `i` forward (the bug the
+        // user spotted: clicking Reverse Step appeared to step DOWN).
+        const path: { snap: number; line: number }[] = [];
         let i = findIdx(DEFAULT_ACTIVE_LINE);
-        setSnapshot(1);
-        setActiveLine(DEFAULT_ACTIVE_LINE);
+        let s = 1;
+        setSnapshot(s);
+        setActiveLine(MAIN_CODE[i]!.n);
         setStoppedAtBp(false);
+        path.push({ snap: s, line: MAIN_CODE[i]!.n });
         await wait(700);
-        for (let s = 1; s <= 5 && !cancelled; s++) {
-          setSnapshot(s);
-          setActiveLine(lineAt(i));
-          await wait(220);
+        for (let k = 0; k < 5 && !cancelled; k++) {
           do { i = Math.min(i + 1, MAIN_CODE.length - 1); } while (i < MAIN_CODE.length - 1 && !isCodeLine(MAIN_CODE[i]!.text));
-        }
-        await wait(700);
-
-        // user clicks Reverse Step several times
-        await moveCursorTo('.btn-reverse-step', 500);
-        for (let s = 5; s >= 1 && !cancelled; s--) {
-          await clickCursor(180);
+          s += 1;
           setSnapshot(s);
-          setActiveLine(lineAt(i));
-          await wait(360);
-          do { i = Math.max(i - 1, 0); } while (i > 0 && !isCodeLine(MAIN_CODE[i]!.text));
+          setActiveLine(MAIN_CODE[i]!.n);
+          path.push({ snap: s, line: MAIN_CODE[i]!.n });
+          await wait(280);
+        }
+        await wait(900);
+
+        // User clicks Reverse Step repeatedly: each click moves one entry
+        // back through the recorded path, so the line goes UP and the
+        // snapshot counter ticks DOWN, exactly one step per click.
+        for (let k = path.length - 2; k >= 0 && !cancelled; k--) {
+          await moveCursorTo('.btn-reverse-step', 360);
+          await clickCursor();
+          const step = path[k]!;
+          setSnapshot(step.snap);
+          setActiveLine(step.line);
+          await wait(450);
         }
         await wait(1700);
       }

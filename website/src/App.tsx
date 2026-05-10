@@ -182,80 +182,76 @@ export default function App() {
           aria-label="Stage description"
           style={{ ['--rail-color' as string]: stage.color } as React.CSSProperties}
         >
-              <div className="rail-num">
-                <span className="rail-num-cur">{String(tourPos).padStart(2, '0')}</span>
-                <span className="rail-num-sep">/</span>
-                <span className="rail-num-tot">{String(tourCount).padStart(2, '0')}</span>
-              </div>
-              <div className="rail-badge-row">
-                <span className="rail-back-arrow" aria-hidden>
-                  <BackArrow />
-                </span>
-                <span className="rail-badge">{stage.badge}</span>
-              </div>
-              <h2 className="rail-title">{stage.title}</h2>
-              <p
-                className="rail-body"
-                dangerouslySetInnerHTML={{ __html: renderInline(stage.body) }}
-              />
-              <div className="rail-spacer" />
-              <div className="rail-stage-pips" aria-hidden>
-                {STAGES.map((s, i) => {
-                  if (s.kind !== 'tour') return null;
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      className={`rail-pip ${i === idx ? 'is-active' : ''}`}
-                      style={{ ['--pip-color' as string]: s.color } as React.CSSProperties}
-                      onClick={() => setIdx(i)}
-                      title={s.label}
-                      aria-label={`Jump to ${s.label}`}
-                    />
-                  );
-                })}
-              </div>
-              <div className="rail-nav">
-                <button
-                  type="button"
-                  className="rail-nav-btn"
-                  onClick={onPrev}
-                  disabled={isFirst}
-                  aria-label="Previous stage"
-                >
-                  ← prev
-                </button>
-                <span className="rail-nav-keys">
-                  <span className="kbd">←</span>
-                  <span className="kbd">→</span>
-                </span>
-                <button
-                  type="button"
-                  className="rail-nav-btn"
-                  onClick={onNext}
-                  disabled={isLast}
-                  aria-label="Next stage"
-                >
-                  next →
-                </button>
-              </div>
+          {/* head: stage number + back arrow + badge + title */}
+          <div className="rail-head">
+            <div className="rail-num">
+              <span className="rail-num-cur">{String(tourPos).padStart(2, '0')}</span>
+              <span className="rail-num-sep">/</span>
+              <span className="rail-num-tot">{String(tourCount).padStart(2, '0')}</span>
+            </div>
+            <div className="rail-badge-row">
+              <span className="rail-back-arrow" aria-hidden>
+                <BackArrow />
+              </span>
+              <span className="rail-badge">{stage.badge}</span>
+            </div>
+            <h2 className="rail-title">{stage.title}</h2>
+          </div>
+
+          {/* body: rich JSX from each stage's body field. Scrolls inside the
+              rail so long explanations don't push the nav off-screen. */}
+          <div className="rail-body" key={stage.id}>
+            {stage.body}
+          </div>
+
+          {/* foot: stage pips + nav buttons. Pinned to the bottom of the rail. */}
+          <div className="rail-foot">
+            <div className="rail-stage-pips" aria-hidden>
+              {STAGES.map((s, i) => {
+                if (s.kind !== 'tour') return null;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={`rail-pip ${i === idx ? 'is-active' : ''}`}
+                    style={{ ['--pip-color' as string]: s.color } as React.CSSProperties}
+                    onClick={() => setIdx(i)}
+                    title={s.label}
+                    aria-label={`Jump to ${s.label}`}
+                  />
+                );
+              })}
+            </div>
+            <div className="rail-nav">
+              <button
+                type="button"
+                className="rail-nav-btn"
+                onClick={onPrev}
+                disabled={isFirst}
+                aria-label="Previous stage"
+              >
+                ← prev
+              </button>
+              <span className="rail-nav-keys">
+                <span className="kbd">←</span>
+                <span className="kbd">→</span>
+              </span>
+              <button
+                type="button"
+                className="rail-nav-btn"
+                onClick={onNext}
+                disabled={isLast}
+                aria-label="Next stage"
+              >
+                next →
+              </button>
+            </div>
+          </div>
         </aside>
         )}
       </div>
     </div>
   );
-}
-
-function renderInline(s: string): string {
-  // Order matters: bold (`**`) before italic (`*`), and code spans first so we
-  // don't mistake asterisks inside backticks for emphasis markers.
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
 }
 
 function GhIcon() {

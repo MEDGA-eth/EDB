@@ -248,13 +248,19 @@ a { color: inherit; }
 .shell-rail {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  /* Three-zone layout so a long body can scroll without pushing the
+     stage pips and nav off-screen. */
   padding: 22px 22px 18px;
   border-left: 1.5px solid var(--border);
   background: var(--bg);
   overflow: hidden;
   position: relative;
+  min-height: 0;
 }
+.rail-head { flex: none; display: flex; flex-direction: column; gap: 8px; }
+.rail-foot { flex: none; display: flex; flex-direction: column; gap: 6px;
+  padding-top: 10px; margin-top: 8px;
+  border-top: 1px dashed var(--border); }
 .shell-rail::before {
   content: "";
   position: absolute;
@@ -358,13 +364,21 @@ a { color: inherit; }
   margin-top: 2px;
   animation: rail-fade 380ms cubic-bezier(0.34, 1.56, 0.64, 1) 40ms backwards;
 }
+/* Body. Scrollable so long structured explanations don't push the
+   rail-foot off-screen. */
 .rail-body {
-  font-size: 14px;
+  flex: 1; min-height: 0; overflow-y: auto;
+  margin-top: 10px; padding-right: 4px;
+  font-size: 13.5px;
   line-height: 1.55;
   color: var(--fg-secondary);
   font-weight: 500;
   animation: rail-fade 380ms cubic-bezier(0.34, 1.56, 0.64, 1) 80ms backwards;
 }
+.rail-body p { margin: 0 0 8px; }
+.rail-body p:last-child { margin-bottom: 0; }
+.rail-body strong { color: var(--fg); font-weight: 800; }
+.rail-body em { color: var(--accent-warm); font-style: italic; font-weight: 700; }
 .rail-body code {
   font-family: var(--font-mono);
   font-size: 12.5px;
@@ -372,15 +386,67 @@ a { color: inherit; }
   color: var(--hl-purple);
   padding: 1px 6px;
   border-radius: 6px;
+  white-space: nowrap;
 }
-.rail-body strong { color: var(--accent-warm); font-weight: 800; }
+.rail-body ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rail-body li {
+  position: relative;
+  padding-left: 16px;
+}
+.rail-body li::before {
+  content: "•";
+  position: absolute;
+  left: 2px;
+  top: 0;
+  color: var(--rail-color, var(--accent-warm));
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* Section heading inside a rail body. */
+.rail-sec {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rail-color, var(--accent-warm));
+  margin: 12px 0 6px;
+}
+.rail-sec:first-child { margin-top: 0; }
+
+/* Highlight tip box. */
+.rail-tip {
+  margin: 10px 0 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px dashed color-mix(in srgb, var(--rail-color, var(--accent-warm)) 40%, transparent);
+  background: color-mix(in srgb, var(--rail-color, var(--accent-warm)) 6%, transparent);
+  font-size: 12.5px;
+  color: var(--fg);
+  line-height: 1.5;
+}
+.rail-tip strong { color: var(--rail-color, var(--accent-warm)); }
+
+.rail-star {
+  display: inline-block;
+  color: var(--rail-color, var(--accent-warm));
+  font-weight: 800;
+  margin: 0 2px;
+}
 
 @keyframes rail-fade {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
-.rail-spacer { flex: 1; min-height: 6px; }
 
 .rail-stage-pips {
   display: flex;
@@ -1860,9 +1926,10 @@ a { color: inherit; }
    Outro panel. Why EDB cards + Get involved CTA, all in one stage.
    ══════════════════════════════════════════════════════════════ */
 .outro-panel {
-  /* Override the default centered .panel layout; this one stacks top to
-     bottom so the cards + CTA + credits all fit a single 100vh screen. */
-  justify-content: flex-start;
+  /* Stack top to bottom but vertically centred, so the cards + CTA +
+     credits sit in the middle of the viewport instead of crowding the
+     top with a tall empty space below. */
+  justify-content: center;
   padding: 28px clamp(20px, 4vw, 56px);
   gap: 16px;
 }
@@ -1870,24 +1937,16 @@ a { color: inherit; }
   text-align: center;
   display: flex; flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: 4px;
+  margin-top: 4px;
 }
 .outro-title {
   font-family: var(--font-display);
-  font-size: clamp(28px, 3.8vw, 42px);
+  font-size: clamp(26px, 3.2vw, 36px);
   font-weight: 700;
-  letter-spacing: -0.022em;
-  line-height: 1.1;
+  letter-spacing: -0.018em;
+  line-height: 1.15;
   color: var(--fg);
-  display: flex; flex-direction: column;
-  gap: 4px;
-  max-width: 880px;
-}
-.outro-title-line { display: block; }
-.outro-title-line:first-child { color: var(--fg-secondary); font-weight: 600; font-size: 0.78em; }
-.outro-shiny {
-  width: clamp(180px, 28vw, 320px);
-  margin-top: 4px;
 }
 .outro-grid {
   width: 100%;
