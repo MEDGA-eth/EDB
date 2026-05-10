@@ -1,36 +1,82 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  EDB favicon — "Steppy", a friendly play-arrow mascot.
+  Light-mode cream palette mirrors the website shell. The play arrow keeps the
+  EDB brand DNA (run / step), the breakpoint dot in the corner anchors the
+  debugger metaphor, and the snapshot crumbs along the bottom hint at the
+  time-travel trace. Cute eyes, smile and blushes warm the whole thing up.
+-->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="120" height="120" fill="none">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="edb-bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#fdfaf3"/>
       <stop offset="100%" stop-color="#efe7d5"/>
     </linearGradient>
-    <linearGradient id="play" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#34d399"/>
-      <stop offset="100%" stop-color="#047857"/>
+    <linearGradient id="edb-play" x1="0" y1="0" x2="0.85" y2="1">
+      <stop offset="0%" stop-color="#f29478"/>
+      <stop offset="55%" stop-color="#e85f3f"/>
+      <stop offset="100%" stop-color="#c8381a"/>
     </linearGradient>
-    <linearGradient id="bracket" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#0e7490"/>
-      <stop offset="100%" stop-color="#0c4a6e"/>
-    </linearGradient>
-    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.55">
-      <stop offset="0%" stop-color="#34d399" stop-opacity="0.25"/>
-      <stop offset="100%" stop-color="#34d399" stop-opacity="0"/>
+    <radialGradient id="edb-warm-glow" cx="0.5" cy="0.45" r="0.55">
+      <stop offset="0%" stop-color="#ffd4b8" stop-opacity="0.7"/>
+      <stop offset="100%" stop-color="#ffd4b8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="edb-cheek" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#ffb19a" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#ffb19a" stop-opacity="0"/>
     </radialGradient>
   </defs>
-  <rect width="64" height="64" rx="14" fill="url(#bg)" stroke="#d6cdb6" stroke-width="1"/>
-  <circle cx="32" cy="32" r="22" fill="url(#halo)"/>
-  <path d="M 13 20 L 6 32 L 13 44" stroke="url(#bracket)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M 51 20 L 58 32 L 51 44" stroke="url(#bracket)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M 23 17 L 23 47 L 47 32 Z" fill="url(#play)" stroke="#065f46" stroke-width="1.4" stroke-linejoin="round"/>
-  <path d="M 27 23 L 27 41 L 41 32 Z" fill="#a7f3d0" opacity="0.5"/>
-  <circle cx="14" cy="11" r="4.4" fill="#dc2626" stroke="#fdfaf3" stroke-width="1.4"/>
-  <g transform="translate(17 56)">
-    <circle r="1.8" fill="#047857"/>
-    <circle cx="6" r="1.4" fill="#047857" opacity="0.7"/>
-    <circle cx="12" r="1.4" fill="#047857" opacity="0.55"/>
-    <circle cx="18" r="1.4" fill="#047857" opacity="0.4"/>
-    <circle cx="24" r="1.4" fill="#047857" opacity="0.25"/>
-    <circle cx="30" r="1.4" fill="#047857" opacity="0.13"/>
+
+  <!-- cream rounded square backdrop -->
+  <rect width="64" height="64" rx="14" fill="url(#edb-bg)" stroke="#d6cdb6" stroke-width="1"/>
+
+  <!-- soft warm glow behind the mascot -->
+  <circle cx="33" cy="32" r="22" fill="url(#edb-warm-glow)"/>
+
+  <!-- step trail (snapshot crumbs) along the bottom -->
+  <g>
+    <circle cx="14" cy="55" r="1.7" fill="#d33d20"/>
+    <circle cx="20" cy="55" r="1.4" fill="#d33d20" opacity="0.72"/>
+    <circle cx="26" cy="55" r="1.2" fill="#d33d20" opacity="0.5"/>
+    <circle cx="32" cy="55" r="1.0" fill="#d33d20" opacity="0.32"/>
   </g>
+
+  <!-- rounded play triangle (the "Steppy" body) -->
+  <path d="M 22.5 16
+           Q 20.5 15.4 20.5 17.6
+           L 20.5 46.4
+           Q 20.5 48.6 22.5 48
+           Q 23.4 47.8 24.4 47.2
+           L 48 33.4
+           Q 50 32 48 30.6
+           L 24.4 16.8
+           Q 23.4 16.2 22.5 16 Z"
+        fill="url(#edb-play)"
+        stroke="#a8331a"
+        stroke-width="1.5"
+        stroke-linejoin="round"/>
+
+  <!-- cheek blushes for cuteness -->
+  <ellipse cx="27" cy="36" rx="3" ry="2.2" fill="url(#edb-cheek)"/>
+  <ellipse cx="36.5" cy="37" rx="3" ry="2.2" fill="url(#edb-cheek)"/>
+
+  <!-- left eye -->
+  <ellipse cx="28" cy="28" rx="1.7" ry="2.1" fill="#2a1208"/>
+  <circle cx="28.5" cy="27.4" r="0.65" fill="#fff8ee"/>
+
+  <!-- right eye -->
+  <ellipse cx="34.4" cy="30" rx="1.7" ry="2.1" fill="#2a1208"/>
+  <circle cx="34.9" cy="29.4" r="0.65" fill="#fff8ee"/>
+
+  <!-- happy smile -->
+  <path d="M 28 35.5 Q 31.2 38.6 34.6 35"
+        fill="none"
+        stroke="#2a1208"
+        stroke-width="1.4"
+        stroke-linecap="round"
+        stroke-linejoin="round"/>
+
+  <!-- breakpoint dot in top-left corner — debugger signature -->
+  <circle cx="13" cy="13" r="4.5" fill="#dc2626" stroke="#fdfaf3" stroke-width="1.6"/>
+  <circle cx="11.6" cy="11.6" r="1.3" fill="#ff8a78"/>
 </svg>
