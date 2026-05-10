@@ -4,7 +4,11 @@
 </h1>
 
 <p align="center">
-  <strong>Source-level time-travel debugger for Ethereum smart contracts</strong>
+  <strong>To our knowledge, the first Ethereum smart-contract debugger that can theoretically achieve 100% accurate source-to-bytecode mapping.</strong>
+</p>
+
+<p align="center">
+  Source-level time-travel debugger for Ethereum smart contracts.
 </p>
 
 <p align="center">
