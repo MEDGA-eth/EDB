@@ -1,5 +1,5 @@
 <h1 align="center">
-  EDB<sup><img src="./resources/edb-icon.svg" alt="" height="22" /></sup>
+  EDB <img src="./resources/edb-icon.svg" alt="" height="32" />
   &nbsp;·&nbsp; The Ethereum Project Debugger
 </h1>
 
