@@ -109,13 +109,7 @@ a { color: inherit; }
 .shell {
   display: grid;
   grid-template-rows: 56px 1fr;
-  /* Use dvh so the shell tracks the *visible* viewport when mobile
-     browser chrome (URL bar / nav bar) shows or hides — `100vh`
-     reports the largest possible viewport, which silently overflows
-     under default-on browser chrome on phones. dvh fallback to vh
-     for browsers that lack the unit. */
   height: 100vh;
-  height: 100dvh;
   width: 100vw;
   position: relative;
   overflow: hidden;
@@ -2252,7 +2246,6 @@ a { color: inherit; }
   max-width: min(820px, calc(100vw - 32px));
   width: 100%;
   max-height: calc(100vh - 80px);
-  max-height: calc(100dvh - 80px);
   overflow-y: auto;
   box-shadow:
     0 0 28px color-mix(in srgb, var(--rail-color, var(--accent-warm)) 18%, transparent),
@@ -2268,48 +2261,48 @@ a { color: inherit; }
   align-items: baseline;
   gap: 4px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg-tertiary);
   font-weight: 700;
   letter-spacing: 0.04em;
 }
 .mobile-sheet-num-cur {
   font-family: var(--font-display);
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--rail-color, var(--accent-warm));
   line-height: 1;
 }
-.mobile-sheet-num-sep { color: var(--fg-tertiary); font-size: 15px; }
-.mobile-sheet-num-tot { color: var(--fg-tertiary); font-size: 12px; }
+.mobile-sheet-num-sep { color: var(--fg-tertiary); font-size: 18px; }
+.mobile-sheet-num-tot { color: var(--fg-tertiary); font-size: 14px; }
 .mobile-sheet-badge {
   display: inline-block;
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 10.5px;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--rail-color, var(--accent-warm));
   background: color-mix(in srgb, var(--rail-color, var(--accent-warm)) 12%, transparent);
   border: 1.5px solid color-mix(in srgb, var(--rail-color, var(--accent-warm)) 35%, transparent);
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: 999px;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 .mobile-sheet-title {
   font-family: var(--font-display);
-  font-size: clamp(15px, 3.5vw, 19px);
+  font-size: clamp(18px, 4vw, 22px);
   font-weight: 700;
   letter-spacing: -0.012em;
   line-height: 1.2;
   color: var(--fg);
-  margin-top: 3px;
+  margin-top: 4px;
 }
 .mobile-sheet-body {
-  margin-top: 6px;
-  font-size: 12px;
-  line-height: 1.5;
+  margin-top: 8px;
+  font-size: 13.5px;
+  line-height: 1.55;
   color: var(--fg-secondary);
   font-weight: 500;
 }
@@ -2438,40 +2431,81 @@ a { color: inherit; }
   .shell-body[data-kind="tour"] .shell-rail { display: none; }
   .shell-body { grid-template-columns: 1fr !important; }
 
+  /* Use dvh on mobile so the shell tracks the *visible* viewport when
+     browser chrome (URL bar / nav bar) shows or hides. `100vh` reports
+     the largest possible viewport, which silently overflows under
+     default-on chrome. The original `100vh` rule is the desktop
+     fallback; this overrides it only when the mobile @media matches. */
+  .shell { height: 100dvh; }
+  .mobile-sheet-card { max-height: calc(100dvh - 80px); }
+
+  /* Mobile-sheet typography trims (these classes only mount under
+     <MobileSheet/>, which is JS-gated to mobile, but keeping the
+     reductions inside the mobile @media keeps the desktop CSS strictly
+     untouched). */
+  .mobile-sheet-num { font-size: 11px; }
+  .mobile-sheet-num-cur { font-size: 22px; }
+  .mobile-sheet-num-sep { font-size: 15px; }
+  .mobile-sheet-num-tot { font-size: 12px; }
+  .mobile-sheet-badge {
+    font-size: 9.5px;
+    padding: 2px 8px;
+    margin-top: 6px;
+  }
+  .mobile-sheet-title {
+    font-size: clamp(15px, 3.5vw, 19px);
+    margin-top: 3px;
+  }
+  .mobile-sheet-body {
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
   /* Header: more compact on mobile so the IDE has more vertical room. */
-  .shell { grid-template-rows: 38px 1fr; }
-  .shell-header { padding: 5px 10px; }
-  .shell-wordmark-mark { font-size: 16px; }
+  .shell { grid-template-rows: 32px 1fr; }
+  .shell-header { padding: 4px 8px; }
+  .shell-wordmark-mark { font-size: 14px; }
   .shell-wordmark-sub { display: none; }
-  .shell-link { font-size: 10px; padding: 3px 7px; gap: 3px; }
-  .shell-fund { font-size: 10.5px; padding: 3px 8px; }
+  .shell-link { font-size: 9.5px; padding: 2px 6px; gap: 3px; }
+  .shell-fund { font-size: 9.5px; padding: 2px 7px; }
+  /* Trim the desktop's chunky stage padding: every saved px goes
+     straight into the IDE mock's usable height once browser chrome
+     (URL bar / nav bar) eats into the real viewport. */
+  .shell-stage > .ide-mock-wrap,
+  .shell-stage > .panel-wrap {
+    inset: 8px 8px 8px 8px;
+  }
 
   /* IDE mock: scale fonts, narrow side columns, drop kbd badges so the
-     toolbar fits a phone-landscape viewport without horizontal scroll. */
-  .ide-mock { border-radius: 8px; }
-  .ide-toolbar { padding: 0 5px; gap: 2px; }
-  .ide-debug-chip { font-size: 8px; padding: 1px 4px; margin-right: 2px; }
-  .ide-tb-btn { padding: 2px 4px; font-size: 8.5px; gap: 2px; }
+     toolbar fits a phone-landscape viewport without horizontal scroll.
+     Also shrink the structural grid rows: desktop uses 36px / 1fr / 28px
+     for toolbar / body / status, all designed for desktop click targets;
+     phones don't need that breathing room. */
+  .ide-mock { border-radius: 6px; grid-template-rows: 26px 1fr 18px; }
+  .ide-toolbar { padding: 0 4px; gap: 1px; }
+  .ide-debug-chip { font-size: 7px; padding: 1px 3px; margin-right: 1px; }
+  .ide-tb-btn { padding: 1px 3px; font-size: 7.5px; gap: 1px; }
   .ide-tb-kbd { display: none; }
-  .ide-tb-icon svg { width: 10px; height: 10px; }
-  .ide-tb-divider { height: 12px; margin: 0 1px; }
+  .ide-tb-icon svg { width: 9px; height: 9px; }
+  .ide-tb-divider { height: 10px; margin: 0 1px; }
 
-  .ide-body { grid-template-columns: 40px 140px 1fr; }
-  .ide-activity-btn { padding: 5px 0 4px; gap: 2px; min-height: 44px; }
-  .ide-activity-btn svg { width: 15px !important; height: 15px !important; }
-  .ide-activity-label { font-size: 7.5px; }
-  .ide-sidebar-header { padding: 4px 7px; font-size: 8.5px; }
-  .ide-tree-row { padding: 2px 7px; font-size: 10px; }
-  .ide-tree-mono { font-size: 9px; }
-  .ide-tree-tag { font-size: 7.5px; padding: 1px 4px; }
+  .ide-body { grid-template-columns: 36px 124px 1fr; }
+  .ide-activity-btn { padding: 4px 0 3px; gap: 1px; min-height: 38px; }
+  .ide-activity-btn svg { width: 13px !important; height: 13px !important; }
+  .ide-activity-label { font-size: 6.5px; }
+  .ide-sidebar-header { padding: 3px 6px; font-size: 8px; }
+  .ide-tree-row { padding: 2px 6px; font-size: 9px; }
+  .ide-tree-mono { font-size: 8px; }
+  .ide-tree-tag { font-size: 7px; padding: 0 3px; }
 
-  .ide-tabs .ide-tab { padding: 2px 8px; font-size: 9.5px; }
-  .ide-edtoolbar { padding: 2px 7px; font-size: 8.5px; gap: 8px; }
-  .ide-edt-meta { font-size: 8.5px; }
-  .ide-code { font-size: 9px; padding: 3px 0; }
-  .ide-code-line { grid-template-columns: 16px 24px 1fr; padding: 0 6px 0 5px; min-height: 14px; }
-  .ide-line-num { font-size: 8.5px; padding-right: 6px; }
-  .ide-bp { width: 8px; height: 8px; }
+  .ide-tabs .ide-tab { padding: 2px 7px; font-size: 8.5px; }
+  .ide-edtoolbar { padding: 2px 6px; font-size: 8px; gap: 6px; }
+  .ide-edt-meta { font-size: 8px; }
+  .ide-code { font-size: 8px; padding: 2px 0; }
+  .ide-code-line { grid-template-columns: 14px 20px 1fr; padding: 0 5px 0 4px; min-height: 12px; }
+  .ide-line-num { font-size: 7.5px; padding-right: 5px; }
+  .ide-bp { width: 7px; height: 7px; }
   /* On phone-narrow viewports the source text reaches the right edge,
      so the centered hit-tag overlapped the code. Lift the tag (and the
      watchpoint-condition pill it cross-fades with) just above the line
@@ -2486,10 +2520,10 @@ a { color: inherit; }
     top: auto; bottom: 100%; transform: none; margin-bottom: 1px;
   }
 
-  .ide-bottom-body { padding: 5px 9px; font-size: 9.5px; }
-  .ide-subtab { padding: 2px 7px; font-size: 9px; }
-  .ide-pane-title { font-size: 8.5px; }
-  .ide-pane-empty { font-size: 8.5px; padding: 4px 7px; }
+  .ide-bottom-body { padding: 4px 7px; font-size: 8.5px; }
+  .ide-subtab { padding: 1px 6px; font-size: 8px; }
+  .ide-pane-title { font-size: 7.5px; }
+  .ide-pane-empty { font-size: 7.5px; padding: 3px 6px; }
   /* The empty LOCALS placeholder ("No locals here yet…") wastes vertical
      real-estate on phones; STATE VARIABLES alone is enough on mobile. */
   .ide-pane-locals { display: none; }
@@ -2499,21 +2533,21 @@ a { color: inherit; }
   .mobile-sheet-card { max-width: calc(100vw - 80px); }
 
   /* Variables / Watch sidebar (right activity-bar pane on mobile): shrink
-     fonts and tighten padding so the cards fit in the 140px-wide column. */
-  .ide-sb-scroll { padding: 5px 6px 7px; gap: 6px; }
-  .ide-sb-section { gap: 3px; }
-  .ide-sb-section-head { font-size: 8.5px; margin: 0 2px; }
-  .ide-sb-empty { font-size: 8.5px; padding: 4px 6px; line-height: 1.35; border-radius: 6px; }
-  .ide-sb-list { gap: 3px; }
-  .ide-sb-card { padding: 4px 6px; border-radius: 6px; }
-  .ide-sb-card-head { gap: 4px; }
-  .ide-sb-card-name { font-size: 9.5px; }
-  .ide-sb-card-expr { font-size: 9px; }
-  .ide-sb-type-chip { font-size: 8px; padding: 0 4px; }
-  .ide-sb-card-val { font-size: 9px; margin-top: 2px; line-height: 1.3; }
-  .ide-sb-watch-input { padding: 3px 5px; margin-top: 3px; }
-  .ide-sb-watch-field { font-size: 9px; }
-  .ide-sb-watch-add { font-size: 8.5px; padding: 1px 4px; }
+     fonts and tighten padding so the cards fit in the 124px-wide column. */
+  .ide-sb-scroll { padding: 4px 5px 6px; gap: 5px; }
+  .ide-sb-section { gap: 2px; }
+  .ide-sb-section-head { font-size: 7.5px; margin: 0 2px; }
+  .ide-sb-empty { font-size: 7.5px; padding: 3px 5px; line-height: 1.3; border-radius: 5px; }
+  .ide-sb-list { gap: 2px; }
+  .ide-sb-card { padding: 3px 5px; border-radius: 5px; }
+  .ide-sb-card-head { gap: 3px; }
+  .ide-sb-card-name { font-size: 8.5px; }
+  .ide-sb-card-expr { font-size: 8px; }
+  .ide-sb-type-chip { font-size: 7px; padding: 0 3px; }
+  .ide-sb-card-val { font-size: 8px; margin-top: 1px; line-height: 1.25; }
+  .ide-sb-watch-input { padding: 2px 4px; margin-top: 2px; }
+  .ide-sb-watch-field { font-size: 8px; }
+  .ide-sb-watch-add { font-size: 7.5px; padding: 1px 3px; }
 
   /* Side-by-side: place the bottom panel (Display/Terminal) to the RIGHT
      of the code editor instead of underneath. Saves vertical room on
@@ -2529,60 +2563,106 @@ a { color: inherit; }
   .ide-main > .ide-bottom     { grid-column: 2; grid-row: 3; min-width: 0; }
   .ide-main > .ide-bottom .ide-subtabs { overflow-x: auto; }
 
-  .ide-status { font-size: 8.5px; gap: 6px; padding: 0 8px; }
+  .ide-status { font-size: 7.5px; gap: 5px; padding: 0 6px; }
 
-  /* Decompile-soon callout: position relative to mobile sidebar (140px). */
-  .ide-decompile-callout { left: 192px; top: 78px; }
-  .ide-decompile-card { width: 190px; padding: 7px 10px 8px; }
-  .ide-decompile-title { font-size: 12px; }
-  .ide-decompile-text { font-size: 9.5px; }
+  /* Activity-bar panes that didn't have explicit mobile fonts: the
+     Breakpoints view, the Variables/Watch view, and the Trace list.
+     Without these overrides the desktop sizes leaked through and made
+     these panes look comically large on a phone. */
+  .ide-bp-list { padding: 4px 6px; gap: 3px; }
+  .ide-bp-item { padding: 4px 6px 5px; gap: 4px; }
+  .ide-bp-loc { font-size: 9px; }
+  .ide-bp-snippet { font-size: 9px; }
+  .ide-bp-tag { font-size: 7.5px; padding: 0 5px; letter-spacing: 0.06em; }
+  .ide-bp-cond { font-size: 8.5px; padding: 0 5px; }
+
+  .ide-vw-scroll { padding: 4px 6px 6px; gap: 5px; }
+  .ide-vw-section-head { font-size: 8.5px; margin: 1px 2px 0; }
+  .ide-vw-block { gap: 2px; }
+  .ide-vw-row { font-size: 8.5px; padding: 2px 4px; gap: 4px; }
+  .ide-vw-arrow { padding-left: 4px; }
+  .ide-vw-type { font-size: 7.5px; padding: 0 4px; }
+  .ide-vw-row.is-input { padding-top: 4px; }
+
+  .ide-trace-list { padding: 4px 6px; gap: 3px; }
+  .ide-trace-frame { padding: 3px 6px; font-size: 8.5px; gap: 4px; }
+  .ide-trace-addr { font-size: 7.5px; }
+
+  /* Tree (file explorer) extras not covered above. */
+  .ide-tree { padding: 4px 0; }
+  .ide-tree-twist { font-size: 7.5px; }
+
+  /* Code-line condition pill / stop-tag fonts (already repositioned). */
+  .ide-line-text { font-size: 8px; }
+  .ide-caret { width: 6px; height: 12px; }
+
+  /* Variables pane (bottom Display panel, not the activity-bar version):
+     these classes (.ide-vars, .ide-var-row, .ide-var-name, etc.) were
+     also leaking through. */
+  .ide-vars { padding: 4px 8px; gap: 5px; }
+  .ide-pane-section { gap: 3px; }
+  .ide-pane-body { gap: 2px; }
+  .ide-var-row { font-size: 8.5px; padding: 2px 4px; gap: 6px; }
+  .ide-var-name { font-size: 8.5px; }
+  .ide-var-val { font-size: 8.5px; }
+  .ide-var-type { font-size: 7.5px; padding: 0 4px; }
+  .ide-watch-row { font-size: 8.5px; padding: 2px 4px; gap: 4px; }
+  .ide-watch-expr { font-size: 8.5px; }
+  .ide-watch-arrow { padding: 0 3px; }
+  .ide-watch-val { font-size: 8.5px; }
+
+  /* Decompile-soon callout: position relative to mobile sidebar (124px). */
+  .ide-decompile-callout { left: 170px; top: 64px; }
+  .ide-decompile-card { width: 170px; padding: 6px 9px 7px; }
+  .ide-decompile-title { font-size: 11px; }
+  .ide-decompile-text { font-size: 9px; }
 
   /* Hero (welcome): compact wordmark, hide card descriptions. */
-  .hero-bigtitle { font-size: 30px; }
-  .hero-mark { width: 26px; height: 26px; }
+  .hero-bigtitle { font-size: 24px; }
+  .hero-mark { width: 22px; height: 22px; }
   .hero-tagline { display: none; }
-  .hero-lede { font-size: 11px; line-height: 1.35; max-width: 420px; }
+  .hero-lede { font-size: 10px; line-height: 1.3; max-width: 380px; }
   .hero-lede-emph { padding: 0 1px; }
-  .hero-cards { grid-template-columns: repeat(3, 1fr); gap: 5px; max-width: 480px; }
-  .hero-card { padding: 5px 7px 6px; }
-  .hero-card-icon { width: 18px; height: 18px; font-size: 11px; margin-bottom: 1px; border-radius: 6px; }
-  .hero-card-title { font-size: 10px; margin-bottom: 0; }
+  .hero-cards { grid-template-columns: repeat(3, 1fr); gap: 4px; max-width: 420px; }
+  .hero-card { padding: 4px 6px 5px; }
+  .hero-card-icon { width: 16px; height: 16px; font-size: 10px; margin-bottom: 1px; border-radius: 5px; }
+  .hero-card-title { font-size: 9px; margin-bottom: 0; }
   .hero-card-desc { display: none; }
   .hero-card-hi { padding: 0; background: transparent; }
-  .hero-credits-row { gap: 4px; font-size: 9.5px; }
-  .hero-credits-by { font-size: 9.5px; }
-  .hero-daplab { height: 12px; }
-  .hero-gh { padding: 2px 6px; font-size: 9.5px; }
+  .hero-credits-row { gap: 3px; font-size: 8.5px; }
+  .hero-credits-by { font-size: 8.5px; }
+  .hero-daplab { height: 11px; }
+  .hero-gh { padding: 2px 5px; font-size: 8.5px; }
   .hero-builton { gap: 3px; }
-  .hero-builton-label { font-size: 9.5px; }
-  .hero-builton-pill { font-size: 8.5px; padding: 1px 5px; }
-  .hero-funding { font-size: 9px; padding: 2px 6px; }
-  .hero-begin { font-size: 9.5px; gap: 3px; }
-  .hero-stack { gap: 4px; }
-  .hero-panel { padding: 6px 12px 8px; }
-  .hero-title-row { gap: 6px; }
+  .hero-builton-label { font-size: 8.5px; }
+  .hero-builton-pill { font-size: 7.5px; padding: 0 4px; }
+  .hero-funding { font-size: 8px; padding: 2px 5px; }
+  .hero-begin { font-size: 8.5px; gap: 3px; }
+  .hero-stack { gap: 3px; }
+  .hero-panel { padding: 5px 10px 6px; }
+  .hero-title-row { gap: 5px; }
 
   /* Outro: tighter title + 6 compact cards (no description) + stacked CTA. */
-  .outro-panel { padding: 8px 12px 10px; gap: 6px; justify-content: flex-start; }
-  .outro-title { font-size: 15px; }
+  .outro-panel { padding: 6px 10px 8px; gap: 4px; justify-content: flex-start; }
+  .outro-title { font-size: 13px; }
   .outro-head { margin-bottom: 0; }
-  .outro-grid { gap: 5px; max-width: 100%; grid-template-columns: repeat(3, 1fr) !important; }
+  .outro-grid { gap: 4px; max-width: 100%; grid-template-columns: repeat(3, 1fr) !important; }
   .outro-divider { display: none; }
-  .outro-card { padding: 6px 8px 7px 9px; border-radius: 9px; }
-  .outro-card .strength-icon { width: 18px; height: 18px; font-size: 11px; margin-bottom: 3px; border-radius: 7px; }
-  .outro-card .strength-title { font-size: 10.5px; margin-bottom: 0; }
+  .outro-card { padding: 5px 7px 6px 8px; border-radius: 8px; }
+  .outro-card .strength-icon { width: 16px; height: 16px; font-size: 10px; margin-bottom: 2px; border-radius: 6px; }
+  .outro-card .strength-title { font-size: 9.5px; margin-bottom: 0; }
   .outro-card .strength-text { display: none; }
-  .outro-card .strength-hint { font-size: 7.5px; padding: 1px 5px; margin-top: 3px; }
+  .outro-card .strength-hint { font-size: 7px; padding: 0 4px; margin-top: 2px; }
 
-  .outro-cta { grid-template-columns: 1fr; gap: 5px; text-align: center; }
+  .outro-cta { grid-template-columns: 1fr; gap: 4px; text-align: center; }
   .outro-cta-text { align-items: center; }
-  .outro-cta-title { font-size: 14px; }
-  .outro-cta-body { font-size: 10.5px; }
-  .outro-cta-actions { gap: 5px; justify-content: center; }
-  .outro-cta-actions .btn-primary { font-size: 10.5px; padding: 5px 10px; }
-  .outro-cta-actions .btn-secondary { font-size: 10.5px; padding: 5px 10px; }
-  .outro-cta-actions .btn-restart { font-size: 10px; padding: 4px 10px; }
-  .outro-credits { gap: 6px; }
-  .outro-credits-text { font-size: 9.5px; }
-  .outro-credits-license { font-size: 8.5px; }
+  .outro-cta-title { font-size: 12px; }
+  .outro-cta-body { font-size: 9.5px; }
+  .outro-cta-actions { gap: 4px; justify-content: center; }
+  .outro-cta-actions .btn-primary { font-size: 9.5px; padding: 4px 8px; }
+  .outro-cta-actions .btn-secondary { font-size: 9.5px; padding: 4px 8px; }
+  .outro-cta-actions .btn-restart { font-size: 9px; padding: 3px 8px; }
+  .outro-credits { gap: 5px; }
+  .outro-credits-text { font-size: 8.5px; }
+  .outro-credits-license { font-size: 7.5px; }
 }
