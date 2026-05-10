@@ -21,7 +21,7 @@ use serde_json::json;
 use std::time::Duration;
 
 /// Show the status of RPC proxy providers
-pub async fn show_proxy_status(cli: &crate::Cli) -> Result<()> {
+pub async fn show_proxy_status(proxy_port: u16) -> Result<()> {
     tracing::info!("Checking proxy status...");
 
     // Query provider status
@@ -34,7 +34,7 @@ pub async fn show_proxy_status(cli: &crate::Cli) -> Result<()> {
     });
 
     let response = client
-        .post(format!("http://127.0.0.1:{}", cli.proxy_port))
+        .post(format!("http://127.0.0.1:{proxy_port}"))
         .json(&request)
         .timeout(Duration::from_secs(5))
         .send()

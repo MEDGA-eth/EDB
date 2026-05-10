@@ -52,16 +52,26 @@ struct ServerState {
 }
 
 /// Start the WebSocket server
-pub async fn start_server(ws_port: u16, cli: &crate::Cli, rpc_url: &str) -> Result<()> {
+pub async fn start_server(ws_port: u16, cli: &crate::Cli) -> Result<()> {
     info!("Starting EDB WebSocket server on port {}", ws_port);
 
+    // The server mode has no pre-wired RPC URL; connections supply their own
+    // transaction hashes and the worker forks on demand. Use an empty string as
+    // a placeholder — the worker receives the real URL from each request.
+    let rpc_url = String::new();
+
     // Create the engine with configuration
-    let engine_config = cli.to_engine_config(rpc_url);
+    let mut engine_config = edb_engine::EngineConfig::default()
+        .with_quick_mode(cli.quick)
+        .with_rpc_proxy_url(rpc_url.clone());
+    if let Some(api_key) = &cli.etherscan_api_key {
+        engine_config = engine_config.with_etherscan_api_key(api_key.clone());
+    }
     let engine = Engine::new(engine_config);
     let engine = Arc::new(engine);
 
     // Spawn the worker thread for handling requests
-    let worker_tx = spawn_worker(Arc::clone(&engine), rpc_url.to_string(), cli.quick);
+    let worker_tx = spawn_worker(Arc::clone(&engine), rpc_url, cli.quick);
 
     // Create shared state
     let state = ServerState {

@@ -91,15 +91,11 @@ pub fn find_tui_binary() -> Result<PathBuf> {
 }
 
 /// TUI-specific options
-#[derive(Debug, Args)]
+#[derive(Debug, Default, Args)]
 #[command(next_help_heading = "Terminal UI Options (only apply with --ui=tui)")]
-pub struct TuiOptions {
-    /// Disable mouse support in the terminal UI
-    #[arg(long)]
-    pub disable_mouse: bool,
-}
+pub struct TuiOptions {}
 
-pub async fn start_tui(options: &TuiOptions, rpc_server_addr: SocketAddr) -> Result<()> {
+pub async fn start_tui(_options: &TuiOptions, rpc_server_addr: SocketAddr) -> Result<()> {
     // Launch Terminal UI
     tracing::info!("Launching Terminal UI...");
 
@@ -108,13 +104,9 @@ pub async fn start_tui(options: &TuiOptions, rpc_server_addr: SocketAddr) -> Res
     tracing::debug!("Found TUI binary at: {:?}", tui_binary);
 
     // Spawn TUI as a child process with inherited stdio
+    // Mouse capture is disabled by default (--mouse flag is not passed).
     let mut cmd = tokio::process::Command::new(&tui_binary);
     cmd.arg("--url").arg(format!("http://{rpc_server_addr}"));
-
-    // Only pass --mouse flag if requested and using TUI mode
-    if !options.disable_mouse {
-        cmd.arg("--mouse");
-    }
 
     let mut ui_handle = cmd
         .stdin(std::process::Stdio::inherit())
