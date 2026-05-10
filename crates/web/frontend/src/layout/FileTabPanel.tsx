@@ -85,6 +85,15 @@ function OpcodesView({ addr, disasm }: { addr: string; disasm: string }) {
   function revealCurrent() {
     lineRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
   }
+  // Pulse from the global Locate-Current button. Each bump re-runs the
+  // scroll-into-view so the highlighted PC re-centers even if it was
+  // already visible (or already scrolled offscreen by the user).
+  const revealTick = useSession((s) => s.revealTick);
+  useEffect(() => {
+    if (revealTick === 0 || currentLine < 0) return;
+    lineRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealTick]);
   return (
     <div className="flex h-full flex-col">
       <Toolbar testid="file-toolbar-opcodes">
@@ -229,6 +238,19 @@ function SolidityView({
       revealOffset(currentSnap.detail.offset);
     }
   }
+
+  // Global Locate-Current pulse. Re-scroll on every bump as long as the
+  // active snapshot lands in this (addr, path); otherwise stay put — the
+  // matching tab elsewhere handles the reveal.
+  const revealTick = useSession((s) => s.revealTick);
+  useEffect(() => {
+    if (revealTick === 0) return;
+    if (!currentSnap || currentSnap.detail.kind !== 'Hook') return;
+    if (currentSnap.bytecode_address.toLowerCase() !== addr.toLowerCase()) return;
+    if (currentSnap.detail.path !== file?.path) return;
+    revealOffset(currentSnap.detail.offset);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealTick]);
 
   function copyContent() {
     if (!file) return;

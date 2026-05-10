@@ -10,8 +10,8 @@
 <p align="center">
   <a href="#installation"><img src="https://img.shields.io/badge/-📦%20Install-047857?style=for-the-badge&labelColor=064e3b" alt="Install" /></a>
   <a href="#quickstart"><img src="https://img.shields.io/badge/-🚀%20Quickstart-0e7490?style=for-the-badge&labelColor=164e63" alt="Quickstart" /></a>
-  <a href="#why-edb"><img src="https://img.shields.io/badge/-💡%20Why%20EDB%3F-7c3aed?style=for-the-badge&labelColor=4c1d95" alt="Why EDB?" /></a>
   <a href="https://edb.zzhang.xyz"><img src="https://img.shields.io/badge/-🎓%20Online%20Tutor-d97706?style=for-the-badge&labelColor=92400e" alt="Online Tutor" /></a>
+  <a href="#why-edb"><img src="https://img.shields.io/badge/-💡%20Why%20EDB%3F-7c3aed?style=for-the-badge&labelColor=4c1d95" alt="Why EDB?" /></a>
   <a href="#sponsors"><img src="https://img.shields.io/badge/-✨%20Sponsors-e04832?style=for-the-badge&labelColor=9a3412" alt="Sponsors" /></a>
   <a href="https://t.me/edb_feedback"><img src="https://img.shields.io/badge/-💬%20Q%26A-26a5e4?style=for-the-badge&labelColor=075481&logo=telegram&logoColor=white" alt="Q&amp;A" /></a>
 </p>
@@ -147,7 +147,7 @@ Join our Telegram Q&A group to ask questions, share insights, and connect with o
 </div>
 <br>
 
-EDB is free and open-source, and we're short on funding to keep it growing. Two ways to chip in:
+EDB is free and open-source, and a little support goes a long way toward keeping it healthy and moving forward. Two ways to chip in:
 
 <p align="center">
   <a href="https://github.com/sponsors/edb-rs">
@@ -157,8 +157,4 @@ EDB is free and open-source, and we're short on funding to keep it growing. Two 
   <a href="mailto:zz@cs.columbia.edu?subject=EDB%20%C2%B7%20saying%20hi&body=Hi%20Zhuo%2C%0A%0AI%20represent%20%5BCOMPANY%5D%2C%20and%20we%20use%20EDB%20%2F%20are%20interested%20in%20the%20project.%20Could%20we%20set%20up%20a%20quick%20chat%3F%0A%0AThanks%2C%0A%5BYOUR%20NAME%5D%0A">
     <img src="https://img.shields.io/badge/-🏢%20Sponsor%20as%20a%20company-d4608a?style=for-the-badge&labelColor=831843" alt="Sponsor as a company — email Zhuo" />
   </a>
-</p>
-
-<p align="center">
-  <sub>Individuals → <a href="https://github.com/sponsors/edb-rs">GitHub Sponsors</a>. Companies & institutions → <a href="mailto:zz@cs.columbia.edu?subject=EDB%20%C2%B7%20saying%20hi">email us</a> — we're happy to talk features, integrations, or partnerships.</sub>
 </p>

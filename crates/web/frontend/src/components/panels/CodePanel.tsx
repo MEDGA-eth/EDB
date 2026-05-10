@@ -69,6 +69,13 @@ function OpcodesView({
   function revealCurrent() {
     lineRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
   }
+  // Pulse from the global Locate-Current button.
+  const revealTick = useSession((s) => s.revealTick);
+  useEffect(() => {
+    if (revealTick === 0 || currentLine < 0) return;
+    lineRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealTick]);
   return (
     <div className="flex h-full flex-col">
       <Toolbar testid="code-toolbar-opcodes">

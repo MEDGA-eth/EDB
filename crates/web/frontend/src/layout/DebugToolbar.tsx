@@ -5,6 +5,7 @@ import {
   CornerDownRight,
   CornerUpRight,
   LayoutGrid,
+  Locate,
   Pause,
   Play,
   RotateCcw,
@@ -22,6 +23,7 @@ import { usePrevCall } from '../hooks/usePrevCall';
 import { useSnapshotCount } from '../hooks/useSnapshotCount';
 import { useSession } from '../store/session';
 import { ensureFixedPanel, getDockviewApi } from '../lib/dockviewBridge';
+import { revealCurrentLocation } from '../lib/revealCurrent';
 
 interface ToolbarItem {
   id: string;
@@ -119,6 +121,19 @@ const ITEMS: ToolbarItem[] = [
     shortcut: '⌥→',
     Icon: SkipForward,
   },
+  // Global "find me" — opens (or focuses) the file/disasm tab matching
+  // the active snapshot and re-centers on the current line/PC. Useful when
+  // stepping moves into a contract whose tab isn't open yet, or when the
+  // active tab has been scrolled away from the highlight.
+  {
+    id: 'nav.locate',
+    label: 'Locate',
+    hint: 'Open or focus the source/disasm at the current snapshot and scroll to the active line/PC',
+    shortcut: '',
+    Icon: Locate,
+    groupBreak: true,
+    run: ({ queryClient }) => revealCurrentLocation(queryClient),
+  },
 ];
 
 export function DebugToolbar() {
@@ -180,15 +195,25 @@ export function DebugToolbar() {
               data-testid={`tb-${item.id}`}
               onClick={() => fire(item)}
               disabled={!enabled}
-              title={`${item.label}, ${item.hint} (${item.shortcut})`}
-              aria-label={`${item.label}, shortcut ${item.shortcut}. ${item.hint}`}
+              title={
+                item.shortcut
+                  ? `${item.label}, ${item.hint} (${item.shortcut})`
+                  : `${item.label}, ${item.hint}`
+              }
+              aria-label={
+                item.shortcut
+                  ? `${item.label}, shortcut ${item.shortcut}. ${item.hint}`
+                  : `${item.label}. ${item.hint}`
+              }
               className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-sm text-(--color-fg-secondary) transition enabled:hover:bg-(--color-bg-hover) enabled:hover:text-(--color-fg) disabled:opacity-40"
             >
               <item.Icon size={16} aria-hidden />
               <span className="hidden md:inline">{item.label}</span>
-              <kbd className="hidden md:inline rounded border border-(--color-border) bg-(--color-bg) px-1 text-[10px] text-(--color-fg-tertiary)">
-                {item.shortcut}
-              </kbd>
+              {item.shortcut && (
+                <kbd className="hidden md:inline rounded border border-(--color-border) bg-(--color-bg) px-1 text-[10px] text-(--color-fg-tertiary)">
+                  {item.shortcut}
+                </kbd>
+              )}
             </button>
           </span>
         );
