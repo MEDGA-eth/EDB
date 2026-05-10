@@ -68,6 +68,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v5
 
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
