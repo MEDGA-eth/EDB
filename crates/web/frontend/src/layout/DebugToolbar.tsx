@@ -127,7 +127,7 @@ const ITEMS: ToolbarItem[] = [
   // active tab has been scrolled away from the highlight.
   {
     id: 'nav.locate',
-    label: 'Locate',
+    label: 'Where am I?',
     hint: 'Open or focus the source/disasm at the current snapshot and scroll to the active line/PC',
     shortcut: '',
     Icon: Locate,
