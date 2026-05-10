@@ -11,7 +11,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.0.2"
+version = "0.0.3"
 edition = "2024"
 # Remember to update clippy.toml as well
 rust-version = "1.89"
@@ -80,13 +80,13 @@ codegen-units = 1
 
 [workspace.dependencies]
 # workspace crates
-edb-engine = { version = "0.0.2", path = "crates/engine" }
-edb-common = { version = "0.0.2", path = "crates/common" }
-edb-rpc-proxy = { version = "0.0.2", path = "crates/rpc-proxy" }
-edb-integration-tests = { version = "0.0.2", path = "crates/integration-tests" }
-edb-tui = { version = "0.0.2", path = "crates/tui" }
-edb = { version = "0.0.2", path = "crates/edb" }
-edb-web = { version = "0.0.2", path = "crates/web" }
+edb-engine = { version = "0.0.3", path = "crates/engine" }
+edb-common = { version = "0.0.3", path = "crates/common" }
+edb-rpc-proxy = { version = "0.0.3", path = "crates/rpc-proxy" }
+edb-integration-tests = { version = "0.0.3", path = "crates/integration-tests" }
+edb-tui = { version = "0.0.3", path = "crates/tui" }
+edb = { version = "0.0.3", path = "crates/edb" }
+edb-web = { version = "0.0.3", path = "crates/web" }
 
 # alloy - aligned with Foundry's current workspace requirements
 alloy-chains = "0.2"

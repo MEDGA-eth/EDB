@@ -7,19 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-05-10
+
 ### Added
 - Support for calldata variables ([#33](https://github.com/edb-rs/edb/pull/33))
-- Add new `r` and `R` commands in code panel (`run`/`runback` in terminal panels) to run forward/backward until the next breakpoint
-- Add `edb server` which collectively spawns edb debug server. ([#46](https://github.com/edb-rs/edb/pull/46))
-- Add `release.yml` for automatic release publishing to GitHub Releases
+- New `r` and `R` commands in code panel (`run`/`runback` in terminal panels) to run forward/backward until the next breakpoint
+- `edb server` which collectively spawns edb debug server. ([#46](https://github.com/edb-rs/edb/pull/46))
+- `release.yml` for automatic release publishing to GitHub Releases
+- **Browser-based web UI** as the default front-end: file tabs (Dockview), CodeMirror Solidity editor, command palette, debug toolbar with VSCode-style F-key bindings, Variables/Watch sidebar, Display panel (Stack / Memory / Storage / Transient / Calldata / Output), Terminal panel, and reopen menu. Source views auto-scroll to the active line; opcode views highlight the current PC and recover from missed scrolls via a global "Where am I?" toolbar button.
+- **Marketing website** (`website/`) with a fixed-shell tour, IDE mock, mobile-sheet popups, and a rotate-phone overlay; `edb.zzhang.xyz` runs the same bundle.
+- README: online tutor badge, sponsor split (GitHub Sponsors for individuals, mailto for companies, with a subtle DAPLab @ Columbia attribution).
 
 ### Fixed
-- Struct fields are no longer be incorrectly treated as variables ([#33](https://github.com/edb-rs/edb/pull/33))
+- Struct fields are no longer incorrectly treated as variables ([#33](https://github.com/edb-rs/edb/pull/33))
 - Gas limit relaxation is now correctly applied at callsites ([#39](https://github.com/edb-rs/edb/issues/39))
+- Web Memory view rendered nothing for opcode snapshots with empty memory; now shows an explicit `(empty)` placeholder.
+- Web opcode view's auto-scroll lost its target on backward navigation due to a single-ref-swap pattern; replaced with a `data-edb-current` attribute lookup that's order-independent.
+- Web tab focus didn't follow the active snapshot across contracts; `MainArea` now opens (or focuses) the file/disasm tab matching the snapshot on every change.
 
 ### Changed
-
-- Update `install.sh` to download the latest release from GitHub Releases first, and fallback to building from source if no releases are found.
+- `--ui` defaults to `web` (was `tui`); `--ui=tui` is the explicit fallback. Release pipeline already installs Bun, so prebuilt binaries ship with the embedded SPA baked in.
+- Reverse Step (`⌥F10`) is now a true history-pop ("undo my last navigation") instead of the engine's `prev_id`-based reverse-step-over, which could leap across contract boundaries when stepping into call bodies.
+- Update `install.sh` to download the latest release from GitHub Releases first, falling back to source builds when no releases are available.
+- README structure: prerequisites moved under "Build from Source"; RPC endpoint guidance moved into Quickstart; em-dashes removed.
+- Help overlay rows updated to match live menus (trace right-click items, ⌥F10 semantics, command palette command-mode prefill).
+- Display panel: Stack rows show a per-row depth `[N]`, top-of-stack badge, click-to-copy, and truncated hex with full-value tooltip; Memory view adds an ASCII gutter with 8-byte hex grouping.
+- Mobile website (`@media (pointer: coarse)`): trimmed fonts, icons, and structural rows so the IDE mock fits a phone-landscape viewport once browser chrome is accounted for; switched the shell height to `100dvh` so layout tracks the *visible* viewport as chrome shows or hides.
 
 ## [0.0.2] - 2024-10-11
 

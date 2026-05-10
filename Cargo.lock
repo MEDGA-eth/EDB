@@ -2135,7 +2135,7 @@ dependencies = [
 
 [[package]]
 name = "edb"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "alloy-primitives",
  "alloy-provider",
@@ -2165,7 +2165,7 @@ dependencies = [
 
 [[package]]
 name = "edb-common"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "alloy-chains",
  "alloy-dyn-abi",
@@ -2199,7 +2199,7 @@ dependencies = [
 
 [[package]]
 name = "edb-engine"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "alloy-chains",
  "alloy-contract",
@@ -2247,7 +2247,7 @@ dependencies = [
 
 [[package]]
 name = "edb-integration-tests"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-json-abi",
@@ -2271,7 +2271,7 @@ dependencies = [
 
 [[package]]
 name = "edb-rpc-proxy"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "alloy-chains",
  "alloy-json-rpc",
@@ -2304,7 +2304,7 @@ dependencies = [
 
 [[package]]
 name = "edb-tui"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "alloy-dyn-abi",
  "alloy-json-abi",
@@ -2330,7 +2330,7 @@ dependencies = [
 
 [[package]]
 name = "edb-web"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "axum",
  "http-body-util",
