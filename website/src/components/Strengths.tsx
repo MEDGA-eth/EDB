@@ -88,8 +88,8 @@ export default function StrengthsStage({ onRestart }: { onRestart?: () => void }
             EDB could use your <span className="gradient-text">support</span>
           </h3>
           <p className="outro-cta-body">
-            EDB is built and maintained at Columbia&apos;s DAPLab as free,
-            open-source software, and we&apos;re honestly{' '}
+            EDB is built and maintained as free, open-source software,
+            and we&apos;re honestly{' '}
             <strong style={{ color: 'var(--accent-warm)', fontWeight: 800 }}>
               short on funding
             </strong>{' '}
