@@ -12,11 +12,11 @@ interface Item {
 }
 
 /**
- * Custom breakpoint glyph — solid danger-coloured dot with a thin ring.
+ * Custom breakpoint glyph, solid danger-coloured dot with a thin ring.
  * Used in place of lucide-react's plain `Circle` (which read as a generic
  * outline rather than the universal IDE breakpoint marker).
  */
-function BreakpointGlyph({ size = 22 }: { size?: number }) {
+function BreakpointGlyph({ size = 24 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" role="img" aria-hidden fill="none">
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" opacity="0.45" />
@@ -38,7 +38,7 @@ export function ActivityBar() {
   const setPaletteOpen = useSession((s) => s.setPaletteOpen);
   return (
     <nav
-      className="flex w-16 flex-col border-r border-(--color-border) bg-(--color-bg)"
+      className="flex w-20 flex-col border-r border-(--color-border) bg-(--color-bg)"
       data-testid="activity-bar"
       aria-label="Activity bar"
     >
@@ -53,7 +53,7 @@ export function ActivityBar() {
             aria-label={label}
             aria-pressed={isActive}
             data-testid={`activity-${key}`}
-            className={`relative flex h-16 flex-col items-center justify-center gap-1 transition ${
+            className={`relative flex h-20 flex-col items-center justify-center gap-1.5 transition ${
               isActive ? 'bg-(--color-accent)/10' : ''
             }`}
           >
@@ -64,10 +64,10 @@ export function ActivityBar() {
               />
             )}
             <span style={{ color: tint }} aria-hidden>
-              <Icon size={22} aria-hidden />
+              <Icon size={24} aria-hidden />
             </span>
             <span
-              className={`text-[11px] font-medium leading-none ${
+              className={`text-[11px] font-medium leading-tight text-center ${
                 isActive ? 'text-(--color-fg)' : 'text-(--color-fg-secondary)'
               }`}
             >
@@ -83,10 +83,10 @@ export function ActivityBar() {
           title="Open command palette (Ctrl+P)"
           aria-label="Open command palette"
           data-testid="activity-palette"
-          className="flex h-16 flex-col items-center justify-center gap-1 text-(--color-fg-secondary) transition hover:text-(--color-fg)"
+          className="flex h-20 flex-col items-center justify-center gap-1.5 text-(--color-fg-secondary) transition hover:text-(--color-fg)"
         >
-          <Search size={22} aria-hidden />
-          <span className="text-[11px] font-medium leading-none">Search</span>
+          <Search size={24} aria-hidden />
+          <span className="text-[11px] font-medium leading-tight text-center">Search</span>
         </button>
       </div>
     </nav>

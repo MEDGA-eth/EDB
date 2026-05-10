@@ -5,7 +5,7 @@ export function StorageView({ id }: { id: number }) {
   const { data, error } = useStorageDiff(id);
   if (error) return <span>{(error as Error).message}</span>;
   if (!data) return <span>Loading…</span>;
-  // Drop slots that didn't change — the engine sometimes echoes touched-but-
+  // Drop slots that didn't change, the engine sometimes echoes touched-but-
   // unchanged slots, and rendering them with red strikethrough → green text
   // visually implies a mutation that didn't happen.
   const rows = storageDiffRows(data).filter((d) => d.before !== d.after);

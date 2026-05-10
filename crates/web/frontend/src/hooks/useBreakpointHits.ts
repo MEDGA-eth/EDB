@@ -17,7 +17,7 @@ function stableHash(bp: Breakpoint): string {
  * sending.
  *
  * Disabled breakpoints (`enabled === false`) skip the network roundtrip and
- * resolve to an empty hit set — UI consumers (Continue, jump-to-first)
+ * resolve to an empty hit set, UI consumers (Continue, jump-to-first)
  * treat them as if they didn't exist.
  */
 export function useBreakpointHits(bp: Breakpoint | null) {

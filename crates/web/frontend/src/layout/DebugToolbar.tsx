@@ -26,7 +26,7 @@ import { ensureFixedPanel, getDockviewApi } from '../lib/dockviewBridge';
 interface ToolbarItem {
   id: string;
   label: string;
-  /** Verbose tooltip — explains what each Step variant actually does so
+  /** Verbose tooltip, explains what each Step variant actually does so
    *  users can pick the right one without consulting docs. */
   hint: string;
   shortcut: string;
@@ -59,14 +59,14 @@ const ITEMS: ToolbarItem[] = [
   {
     id: 'nav.step-out',
     label: 'Step Out',
-    hint: 'Run forward until the current frame returns — one call level shallower',
+    hint: 'Run forward until the current frame returns, one call level shallower',
     shortcut: '⇧F11',
     Icon: CornerUpRight,
   },
   {
     id: 'nav.step-over',
     label: 'Step Over',
-    hint: 'Advance one snapshot; skip the inside of any CALL / CREATE — same call depth (BETA)',
+    hint: 'Advance one snapshot; skip the inside of any CALL / CREATE, same call depth (BETA)',
     shortcut: 'F10',
     Icon: StepForward,
   },
@@ -80,7 +80,7 @@ const ITEMS: ToolbarItem[] = [
     run: ({ setSnapshot }) => setSnapshot(0),
   },
   // Without a live debugger session to halt, "Stop" parks at the last
-  // snapshot — same intuition as "run to end". Wired in fire() since it
+  // snapshot, same intuition as "run to end". Wired in fire() since it
   // needs `snapshotCount` from the toolbar's render scope.
   {
     id: 'nav.stop',
@@ -100,7 +100,7 @@ const ITEMS: ToolbarItem[] = [
   {
     id: 'nav.reverse-step-over',
     label: 'Reverse Step',
-    hint: 'Step backwards — the inverse of Step Over',
+    hint: 'Step backwards, the inverse of Step Over',
     shortcut: '⌥F10',
     Icon: ChevronsRight,
   },
@@ -180,7 +180,7 @@ export function DebugToolbar() {
               data-testid={`tb-${item.id}`}
               onClick={() => fire(item)}
               disabled={!enabled}
-              title={`${item.label} — ${item.hint} (${item.shortcut})`}
+              title={`${item.label}, ${item.hint} (${item.shortcut})`}
               aria-label={`${item.label}, shortcut ${item.shortcut}. ${item.hint}`}
               className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-sm text-(--color-fg-secondary) transition enabled:hover:bg-(--color-bg-hover) enabled:hover:text-(--color-fg) disabled:opacity-40"
             >
@@ -206,7 +206,7 @@ export function DebugToolbar() {
 }
 
 /**
- * "Reopen" menu — surfaces every fixed panel the user has closed so they
+ * "Reopen" menu, surfaces every fixed panel the user has closed so they
  * can recover from an accidental ⨯ click without remembering to open the
  * command palette.
  *
@@ -219,7 +219,7 @@ export function DebugToolbar() {
 function ReopenMenu() {
   const [open, setOpen] = useState(false);
   // The actual panels live on the live DockviewApi; we only need
-  // layoutJson as a *signal* — re-render every time the layout mutates.
+  // layoutJson as a *signal*, re-render every time the layout mutates.
   useSession((s) => s.layoutJson);
   const api = getDockviewApi();
 

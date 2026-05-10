@@ -25,7 +25,7 @@ import { useSession } from '../store/session';
  *
  * When focus is inside an editable element (CodeMirror, `<input>`,
  * `<textarea>`, or any `contenteditable`), Cmd/Ctrl+P is left alone so the
- * editor can handle it locally — e.g. CodeMirror's search panel.
+ * editor can handle it locally, e.g. CodeMirror's search panel.
  */
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!target || !(target instanceof Element)) return false;

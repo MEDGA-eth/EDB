@@ -25,9 +25,9 @@ import type { LucideIcon } from 'lucide-react';
  * commands; both surface the same engine action.
  */
 interface Row {
-  /** Keyboard chord OR command literal — first column. */
+  /** Keyboard chord OR command literal, first column. */
   keys: string;
-  /** Plain-language description — second column. */
+  /** Plain-language description, second column. */
   desc: string;
 }
 
@@ -44,23 +44,23 @@ const SECTIONS: Section[] = [
     title: 'Stepping',
     Icon: PlayCircle,
     intro:
-      'Each Step variant moves the active snapshot. Step Into is the safest one — it advances exactly one snapshot. Step Over and Step Out trade precision for speed by skipping or unwinding call frames.',
+      'Each Step variant moves the active snapshot. Step Into is the safest one, it advances exactly one snapshot. Step Over and Step Out trade precision for speed by skipping or unwinding call frames.',
     rows: [
-      { keys: 'F5', desc: 'Continue — run to next breakpoint (or end of trace)' },
-      { keys: '⇧F5', desc: 'Stop — park at the last snapshot' },
-      { keys: '⌘⇧F5 / Ctrl+⇧F5', desc: 'Restart — jump back to snapshot 1' },
-      { keys: '⌥F5', desc: 'Reverse Continue — run back to the previous breakpoint' },
-      { keys: 'F11', desc: 'Step Into — advance one snapshot, descend into a CALL' },
-      { keys: '⇧F11', desc: 'Step Out — run until the current frame returns' },
-      { keys: 'F10', desc: 'Step Over (BETA) — same call depth; skip CALL bodies' },
-      { keys: '⌥F10', desc: 'Reverse Step — inverse of Step Over' },
+      { keys: 'F5', desc: 'Continue, run to next breakpoint (or end of trace)' },
+      { keys: '⇧F5', desc: 'Stop, park at the last snapshot' },
+      { keys: '⌘⇧F5 / Ctrl+⇧F5', desc: 'Restart, jump back to snapshot 1' },
+      { keys: '⌥F5', desc: 'Reverse Continue, run back to the previous breakpoint' },
+      { keys: 'F11', desc: 'Step Into, advance one snapshot, descend into a CALL' },
+      { keys: '⇧F11', desc: 'Step Out, run until the current frame returns' },
+      { keys: 'F10', desc: 'Step Over (BETA), same call depth; skip CALL bodies' },
+      { keys: '⌥F10', desc: 'Reverse Step, inverse of Step Over' },
     ],
   },
   {
     title: 'Command palette',
     Icon: Command,
     intro:
-      'The palette is the universal entry point — every command in the toolbar, sidebar, and terminal is reachable from here.',
+      'The palette is the universal entry point, every command in the toolbar, sidebar, and terminal is reachable from here.',
     rows: [
       { keys: '⌘P / Ctrl+P', desc: 'Toggle the palette' },
       { keys: '⌘⇧P / Ctrl+⇧P', desc: 'Open the palette in command-mode (prefilled with `>`)' },
@@ -71,7 +71,7 @@ const SECTIONS: Section[] = [
     title: 'Trace tree',
     Icon: Network,
     rows: [
-      { keys: 'Click', desc: 'Reveal the source for the entry — does NOT change the snapshot' },
+      { keys: 'Click', desc: 'Reveal the source for the entry, does NOT change the snapshot' },
       { keys: 'Right-click', desc: 'Open menu: Jump to snapshot N · Reveal source · Expand/Collapse' },
       { keys: '⇧+Click', desc: 'Keyboard alternative for "Jump to snapshot"' },
     ],
@@ -121,9 +121,9 @@ const SECTIONS: Section[] = [
     Icon: LayoutGrid,
     rows: [
       { keys: 'Drag tab', desc: 'Drop on an edge to split, drop on another tab to stack' },
-      { keys: 'Drag splitter', desc: 'Resize the panel — sashes glow on hover' },
+      { keys: 'Drag splitter', desc: 'Resize the panel, sashes glow on hover' },
       { keys: 'Reopen pill', desc: 'Restore Display / Terminal if you closed them by mistake' },
-      { keys: '×' , desc: 'Close a tab — recover from the Reopen pill on the toolbar' },
+      { keys: '×' , desc: 'Close a tab, recover from the Reopen pill on the toolbar' },
     ],
   },
 ];

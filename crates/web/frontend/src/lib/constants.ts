@@ -34,8 +34,10 @@ export const PALETTE_RESULT_CAP = 60;
  */
 export const LAYOUT_VERSION = 3;
 
-/** Width of the activity bar (icon column on the left), in CSS pixels. */
-export const ACTIVITY_WIDTH_PX = 64;
+/** Width of the activity bar (icon column on the left), in CSS pixels.
+ *  Bumped from 64 to 80 so the 24px icons + multi-character labels
+ *  ("Breakpoints", "Variables") have breathing room without wrapping. */
+export const ACTIVITY_WIDTH_PX = 80;
 
 /** Width of the explorer / breakpoints sidebar, in CSS pixels. */
 export const SIDEBAR_WIDTH_PX = 280;

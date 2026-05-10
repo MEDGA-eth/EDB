@@ -69,7 +69,7 @@ export interface SessionState {
   paletteOpen: boolean;
   wordWrap: boolean;
   showLineNumbers: boolean;
-  /** trace expand/collapse "epoch" — bumping forces panels to re-evaluate */
+  /** trace expand/collapse "epoch", bumping forces panels to re-evaluate */
   traceExpandTick: number;
   traceCollapseTick: number;
   /** persisted list of watch expressions (auto-evaluated each snapshot) */
@@ -156,7 +156,7 @@ export const useSession = create<SessionState>()(
         set({
           breakpoints: [
             ...get().breakpoints,
-            // ensure `enabled` is always populated (defaults to true) — the
+            // ensure `enabled` is always populated (defaults to true), the
             // schema accepts a missing field but the runtime needs an explicit
             // boolean so toggle semantics stay deterministic.
             { ...bp, enabled: bp.enabled ?? true },

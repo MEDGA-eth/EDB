@@ -9,7 +9,7 @@ const HitsSchema = z.array(z.number().int().nonnegative());
 
 /**
  * Stable hash that mirrors `useBreakpointHits.stableHash` so cached
- * `bp-hits` queries are reused. Excludes the `enabled` field — toggling
+ * `bp-hits` queries are reused. Excludes the `enabled` field, toggling
  * a breakpoint should not refetch hits, only gate consumption.
  */
 function bpHashKey(bp: Breakpoint): string {
@@ -46,7 +46,7 @@ async function gatherEnabledHits(qc: QueryClient): Promise<number[]> {
 }
 
 /**
- * The "execution context" passed to every command. We keep this small —
+ * The "execution context" passed to every command. We keep this small,
  * commands either mutate the zustand store (call `useSession.getState()`)
  * or reach for the QueryClient to invalidate caches.
  */
@@ -201,7 +201,7 @@ export const COMMANDS: Command[] = [
       const cur = useSession.getState().currentSnapshotId;
       const snap = getCachedSnapshot(queryClient, cur);
       if (!snap) return false;
-      // Disabled at the top frame — nowhere to step out to.
+      // Disabled at the top frame, nowhere to step out to.
       return snap.next_id !== cur;
     },
     run: ({ queryClient }) => {

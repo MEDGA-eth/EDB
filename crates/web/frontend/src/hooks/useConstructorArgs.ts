@@ -3,7 +3,7 @@ import { rpc } from '../lib/rpc';
 import { ConstructorArgs } from '../lib/types';
 
 /**
- * `edb_getConstructorArgs` returns `Option<Bytes>` — a single hex string
+ * `edb_getConstructorArgs` returns `Option<Bytes>`, a single hex string
  * holding the ABI-encoded constructor argument blob, or `null` if the
  * artifact didn't capture deploy-time arguments.
  */

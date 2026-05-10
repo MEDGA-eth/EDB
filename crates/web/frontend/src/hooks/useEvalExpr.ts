@@ -15,7 +15,7 @@ export interface EvalArgs {
  * `Result<EdbSolValue, String>` which we transform into
  * `{ kind: 'Ok', value } | { kind: 'Err', error }`. Errors emitted by the
  * engine itself (Solidity parse errors, type mismatches) come back as
- * `kind: 'Err'`, NOT as RPC errors — the RPC layer only throws for
+ * `kind: 'Err'`, NOT as RPC errors, the RPC layer only throws for
  * transport / serialisation failures.
  */
 export function useEvalExpr() {

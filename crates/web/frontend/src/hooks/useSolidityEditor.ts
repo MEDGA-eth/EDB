@@ -62,7 +62,7 @@ export const edbTheme = EditorView.theme({
   '.cm-selectionBackground, & ::selection': {
     backgroundColor: 'var(--color-accent-dim)',
   },
-  // Breakpoint gutter — fixed-width column, cursor flips to "pointer" so
+  // Breakpoint gutter, fixed-width column, cursor flips to "pointer" so
   // clicks feel like the breakpoint affordance they actually are.
   '.cm-edb-bp-gutter': {
     width: '14px',
@@ -116,7 +116,7 @@ export interface SolidityEditorOptions {
   breakpoints?: BreakpointMarker[];
   /**
    * Click handler for the breakpoint gutter. Receives the 1-indexed line that
-   * was clicked. The hook does NOT mutate any store directly — the host wires
+   * was clicked. The hook does NOT mutate any store directly, the host wires
    * this into `addBreakpoint` (or a toggle) so stores stay decoupled.
    */
   onToggleBreakpoint?(line: number): void;
@@ -230,7 +230,7 @@ export function useSolidityEditor(opts: SolidityEditorOptions): SolidityEditorHa
   const bpCmpRef = useRef<Compartment>(new Compartment());
   // Stash the latest toggle handler in a ref so the gutter compartment
   // doesn't need to be reconfigured every time the React owner re-renders
-  // — it always invokes the freshest closure.
+  //, it always invokes the freshest closure.
   const toggleRef = useRef<typeof onToggleBreakpoint>(onToggleBreakpoint);
   toggleRef.current = onToggleBreakpoint;
 

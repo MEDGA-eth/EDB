@@ -29,14 +29,14 @@ export interface RpcOptions {
   /**
    * Caller-owned AbortSignal forwarded to `fetch`. When the signal aborts,
    * the call rejects with the underlying `AbortError`. Special-case it on
-   * the call-site (e.g., terminal "Cancelled" entry) — don't surface it as
+   * the call-site (e.g., terminal "Cancelled" entry), don't surface it as
    * a regular RPC error.
    */
   signal?: AbortSignal;
 }
 
 /**
- * Raw JSON-RPC call — the response body is **not** validated against any
+ * Raw JSON-RPC call, the response body is **not** validated against any
  * schema; the caller gets back whatever the server returned, typed as `T`.
  *
  * Prefer {@link rpc} for typed flows, which runs a Zod schema on the
@@ -81,7 +81,7 @@ export async function rpcRaw<T = unknown>(
 /**
  * Typed JSON-RPC call. The schema may be a plain `z.ZodType<T>` or a
  * transforming schema (e.g. `z.object(...).transform(...)`) whose input
- * shape differs from its output — that's why the schema parameter accepts
+ * shape differs from its output, that's why the schema parameter accepts
  * any Zod schema with `output = T` rather than `z.ZodType<T>`, which
  * implicitly requires `input == output`.
  */

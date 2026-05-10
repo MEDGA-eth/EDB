@@ -52,7 +52,7 @@
   color: var(--color-fg-tertiary);
 }
 
-/* Make sashes feel like real grab handles — wider hover hit-zone with a
+/* Make sashes feel like real grab handles, wider hover hit-zone with a
    visible accent bar on hover so users discover the resize affordance. */
 .dockview-theme-edb .dv-sash:hover,
 .dockview-theme-edb .dv-sash.dv-active {

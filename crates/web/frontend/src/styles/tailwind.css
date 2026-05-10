@@ -29,9 +29,9 @@
   --color-bg-hover: #ece5d4;
   --color-bg-active: #ddd2bb;
   --color-fg: #1f160a;                            /* darker than before for AA contrast */
-  --color-fg-secondary: rgba(31, 22, 10, 0.78);   /* was 0.70 — hairline lift on labels */
-  --color-fg-tertiary: rgba(31, 22, 10, 0.55);    /* was 0.48 — secondary text now legible */
-  --color-border: rgba(60, 42, 18, 0.18);         /* was rgba(100,70,30,0.12) — visible w/o noise */
+  --color-fg-secondary: rgba(31, 22, 10, 0.78);   /* was 0.70, hairline lift on labels */
+  --color-fg-tertiary: rgba(31, 22, 10, 0.55);    /* was 0.48, secondary text now legible */
+  --color-border: rgba(60, 42, 18, 0.18);         /* was rgba(100,70,30,0.12), visible w/o noise */
   --color-border-strong: rgba(60, 42, 18, 0.32);
   --color-accent: #c2410c;                        /* a warmer, less screaming red-orange */
   --color-accent-dim: rgba(194, 65, 12, 0.12);
@@ -45,20 +45,20 @@
      wheel: blue keywords, green strings, amber numbers, cyan types,
      purple functions, etc. Each token kind gets a colour with at least
      one hue-step of separation from its neighbours. */
-  --color-syn-keyword: #1d4ed8;        /* blue 700  — for / if / return / contract */
-  --color-syn-string:  #15803d;        /* green 700 — string literals */
-  --color-syn-number:  #b45309;        /* amber 700 — numeric literals */
+  --color-syn-keyword: #1d4ed8;        /* blue 700 , for / if / return / contract */
+  --color-syn-string:  #15803d;        /* green 700, string literals */
+  --color-syn-number:  #b45309;        /* amber 700, numeric literals */
   --color-syn-comment: rgba(42, 30, 14, 0.42);
-  --color-syn-type:    #0e7490;        /* cyan 700  — user-defined types */
-  --color-syn-func:    #6d28d9;        /* violet 700 — function names */
-  --color-syn-control: #b91c1c;        /* red 700   — break / continue / revert */
-  --color-syn-modifier:#0d9488;        /* teal 600  — visibility / mutability */
-  --color-syn-self:    #92400e;        /* brown 700 — this / super */
-  --color-syn-atom:    #c2410c;        /* orange 700 — true / false / null */
-  --color-syn-constant:#9a3412;        /* orange 800 — UPPER_CASE constants */
-  --color-syn-doc:     #475569;        /* slate 600  — natspec @ tags */
-  --color-syn-type-std:#0369a1;        /* sky 700    — uint256 / address / bytes */
-  --color-syn-escape:  #be185d;        /* pink 700   — only one pink, used sparingly */
+  --color-syn-type:    #0e7490;        /* cyan 700 , user-defined types */
+  --color-syn-func:    #6d28d9;        /* violet 700, function names */
+  --color-syn-control: #b91c1c;        /* red 700  , break / continue / revert */
+  --color-syn-modifier:#0d9488;        /* teal 600 , visibility / mutability */
+  --color-syn-self:    #92400e;        /* brown 700, this / super */
+  --color-syn-atom:    #c2410c;        /* orange 700, true / false / null */
+  --color-syn-constant:#9a3412;        /* orange 800, UPPER_CASE constants */
+  --color-syn-doc:     #475569;        /* slate 600 , natspec @ tags */
+  --color-syn-type-std:#0369a1;        /* sky 700   , uint256 / address / bytes */
+  --color-syn-escape:  #be185d;        /* pink 700  , only one pink, used sparingly */
 
   /* shape */
   --radius: 12px;
@@ -106,7 +106,7 @@ html, body, #root {
   color: var(--color-fg);
   background: var(--color-bg-root);
   -webkit-font-smoothing: antialiased;
-  /* soften the light/dark flip — feels less jarring than an instant snap */
+  /* soften the light/dark flip, feels less jarring than an instant snap */
   transition: background-color 150ms ease, color 150ms ease;
 }
 

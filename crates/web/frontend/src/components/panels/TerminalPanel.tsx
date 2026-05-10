@@ -31,7 +31,7 @@ export function prettyJson(value: unknown): string {
       2,
     );
   } catch (e) {
-    const detail = e instanceof Error ? ` — ${e.message}` : '';
+    const detail = e instanceof Error ? `, ${e.message}` : '';
     return `[unserializable: ${typeof value}]${detail}`;
   }
 }
@@ -73,7 +73,7 @@ function TerminalPanelInner() {
   const snapshotCountQ = useSnapshotCount();
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  // Monotonically-increasing submission counter — used to pair an input
+  // Monotonically-increasing submission counter, used to pair an input
   // entry with its result/error so concurrent evals render in input-order
   // even when the server replies out-of-order.
   const submissionCounterRef = useRef(0);
@@ -81,7 +81,7 @@ function TerminalPanelInner() {
   // a specific in-flight eval. We only display one Cancel button at a time
   // (the most recent submission), which is the common case.
   const controllersRef = useRef<Map<number, AbortController>>(new Map());
-  // Re-render trigger when the in-flight set changes — refs alone don't
+  // Re-render trigger when the in-flight set changes, refs alone don't
   // notify React so we mirror "is anything pending" into state.
   const [pendingCount, setPendingCount] = useState(0);
 
@@ -188,7 +188,7 @@ function TerminalPanelInner() {
       const value = await evalExpr.mutateAsync({ id, expr, signal: controller.signal });
       append({ kind: 'result', ts: Date.now(), expr, value, submissionId });
     } catch (e) {
-      // AbortError gets a friendlier "Cancelled" surface — not a normal error.
+      // AbortError gets a friendlier "Cancelled" surface, not a normal error.
       const isAbort =
         (typeof DOMException !== 'undefined' && e instanceof DOMException && e.name === 'AbortError') ||
         (e instanceof Error && e.name === 'AbortError');

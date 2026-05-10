@@ -1,7 +1,7 @@
 import type { LucideIcon } from 'lucide-react';
 import type { ReactNode, ButtonHTMLAttributes } from 'react';
 
-/** Shared toolbar wrapper — a thin row of action buttons. */
+/** Shared toolbar wrapper, a thin row of action buttons. */
 export function Toolbar({
   children,
   testid,
@@ -40,7 +40,7 @@ export interface ToolbarButtonProps
   /**
    * Render the label inline next to the icon (instead of only as a
    * tooltip). Keeps every action self-explanatory in dense toolbars
-   * — set this on toolbars where users may not be familiar with the
+   *, set this on toolbars where users may not be familiar with the
    * iconography (Trace, Code editor, etc).
    */
   showLabel?: boolean;

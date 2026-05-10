@@ -15,8 +15,8 @@ import breakpointHits from './captures/breakpointHits-empty.json';
 
 /**
  * Mock fixtures used by the dev server (`bun run dev --mode=mock`) and the
- * Playwright e2e suite. These are real captures — extracted via
- * `edb --ui=web replay` against a Uniswap V2 swap (tx 0x608d…e4c2) — minus
+ * Playwright e2e suite. These are real captures, extracted via
+ * `edb --ui=web replay` against a Uniswap V2 swap (tx 0x608d…e4c2), minus
  * the JSON-RPC envelope. The vite mock middleware in `vite.config.ts` wraps
  * each handler return value in `{ jsonrpc, id, result }`.
  *
@@ -111,7 +111,7 @@ export const MOCKS: Record<string, (params?: unknown[]) => unknown> = {
   edb_getNextCall: (params) => {
     const [id] = (params ?? []) as [number];
     const cur = typeof id === 'number' ? id : 0;
-    // Real engine returned 5 for snapshot 0; keep that shape — every 5
+    // Real engine returned 5 for snapshot 0; keep that shape, every 5
     // snapshots advance one "call", capped at the last id (195).
     return cur <= 190 ? cur + 5 : cur;
   },

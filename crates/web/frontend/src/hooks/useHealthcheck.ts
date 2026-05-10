@@ -10,7 +10,7 @@ import {
 
 async function probeHealth(): Promise<boolean> {
   // Wrap with an AbortController so a hung server can't stall the loop
-  // until the next interval — count it as a miss instead.
+  // until the next interval, count it as a miss instead.
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), HEALTHCHECK_TIMEOUT_MS);
   try {
@@ -35,7 +35,7 @@ export function useHealthcheck() {
 
   // When sessionEnded flips false → true, cancel any in-flight queries so
   // their late responses don't pollute the cache after reconnect. We
-  // intentionally do NOT removeQueries() here — that's too aggressive for
+  // intentionally do NOT removeQueries() here, that's too aggressive for
   // a transient flap (a single tab nap or wifi blip), and the next user
   // interaction will refetch anyway. Trade: small staleness window for
   // resilience. If we later need "engine replaced" semantics for an actual

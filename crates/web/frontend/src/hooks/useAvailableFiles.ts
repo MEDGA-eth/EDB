@@ -51,7 +51,7 @@ export function useAvailableFiles(): {
   addresses: string[];
   isLoading: boolean;
   /**
-   * Per-address status — useful for the FileExplorer where we want to
+   * Per-address status, useful for the FileExplorer where we want to
    * surface failed lookups with a retry affordance instead of dropping
    * the address silently.
    */

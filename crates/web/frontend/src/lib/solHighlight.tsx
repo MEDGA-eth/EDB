@@ -69,7 +69,7 @@ export function highlightSolidity(source: string, key?: string): ReactNode {
   if (!source) return null;
   const spans: Span[] = [];
 
-  // 1. Comments — `//…` and `/*…*/` (multi-line not realistic for one-liners
+  // 1. Comments, `//…` and `/*…*/` (multi-line not realistic for one-liners
   //    but cheap to support).
   for (const m of source.matchAll(/\/\/[^\n]*/g)) {
     if (typeof m.index === 'number')
@@ -79,7 +79,7 @@ export function highlightSolidity(source: string, key?: string): ReactNode {
     if (typeof m.index === 'number')
       spans.push({ start: m.index, end: m.index + m[0].length, cssVar: '--color-syn-comment', italic: true });
   }
-  // 2. Strings — single, double, hex literal `hex"…"`.
+  // 2. Strings, single, double, hex literal `hex"…"`.
   for (const m of source.matchAll(/(?:hex)?(["'])(?:\\.|(?!\1).)*\1/g)) {
     if (typeof m.index === 'number' && !insideAny(spans, m.index))
       spans.push({ start: m.index, end: m.index + m[0].length, cssVar: '--color-syn-string' });

@@ -126,8 +126,8 @@ function SolidityView({
     return line;
   })();
   // Filter the global breakpoint list down to source breakpoints that match
-  // this editor's (addr, path). The marker list is intentionally small —
-  // typically <10 — so an O(n) scan per render is fine.
+  // this editor's (addr, path). The marker list is intentionally small,
+  // typically <10, so an O(n) scan per render is fine.
   const bpMarkers = (() => {
     if (!file) return [];
     const matching: { line: number; enabled: boolean }[] = [];
@@ -187,7 +187,7 @@ function SolidityView({
     if (!view || !file) return;
     // CodeMirror 'select-line' (or any forward range selection that ends at a
     // line break) puts `head` at the START of the next line, which causes
-    // lineAt(head) to return that next line — off by one in the user's eyes.
+    // lineAt(head) to return that next line, off by one in the user's eyes.
     // Use `from` (the lower edge of the range) so selecting a whole line
     // sets the breakpoint on THAT line, not the one below it.
     const sel = view.state.selection.main;

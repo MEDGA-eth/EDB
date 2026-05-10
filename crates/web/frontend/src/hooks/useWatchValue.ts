@@ -14,7 +14,7 @@ export function useWatchValue(expr: string, snapshotId: number) {
     queryKey: ['eval', snapshotId, expr] as const,
     queryFn: () => rpc('edb_evalOnSnapshot', EvalResult, [snapshotId, expr]),
     enabled: expr.length > 0 && snapshotId >= 0,
-    // Each snapshot's value is immutable — no need to refetch on focus.
+    // Each snapshot's value is immutable, no need to refetch on focus.
     staleTime: Infinity,
   });
 }

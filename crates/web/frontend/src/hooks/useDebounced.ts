@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 /**
- * Returns a value that lags behind `value` by `delayMs` — perfect for
+ * Returns a value that lags behind `value` by `delayMs`, perfect for
  * filtering large lists in response to keystrokes without recomputing on
  * every change. The first render returns the input unchanged so initial
  * paint isn't delayed.

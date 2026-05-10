@@ -16,7 +16,7 @@ interface Disposable {
   dispose(): void;
 }
 
-/** Panel ids that are NOT file tabs — used by the reconcile loop to skip
+/** Panel ids that are NOT file tabs, used by the reconcile loop to skip
  *  pruning the bottom panels when the open-file set changes. */
 const FIXED_PANEL_IDS = new Set(['display', 'terminal']);
 
@@ -36,8 +36,8 @@ function tabTitle(path: string): string {
 /**
  * The whole working area as a single DockviewReact instance. Combining
  * file tabs and the bottom panels into one dockview lets users drag
- * Terminal / Display tabs anywhere — e.g. side-by-side with the code
- * editor — exactly the way VSCode allows. The previous design used two
+ * Terminal / Display tabs anywhere, e.g. side-by-side with the code
+ * editor, exactly the way VSCode allows. The previous design used two
  * separate DockviewReact instances which prevented cross-region drops.
  */
 export function MainArea() {
@@ -81,7 +81,7 @@ export function MainArea() {
       // top group with whatever files the store has open (initially empty,
       // and dockview's watermark will fill the space). Files added later
       // join the existing top group via `direction: 'within'` against any
-      // sibling file panel — see the reconcile useEffect below.
+      // sibling file panel, see the reconcile useEffect below.
       // Skipped panels when StrictMode replays this in dev.
       if (!api.getPanel('display')) {
         api.addPanel({ id: 'display', component: 'display', title: 'Display' });
@@ -164,7 +164,7 @@ export function MainArea() {
   // / panels-on-bottom shape.
   //
   // Care: dockview throws if `referencePanel` doesn't exist. The user may
-  // have closed `display` AND `terminal`, leaving the dockview empty —
+  // have closed `display` AND `terminal`, leaving the dockview empty,
   // anchoring to a missing id would crash the app. Always pick an anchor
   // that's actually present, or fall through to no `position` so dockview
   // makes a fresh group.
@@ -197,7 +197,7 @@ export function MainArea() {
   }, [openFiles]);
 
   // Reflect external `activeFileId` writes (URL hash, palette navigation,
-  // step-driven follow). Also re-runs when the snapshot id changes — even
+  // step-driven follow). Also re-runs when the snapshot id changes, even
   // if the active file is unchanged, the user expects each Step to surface
   // the code view if they were sitting on Display / Terminal.
   useEffect(() => {

@@ -94,7 +94,7 @@ export const SolValue: z.ZodType<SolValue> = z.lazy(() =>
 export const BYTES_TRUNCATION_THRESHOLD = 100; // bytes (=> 200 hex chars)
 
 /**
- * Structured rendering of a `SolValue` — separates the primary value from
+ * Structured rendering of a `SolValue`, separates the primary value from
  * a typing suffix (e.g. `uint256`, `bytes4`) and a byte-count truncation
  * marker. Consumers that render to React (e.g. `VarsView`) can style the
  * suffix in a secondary color; consumers that render to plain text (e.g.
@@ -157,7 +157,7 @@ export function formatSolValueParts(
 }
 
 /**
- * Render a `SolValue` to a short, human-readable string. Best-effort —
+ * Render a `SolValue` to a short, human-readable string. Best-effort,
  * complex nested structures truncate. Used by the terminal panel and the
  * vars view, which previously dumped the entire JSON envelope.
  *
@@ -360,7 +360,7 @@ export type SourceCode = {
   kind: 'Source';
   bytecode_address: string;
   files: SourceFile[];
-  /** Best-guess entry file (largest content) — used by editors as default tab. */
+  /** Best-guess entry file (largest content), used by editors as default tab. */
   entry: string;
 };
 
@@ -378,7 +378,7 @@ function disasmFromCodes(codes: Record<string, string>): string {
 
 function pickEntry(files: SourceFile[]): string {
   if (files.length === 0) return '';
-  // Pick the file with the largest content — usually the entry contract.
+  // Pick the file with the largest content, usually the entry contract.
   let best = files[0];
   for (const f of files) {
     if (f.content.length > best.content.length) best = f;
@@ -418,7 +418,7 @@ export const AbiEntry = z.object({
 export const Abi = z.array(AbiEntry);
 
 /**
- * `AbiEntryTy = Function | StateVariable(u64)` — externally tagged. The
+ * `AbiEntryTy = Function | StateVariable(u64)`, externally tagged. The
  * `StateVariable` variant carries a u64 payload (`{ StateVariable: 42 }`).
  */
 const AbiEntryTy = z.union([
@@ -438,7 +438,7 @@ export const ContractTy = z.enum(['Normal', 'Proxy', 'Implementation']);
 export type ContractTy = z.infer<typeof ContractTy>;
 
 /**
- * `getCallableABI` returns `Vec<CallableAbiInfo>` — one entry per related
+ * `getCallableABI` returns `Vec<CallableAbiInfo>`, one entry per related
  * contract. For proxies you get the proxy + its implementations together.
  */
 export const CallableAbiInfo = z.object({
@@ -451,7 +451,7 @@ export type CallableAbi = z.infer<typeof CallableAbi>;
 
 /* ── Storage ──────────────────────────────────────────────── */
 /**
- * `getStorageDiff` returns `HashMap<U256, (U256, U256)>` — slot → (before, after)
+ * `getStorageDiff` returns `HashMap<U256, (U256, U256)>`, slot → (before, after)
  * encoded as map keyed by stringified U256 with tuple values.
  */
 export const StorageDiff = z.record(
@@ -460,7 +460,7 @@ export const StorageDiff = z.record(
 );
 export type StorageDiff = z.infer<typeof StorageDiff>;
 
-/** Convenience row for view consumers — flattens the map into an array. */
+/** Convenience row for view consumers, flattens the map into an array. */
 export interface StorageDiffRow {
   slot: string;
   before: string;
@@ -472,7 +472,7 @@ export function storageDiffRows(diff: StorageDiff): StorageDiffRow[] {
 }
 
 /* ── Constructor args ─────────────────────────────────────── */
-/** `getConstructorArgs` returns `Option<Bytes>` — a hex string or null. */
+/** `getConstructorArgs` returns `Option<Bytes>`, a hex string or null. */
 export const ConstructorArgs = Hex.nullable();
 export type ConstructorArgs = z.infer<typeof ConstructorArgs>;
 
@@ -484,8 +484,8 @@ export type ConstructorArgs = z.infer<typeof ConstructorArgs>;
  * For ergonomics we keep our internal representation (used by the session
  * store + UI) discriminated on `kind`. We accept the engine's external
  * tagging at parse-time and transform into the internal `kind`-tagged
- * form. (Currently latent — the engine doesn't *return* breakpoints in any
- * RPC response — but the schema is ready for whenever it does.)
+ * form. (Currently latent, the engine doesn't *return* breakpoints in any
+ * RPC response, but the schema is ready for whenever it does.)
  */
 export type BreakpointLocation =
   | { kind: 'Opcode'; bytecode_address: string; pc: number }
@@ -514,7 +514,7 @@ export const BreakpointLocation = z
  * Internal breakpoint shape. `enabled` is a UI-only toggle that defaults
  * to `true` (treated as enabled when missing). It gates
  * `useBreakpointHits` so a disabled breakpoint behaves as if it were not
- * registered — the engine's wire format has no such field, so we strip
+ * registered, the engine's wire format has no such field, so we strip
  * it in {@link breakpointToWire} before sending.
  */
 export const Breakpoint = z.object({
