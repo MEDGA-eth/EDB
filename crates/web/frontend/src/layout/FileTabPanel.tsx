@@ -12,6 +12,22 @@ import { useSession } from '../store/session';
 /** marker path used for the synthetic disassembly tab when an address has no Solidity */
 export const DISASM_PATH = '<disasm>';
 
+/** Strip the directory chain so the editor toolbar shows just the file name.
+ *  Full path stays available via the wrapper's `title` attribute. */
+function basename(p: string): string {
+  if (!p) return '';
+  if (p === DISASM_PATH) return p;
+  const idx = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+  return idx === -1 ? p : p.slice(idx + 1);
+}
+
+/** `0xABCD…1234` style for compact metadata rendering. */
+function shortAddr(addr: string): string {
+  if (!addr) return '';
+  if (addr.length <= 12) return addr;
+  return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+}
+
 /** Dockview passes parameters as `params` on the panel-props object. */
 export interface FileTabPanelParams {
   addr: string;
@@ -63,10 +79,14 @@ function OpcodesView({ addr, disasm }: { addr: string; disasm: string }) {
         />
         <ToolbarDivider />
         <span
-          className="font-display text-[12px] text-(--color-fg-tertiary)"
+          className="ml-1 flex min-w-0 items-center gap-2 font-display text-[12px] text-(--color-fg-tertiary)"
           data-testid="file-toolbar-meta"
+          title={`${addr}\n${DISASM_PATH}`}
         >
-          {addr.slice(0, 10)}… · {DISASM_PATH}
+          <span className="shrink-0 rounded-full border border-(--color-border) bg-(--color-bg) px-2 py-0.5 font-mono text-[10.5px] text-(--color-fg-secondary)">
+            {shortAddr(addr)}
+          </span>
+          <span className="min-w-0 truncate font-mono text-[11.5px]">{DISASM_PATH}</span>
         </span>
       </Toolbar>
       <pre
@@ -250,13 +270,22 @@ function SolidityView({
           disabled={typeof highlightLine !== 'number'}
         />
         <ToolbarDivider />
+        {/* Compact source location. Long paths used to overflow the toolbar
+            (`/Users/.../FiatTokenV2_2.sol`); we now show address + filename
+            with the full path + full address available via `title`. */}
         <span
-          className="ml-1 inline-flex items-center gap-1 font-display text-[12px] text-(--color-fg-tertiary)"
+          className="ml-1 flex min-w-0 items-center gap-2 font-display text-[12px] text-(--color-fg-tertiary)"
           data-testid="file-toolbar-meta"
+          title={`${addr}\n${file?.path ?? ''}`}
         >
-          <FileCode2 size={12} aria-hidden />
-          {addr.slice(0, 10)}… · {file?.path ?? ''}
-          <Code2 size={12} aria-hidden />
+          <span className="shrink-0 rounded-full border border-(--color-border) bg-(--color-bg) px-2 py-0.5 font-mono text-[10.5px] text-(--color-fg-secondary)">
+            {shortAddr(addr)}
+          </span>
+          <FileCode2 size={12} aria-hidden className="shrink-0 text-(--color-syn-type-std)" />
+          <span className="min-w-0 truncate font-mono text-[11.5px] font-semibold text-(--color-fg-secondary)">
+            {basename(file?.path ?? '')}
+          </span>
+          <Code2 size={12} aria-hidden className="shrink-0" />
         </span>
       </Toolbar>
       <div ref={containerRef} data-testid="solidity-view" className="flex-1 overflow-auto" />
