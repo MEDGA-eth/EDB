@@ -2212,16 +2212,302 @@ a { color: inherit; }
 }
 
 /* ══════════════════════════════════════════════════════════════
+   Mobile sheet (per-stage popup). JS-gated by useIsMobile() so
+   this CSS is not wrapped in a media query — the component never
+   mounts on desktop.
+   ══════════════════════════════════════════════════════════════ */
+.mobile-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg-root) 75%, transparent);
+  backdrop-filter: blur(6px);
+  animation: mobile-sheet-in 240ms ease;
+}
+@keyframes mobile-sheet-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.mobile-sheet-card {
+  background: var(--bg-elevated);
+  border: 2px solid color-mix(in srgb, var(--rail-color, var(--accent-warm)) 50%, var(--border-strong));
+  border-radius: 16px;
+  padding: 18px 20px 14px;
+  max-width: 480px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow:
+    0 0 28px color-mix(in srgb, var(--rail-color, var(--accent-warm)) 18%, transparent),
+    var(--shadow-pop);
+  animation: mobile-sheet-card-in 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes mobile-sheet-card-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+.mobile-sheet-num {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-tertiary);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.mobile-sheet-num-cur {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--rail-color, var(--accent-warm));
+  line-height: 1;
+}
+.mobile-sheet-num-sep { color: var(--fg-tertiary); font-size: 18px; }
+.mobile-sheet-num-tot { color: var(--fg-tertiary); font-size: 14px; }
+.mobile-sheet-badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rail-color, var(--accent-warm));
+  background: color-mix(in srgb, var(--rail-color, var(--accent-warm)) 12%, transparent);
+  border: 1.5px solid color-mix(in srgb, var(--rail-color, var(--accent-warm)) 35%, transparent);
+  padding: 3px 9px;
+  border-radius: 999px;
+  margin-top: 8px;
+}
+.mobile-sheet-title {
+  font-family: var(--font-display);
+  font-size: clamp(18px, 4vw, 22px);
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  line-height: 1.2;
+  color: var(--fg);
+  margin-top: 4px;
+}
+.mobile-sheet-body {
+  margin-top: 8px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--fg-secondary);
+  font-weight: 500;
+}
+.mobile-sheet-body p   { margin: 0 0 8px; }
+.mobile-sheet-body strong { color: var(--fg); font-weight: 800; }
+.mobile-sheet-body em  { color: var(--accent-warm); font-style: italic; font-weight: 700; }
+.mobile-sheet-body code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: rgba(124, 58, 237, 0.08);
+  color: var(--hl-purple);
+  padding: 1px 6px;
+  border-radius: 6px;
+}
+.mobile-sheet-body ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mobile-sheet-body li { position: relative; padding-left: 16px; }
+.mobile-sheet-body li::before {
+  content: "•";
+  position: absolute;
+  left: 2px;
+  color: var(--rail-color, var(--accent-warm));
+  font-weight: 800;
+}
+.mobile-sheet-body .rail-sec {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--rail-color, var(--accent-warm));
+  margin: 12px 0 6px;
+}
+.mobile-sheet-body .rail-sec:first-child { margin-top: 0; }
+.mobile-sheet-body .rail-tip {
+  margin: 10px 0 4px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px dashed color-mix(in srgb, var(--rail-color, var(--accent-warm)) 40%, transparent);
+  background: color-mix(in srgb, var(--rail-color, var(--accent-warm)) 6%, transparent);
+  font-size: 12.5px;
+  color: var(--fg);
+  line-height: 1.5;
+}
+.mobile-sheet-dismiss {
+  margin-top: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1.5px dashed var(--border-strong);
+  background: transparent;
+  color: var(--fg-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Mobile nav (floating chevrons). JS-gated; no media wrapper.
+   ══════════════════════════════════════════════════════════════ */
+.mobile-nav-btn {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 950;
+  width: 44px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  border: 1.5px solid var(--border-strong);
+  background: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+  color: var(--fg);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 150ms ease, background 150ms ease, transform 150ms ease;
+}
+.mobile-nav-btn:hover:not(:disabled),
+.mobile-nav-btn:active:not(:disabled) {
+  opacity: 0.95;
+  background: var(--bg-elevated);
+}
+.mobile-nav-btn:disabled { opacity: 0.2; cursor: not-allowed; }
+.mobile-nav-prev { left: 8px; }
+.mobile-nav-next { right: 8px; }
+
+/* ══════════════════════════════════════════════════════════════
    MOBILE OVERRIDES — single source of truth
    ──────────────────────────────────────────────────────────────
    All mobile-specific tweaks (font sizes, padding, layout) live
    inside the @media block below. Desktop styles upstream MUST
    NOT use @media (max-width: ...). If you find yourself wanting
    to add a viewport-conditional rule elsewhere, it goes here.
-   The breakpoint matches the matchMedia query in
-   src/components/RotateOverlay.tsx so JS and CSS agree on what
-   "mobile" means.
+   The breakpoint matches MOBILE_QUERY in src/lib/useIsMobile.ts
+   so JS and CSS agree on what "mobile" means: a coarse-pointer
+   device that's either narrow (portrait) or short (landscape).
    ══════════════════════════════════════════════════════════════ */
-@media (max-width: 720px) {
-  /* (empty — future mobile-only rules go here) */
+@media (pointer: coarse) and ((max-width: 720px) or (max-height: 500px)) {
+  /* Hide the desktop right-rail entirely on mobile.
+     Mobile UX delivers the same content via <MobileSheet/>. */
+  .shell-body[data-kind="tour"] .shell-rail { display: none; }
+  .shell-body { grid-template-columns: 1fr !important; }
+
+  /* Header: more compact on mobile so the IDE has more vertical room. */
+  .shell { grid-template-rows: 44px 1fr; }
+  .shell-header { padding: 6px 12px; }
+  .shell-wordmark-mark { font-size: 18px; }
+  .shell-wordmark-sub { display: none; }
+  .shell-link { font-size: 11px; padding: 4px 8px; gap: 4px; }
+  .shell-fund { font-size: 11.5px; padding: 4px 10px; }
+
+  /* IDE mock: scale fonts, narrow side columns, drop kbd badges so the
+     toolbar fits a phone-landscape viewport without horizontal scroll. */
+  .ide-mock { border-radius: 10px; }
+  .ide-toolbar { padding: 0 6px; gap: 3px; }
+  .ide-debug-chip { font-size: 9px; padding: 2px 5px; margin-right: 3px; }
+  .ide-tb-btn { padding: 3px 5px; font-size: 9.5px; gap: 3px; }
+  .ide-tb-kbd { display: none; }
+  .ide-tb-icon svg { width: 11px; height: 11px; }
+  .ide-tb-divider { height: 14px; margin: 0 2px; }
+
+  .ide-body { grid-template-columns: 48px 160px 1fr; }
+  .ide-activity-btn { padding: 8px 0 6px; gap: 3px; min-height: 56px; }
+  .ide-activity-btn svg { width: 18px !important; height: 18px !important; }
+  .ide-activity-label { font-size: 8.5px; }
+  .ide-sidebar-header { padding: 5px 8px; font-size: 9px; }
+  .ide-tree-row { padding: 3px 8px; font-size: 11px; }
+  .ide-tree-mono { font-size: 10px; }
+  .ide-tree-tag { font-size: 8px; padding: 1px 5px; }
+
+  .ide-tabs .ide-tab { padding: 3px 9px; font-size: 10.5px; }
+  .ide-edtoolbar { padding: 3px 8px; font-size: 9.5px; gap: 9px; }
+  .ide-edt-meta { font-size: 9.5px; }
+  .ide-code { font-size: 10px; padding: 4px 0; }
+  .ide-code-line { grid-template-columns: 18px 28px 1fr; padding: 0 8px 0 6px; min-height: 15px; }
+  .ide-line-num { font-size: 9px; padding-right: 8px; }
+  .ide-bp { width: 9px; height: 9px; }
+  .ide-cond-pill { font-size: 9px; padding: 0 6px; right: 8px; }
+  .ide-stop-tag { font-size: 8.5px; padding: 0 6px; right: 8px; }
+
+  .ide-bottom-body { padding: 6px 10px; font-size: 10.5px; }
+  .ide-subtab { padding: 3px 8px; font-size: 10px; }
+  .ide-pane-title { font-size: 9px; }
+  .ide-pane-empty { font-size: 9.5px; }
+
+  .ide-status { font-size: 9.5px; gap: 8px; padding: 0 10px; }
+
+  /* Decompile-soon callout: position relative to mobile sidebar (160px). */
+  .ide-decompile-callout { left: 220px; top: 92px; }
+  .ide-decompile-card { width: 220px; padding: 9px 12px 10px; }
+  .ide-decompile-title { font-size: 14px; }
+  .ide-decompile-text { font-size: 11px; }
+
+  /* Hero (welcome): compact wordmark, hide card descriptions. */
+  .hero-bigtitle { font-size: 44px; }
+  .hero-mark { width: 36px; height: 36px; }
+  .hero-tagline { display: none; }
+  .hero-lede { font-size: 12.5px; line-height: 1.4; max-width: 460px; }
+  .hero-lede-emph { padding: 0 1px; }
+  .hero-cards { grid-template-columns: repeat(3, 1fr); gap: 6px; max-width: 540px; }
+  .hero-card { padding: 6px 8px 7px; }
+  .hero-card-icon { width: 24px; height: 24px; font-size: 14px; margin-bottom: 2px; border-radius: 7px; }
+  .hero-card-title { font-size: 11.5px; margin-bottom: 0; }
+  .hero-card-desc { display: none; }
+  .hero-card-hi { padding: 0; background: transparent; }
+  .hero-credits-row { gap: 5px; font-size: 11px; }
+  .hero-credits-by { font-size: 11px; }
+  .hero-daplab { height: 14px; }
+  .hero-gh { padding: 3px 8px; font-size: 11px; }
+  .hero-builton { gap: 4px; }
+  .hero-builton-label { font-size: 10.5px; }
+  .hero-builton-pill { font-size: 9.5px; padding: 1px 6px; }
+  .hero-funding { font-size: 10px; padding: 3px 8px; }
+  .hero-begin { font-size: 10.5px; gap: 4px; }
+  .hero-stack { gap: 5px; }
+  .hero-panel { padding: 8px 14px 10px; }
+  .hero-title-row { gap: 8px; }
+
+  /* Outro: tighter title + 6 compact cards (no description) + stacked CTA. */
+  .outro-panel { padding: 10px 14px 12px; gap: 8px; justify-content: flex-start; }
+  .outro-title { font-size: 18px; }
+  .outro-head { margin-bottom: 0; }
+  .outro-grid { gap: 6px; max-width: 100%; grid-template-columns: repeat(3, 1fr) !important; }
+  .outro-divider { display: none; }
+  .outro-card { padding: 8px 10px 10px 12px; border-radius: 10px; }
+  .outro-card .strength-icon { width: 24px; height: 24px; font-size: 14px; margin-bottom: 4px; border-radius: 8px; }
+  .outro-card .strength-title { font-size: 12px; margin-bottom: 0; }
+  .outro-card .strength-text { display: none; }
+  .outro-card .strength-hint { font-size: 8.5px; padding: 1px 6px; margin-top: 4px; }
+
+  .outro-cta { grid-template-columns: 1fr; gap: 6px; text-align: center; }
+  .outro-cta-text { align-items: center; }
+  .outro-cta-title { font-size: 16px; }
+  .outro-cta-body { font-size: 12px; }
+  .outro-cta-actions { gap: 6px; justify-content: center; }
+  .outro-cta-actions .btn-primary { font-size: 11.5px; padding: 6px 12px; }
+  .outro-cta-actions .btn-secondary { font-size: 11.5px; padding: 6px 12px; }
+  .outro-cta-actions .btn-restart { font-size: 11px; padding: 5px 12px; }
+  .outro-credits { gap: 8px; }
+  .outro-credits-text { font-size: 11px; }
+  .outro-credits-license { font-size: 9.5px; }
 }

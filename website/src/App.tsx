@@ -4,6 +4,9 @@ import IdeMock from './components/IdeMock';
 import HeroStage, { FUND_MAILTO } from './components/Hero';
 import StrengthsStage from './components/Strengths';
 import RotateOverlay from './components/RotateOverlay';
+import MobileSheet from './components/MobileSheet';
+import MobileNav from './components/MobileNav';
+import { useIsMobile } from './lib/useIsMobile';
 
 type RingPos = {
   left: number;
@@ -15,8 +18,16 @@ type RingPos = {
 export default function App() {
   const [idx, setIdx] = useState(0);
   const [ring, setRing] = useState<RingPos>(null);
+  const isMobile = useIsMobile();
+  const [sheetOpen, setSheetOpen] = useState(true);
 
   const stage = STAGES[idx]!;
+
+  /* Auto-open the mobile sheet whenever the stage changes. On welcome /
+     outro panels MobileSheet renders null, so this is harmless there. */
+  useEffect(() => {
+    setSheetOpen(true);
+  }, [idx]);
   const ideMockRootRef = useRef<HTMLDivElement>(null);
 
   /* keyboard */
@@ -102,7 +113,7 @@ export default function App() {
 
   return (
     <>
-      <div className="shell">
+      <div className="shell" data-mobile={isMobile ? 'true' : 'false'}>
       {/* header. Wordmark on the left (click = back to welcome), transport
           toggle on the right. */}
       <div className="shell-header">
@@ -253,6 +264,23 @@ export default function App() {
         )}
       </div>
     </div>
+    {isMobile && (
+      <>
+        <MobileSheet
+          stage={stage}
+          tourPos={tourPos}
+          tourCount={tourCount}
+          open={sheetOpen}
+          onDismiss={() => setSheetOpen(false)}
+        />
+        <MobileNav
+          onPrev={onPrev}
+          onNext={onNext}
+          prevDisabled={isFirst}
+          nextDisabled={isLast}
+        />
+      </>
+    )}
     <RotateOverlay />
     </>
   );
