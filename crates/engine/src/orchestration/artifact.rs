@@ -88,9 +88,24 @@ pub async fn download_verified_source_code(
                     Some(artifact)
                 }
                 Ok(None) => {
-                    pb.set_message(format!("⚠️  0x{short_addr}... no source"));
-                    debug!("No source code available for contract {}", address);
-                    None
+                    let sourcify_result =
+                        crate::utils::fetch_artifact_from_sourcify(chain_id, *address).await;
+                    match sourcify_result {
+                        Ok(Some(artifact)) => {
+                            pb.set_message(format!("✅ 0x{short_addr}... sourcify"));
+                            Some(artifact)
+                        }
+                        Ok(None) => {
+                            pb.set_message(format!("⚠️  0x{short_addr}... no source"));
+                            debug!("No source code available for contract {}", address);
+                            None
+                        }
+                        Err(e) => {
+                            pb.set_message(format!("⚠️  0x{short_addr}... no source"));
+                            warn!("Sourcify fetch failed for {}: {:?}", address, e);
+                            None
+                        }
+                    }
                 }
                 Err(e) => {
                     pb.set_message(format!("❌ 0x{short_addr}... failed"));

@@ -63,6 +63,9 @@ pub use disasm::*;
 mod etherscan;
 pub use etherscan::*;
 
+mod sourcify;
+pub use sourcify::*;
+
 mod compilation;
 pub use compilation::*;
 
