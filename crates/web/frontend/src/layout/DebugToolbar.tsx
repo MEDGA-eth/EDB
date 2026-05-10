@@ -100,9 +100,14 @@ const ITEMS: ToolbarItem[] = [
     groupBreak: true,
   },
   {
-    id: 'nav.reverse-step-over',
+    id: 'nav.go-back',
     label: 'Reverse Step',
-    hint: 'Step backwards, the inverse of Step Over',
+    // History-pop semantics now: undoes the user's *last* navigation
+    // (step / continue / reverse-continue / trace click / palette goto)
+    // rather than the engine's prev_id. Avoids the "leaped out of the
+    // call body into the caller" surprise that came with prev_id when
+    // stepping into a CALL with F11.
+    hint: 'Go back to the last location you visited (undoes any step / continue / click)',
     shortcut: '⌥F10',
     Icon: ChevronsRight,
   },

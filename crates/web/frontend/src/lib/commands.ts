@@ -213,19 +213,16 @@ export const COMMANDS: Command[] = [
     },
   },
   {
-    id: 'nav.reverse-step-over',
-    label: 'Reverse step over',
+    id: 'nav.go-back',
+    label: 'Go back (reverse step)',
     group: 'Navigation',
     hint: '⌥F10',
-    enabled: ({ queryClient }) =>
-      useSession.getState().currentSnapshotId > 0 &&
-      hasNeighbour(queryClient, useSession.getState().currentSnapshotId, 'prev'),
-    run: ({ queryClient }) => {
-      const cur = useSession.getState().currentSnapshotId;
-      const snap = getCachedSnapshot(queryClient, cur);
-      const target = snap ? snap.prev_id : Math.max(0, cur - 1);
-      setSnapshot(target);
-    },
+    // Pure history pop — independent of the engine's prev_id, so it
+    // undoes the *user's* last navigation regardless of whether that
+    // was a step, a continue, a reverse-continue, or a click in the
+    // trace tree. Disabled when the stack is empty.
+    enabled: () => useSession.getState().navHistory.length > 0,
+    run: () => useSession.getState().goBack(),
   },
   {
     id: 'nav.reverse-step-out',

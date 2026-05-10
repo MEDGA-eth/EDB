@@ -166,18 +166,25 @@ describe('command registry', () => {
     expect(getCommand('nav.step-over')!.enabled?.(ctx({ queryClient: qc }))).toBe(false);
   });
 
-  test('nav.reverse-step-over jumps to prev_id', () => {
+  test('nav.go-back pops the navigation history', () => {
     const qc = new QueryClient();
-    qc.setQueryData(['snapshot', 5], { id: 5, frame_id: [0, 0], next_id: 6, prev_id: 2 });
-    useSession.setState({ currentSnapshotId: 5 });
-    getCommand('nav.reverse-step-over')!.run(ctx({ queryClient: qc }));
-    expect(useSession.getState().currentSnapshotId).toBe(2);
+    // Simulate two prior navigations: 0 → 5, 5 → 7. History stack should be [0, 5].
+    useSession.setState({ currentSnapshotId: 0, navHistory: [] });
+    useSession.getState().setSnapshotId(5);
+    useSession.getState().setSnapshotId(7);
+    expect(useSession.getState().navHistory).toEqual([0, 5]);
+    getCommand('nav.go-back')!.run(ctx({ queryClient: qc }));
+    expect(useSession.getState().currentSnapshotId).toBe(5);
+    expect(useSession.getState().navHistory).toEqual([0]);
+    getCommand('nav.go-back')!.run(ctx({ queryClient: qc }));
+    expect(useSession.getState().currentSnapshotId).toBe(0);
+    expect(useSession.getState().navHistory).toEqual([]);
   });
 
-  test('nav.reverse-step-over disabled at id 0', () => {
+  test('nav.go-back disabled when navHistory is empty', () => {
     const qc = new QueryClient();
-    useSession.setState({ currentSnapshotId: 0 });
-    expect(getCommand('nav.reverse-step-over')!.enabled?.(ctx({ queryClient: qc }))).toBe(false);
+    useSession.setState({ currentSnapshotId: 5, navHistory: [] });
+    expect(getCommand('nav.go-back')!.enabled?.(ctx({ queryClient: qc }))).toBe(false);
   });
 
   test('nav.step-out walks next_id until frame_id[0] differs', () => {
