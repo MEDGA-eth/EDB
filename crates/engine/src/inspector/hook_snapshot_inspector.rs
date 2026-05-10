@@ -93,6 +93,34 @@ where
     pub state_variables: HashMap<String, Option<Arc<EdbSolValue>>>,
     /// User-defined snapshot ID from call data
     pub usid: USID,
+    /// Block environment at the moment of capture. Mutates across the tx when
+    /// cheatcodes like vm.warp/vm.roll fire.
+    #[serde(default)]
+    pub block_env: revm::context::BlockEnv,
+    /// Cfg environment at the moment of capture. Mutates when vm.chainId fires.
+    #[serde(default)]
+    pub cfg_env: revm::context::CfgEnv,
+}
+
+impl<DB> Default for HookSnapshot<DB>
+where
+    DB: Database + DatabaseCommit + DatabaseRef + Clone + Default,
+    <CacheDB<DB> as Database>::Error: Clone,
+    <DB as Database>::Error: Clone,
+{
+    fn default() -> Self {
+        Self {
+            target_address: Address::default(),
+            bytecode_address: Address::default(),
+            database: Arc::new(CacheDB::default()),
+            transient_storage: Arc::new(TransientStorage::default()),
+            locals: HashMap::new(),
+            state_variables: HashMap::new(),
+            usid: USID::default(),
+            block_env: revm::context::BlockEnv::default(),
+            cfg_env: revm::context::CfgEnv::default(),
+        }
+    }
 }
 
 /// Collection of hook snapshots organized by execution order
@@ -372,7 +400,7 @@ where
         &mut self,
         data: &[u8],
         interp: &Interpreter,
-        _ctx: &mut EdbContext<DB>,
+        ctx: &mut EdbContext<DB>,
     ) {
         let address = self
             .current_frame_id()
@@ -425,6 +453,8 @@ where
                     locals,
                     usid,
                     state_variables: HashMap::new(), // State variables can be filled in later
+                    block_env: ctx.block.clone(),
+                    cfg_env: ctx.cfg.clone(),
                 };
 
                 self.snapshots.update_last_frame_with_snapshot(current_frame_id, hook_snapshot);
@@ -928,4 +958,23 @@ pub fn decode_variable_value(
         .abi_decode(data)
         .map_err(|e| eyre::eyre!("Failed to decode variable value: {}", e))?;
     Ok(value)
+}
+
+#[cfg(test)]
+mod env_capture_tests {
+    use super::*;
+    use revm::{
+        context::{BlockEnv, CfgEnv},
+        database::CacheDB,
+        database_interface::EmptyDB,
+    };
+
+    type TestDB = CacheDB<EmptyDB>;
+
+    #[test]
+    fn hook_snapshot_carries_block_env() {
+        let s = HookSnapshot::<TestDB>::default();
+        let _: &BlockEnv = &s.block_env;
+        let _: &CfgEnv = &s.cfg_env;
+    }
 }
