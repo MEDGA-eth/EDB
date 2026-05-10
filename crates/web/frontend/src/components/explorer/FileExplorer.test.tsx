@@ -103,7 +103,7 @@ describe('<FileExplorer />', () => {
     await waitFor(() =>
       expect(screen.getByTestId(`explorer-file-${ADDR_A}-a.sol`)).toBeTruthy(),
     );
-    // Press ArrowDown a few times then Enter — should land on a file and open it.
+    // Press ArrowDown a few times then Enter, should land on a file and open it.
     fireEvent.keyDown(tree, { key: 'ArrowDown' });
     fireEvent.keyDown(tree, { key: 'Enter' });
     await waitFor(() => {
@@ -117,7 +117,7 @@ describe('<FileExplorer />', () => {
       edb_getTrace: () => ({ inner: [entry(0, null, ADDR_A)] }),
       edb_getCodeByAddress: () => {
         calls += 1;
-        // Always fail — we just want the error state to surface.
+        // Always fail, we just want the error state to surface.
         const err: { code: number; message: string } = { code: -1, message: 'boom' };
         throw err;
       },

@@ -7,9 +7,9 @@ import { useSession } from '../store/session';
  * Run a built-in terminal command (TUI parity: `step`, `goto`, `bp`, …).
  *
  * Returns:
- *   - `{ handled: true, message?: string }` — recognized command. Caller
+ *   - `{ handled: true, message?: string }`, recognized command. Caller
  *     emits `message` (when present) via `appendTerminal({kind:'message'})`.
- *   - `{ handled: false }` — not a command; caller should fall through to
+ *   - `{ handled: false }`, not a command; caller should fall through to
  *     expression evaluation (the original terminal semantics).
  *
  * Why a separate module: keeps TerminalPanel.tsx focused on rendering and
@@ -73,7 +73,7 @@ export function runTermCommand(input: string, ctx: TermCommandCtx): TermCommandR
   // Snapshot ids are presented as 1-based everywhere in the UI ("snapshot
   // 1 / 196"). The internal store is still 0-indexed, so subtract 1 here
   // and fold the user's input back to a 0-based id. `goto 0` is treated
-  // as "go to the first snapshot" for usability — a tiny ergonomic gift
+  // as "go to the first snapshot" for usability, a tiny ergonomic gift
   // for users who haven't internalised 1-vs-0 yet.
   if (verb === 'goto' || verb === 'g') {
     const n = parseInt(tail, 10);
@@ -145,7 +145,7 @@ function parseBreakSpec(tail: string): Breakpoint['loc'] | null {
   if (op) {
     return { kind: 'Opcode', bytecode_address: op[1].toLowerCase(), pc: parseInt(op[2], 10) };
   }
-  // `<addr>:<line>` source-line breakpoint. file_path defaults to '' — the
+  // `<addr>:<line>` source-line breakpoint. file_path defaults to '', the
   // engine resolves the active file for that address. The user can edit
   // this through the Breakpoints sidebar if they need a specific path.
   const src = /^(0x[0-9a-fA-F]{40})\s*:\s*(\d+)$/.exec(tail);
@@ -168,17 +168,17 @@ function describeBreakpoint(bp: Pick<Breakpoint, 'loc'>): string {
 
 const HELP_TEXT = `**Built-in commands**
 
-- \`step\` / \`s\` / \`next\` / \`n\` — single snapshot forward
-- \`over\` / \`o\` — step over (call boundary)
-- \`out\` — step out
-- \`continue\` / \`c\` — run to next breakpoint
-- \`reverse-continue\` / \`rc\` — run back to previous breakpoint
-- \`goto <n>\` — jump to snapshot N
-- \`break <addr>:<line>\` — source-line breakpoint
-- \`break <addr>:pc=<pc>\` — opcode breakpoint
-- \`bp\` — list breakpoints
-- \`unbreak <#>\` — remove breakpoint
-- \`clear\` — clear terminal
-- \`help\` — this list
+- \`step\` / \`s\` / \`next\` / \`n\`, single snapshot forward
+- \`over\` / \`o\`, step over (call boundary)
+- \`out\`, step out
+- \`continue\` / \`c\`, run to next breakpoint
+- \`reverse-continue\` / \`rc\`, run back to previous breakpoint
+- \`goto <n>\`, jump to snapshot N
+- \`break <addr>:<line>\`, source-line breakpoint
+- \`break <addr>:pc=<pc>\`, opcode breakpoint
+- \`bp\`, list breakpoints
+- \`unbreak <#>\`, remove breakpoint
+- \`clear\`, clear terminal
+- \`help\`, this list
 
 Anything else is treated as a Solidity expression and evaluated at the current snapshot.`;

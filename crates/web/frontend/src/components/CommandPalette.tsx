@@ -55,7 +55,7 @@ function pushRecent(id: string) {
   try {
     localStorage.setItem(RECENT_KEY, JSON.stringify(cur));
   } catch (e) {
-    // QuotaExceededError, SecurityError (private mode), etc. — match the
+    // QuotaExceededError, SecurityError (private mode), etc., match the
     // theme.ts pattern so failures aren't silent.
     // eslint-disable-next-line no-console
     console.warn('[edb-web] failed to persist palette recents', e);
@@ -110,7 +110,7 @@ function CommandPaletteInner() {
   );
 
   const [query, setQuery] = useState('');
-  // Debounced query — used only for the (potentially expensive) row build,
+  // Debounced query, used only for the (potentially expensive) row build,
   // so the input stays synchronously responsive while typing.
   const debouncedQuery = useDebounced(query, PALETTE_QUERY_DEBOUNCE_MS);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -121,7 +121,7 @@ function CommandPaletteInner() {
 
   useEffect(() => {
     // Capture and blur the previously-focused element, then move focus to
-    // the palette input. The blur is important — without it, keystrokes
+    // the palette input. The blur is important, without it, keystrokes
     // can race the palette open/close and bleed into the editor below.
     const prev = document.activeElement as HTMLElement | null;
     previouslyFocusedRef.current = prev && prev !== document.body ? prev : null;

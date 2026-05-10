@@ -41,7 +41,7 @@ describe('highlightSolidity', () => {
   test('addresses get the type colour, not the number colour', () => {
     const out = html('to == 0x1111111111111111111111111111111111111111');
     expect(out).toContain('--color-syn-type');
-    // Address pattern claims the whole hex literal — no overlap with the
+    // Address pattern claims the whole hex literal, no overlap with the
     // number rule.
     const numHits = (out.match(/--color-syn-number/g) || []).length;
     expect(numHits).toBe(0);
@@ -50,11 +50,11 @@ describe('highlightSolidity', () => {
   test('strings claim their full quoted span', () => {
     const out = html('require(true, "boom")');
     expect(out).toContain('--color-syn-string');
-    // ReactDOMServer escapes the quotes — match the entity-form.
+    // ReactDOMServer escapes the quotes, match the entity-form.
     expect(out).toContain('&quot;boom&quot;');
   });
 
-  test('function calls — name immediately before `(` — get the func colour', () => {
+  test('function calls, name immediately before `(`, get the func colour', () => {
     const out = html('balanceOf(account)');
     expect(out).toContain('--color-syn-func');
     expect(out).toContain('balanceOf');

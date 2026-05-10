@@ -5,7 +5,7 @@ import type { DockviewApi } from 'dockview';
  *
  * The API only exists once `MainArea`'s `<DockviewReact onReady>` fires,
  * so consumers (commands, the palette, the activity bar) can't import the
- * api directly. This bridge gives them a stable point to call into —
+ * api directly. This bridge gives them a stable point to call into,
  * `setDockviewApi` is invoked by `MainArea` on mount/unmount, and the
  * helpers below absorb the "no api yet" case so callers don't need to
  * defensively null-check.
@@ -23,7 +23,7 @@ export function getDockviewApi(): DockviewApi | null {
 /**
  * Ensure a fixed panel (`display` / `terminal`) is present and active.
  * If the user closed it by accident, this re-adds it next to whichever
- * panel is currently visible — `referencePanel: undefined` would put it
+ * panel is currently visible, `referencePanel: undefined` would put it
  * in a fresh group, so we anchor against any open panel for continuity.
  *
  * Returns true on success, false if the dockview hasn't booted yet.

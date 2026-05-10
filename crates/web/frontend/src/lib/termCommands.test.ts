@@ -29,7 +29,7 @@ describe('runTermCommand', () => {
   });
 
   test('goto is 1-based and clamps to last snapshot', () => {
-    // `goto 7` lands on the 7th snapshot — internal id 6.
+    // `goto 7` lands on the 7th snapshot, internal id 6.
     runTermCommand('goto 7', freshCtx());
     expect(useSession.getState().currentSnapshotId).toBe(6);
     // Out-of-range clamps to the highest available id (snapshotCount=100 → 99).

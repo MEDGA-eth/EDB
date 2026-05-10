@@ -186,7 +186,7 @@ function BreakpointRow({
       </div>
       <div
         className="flex items-center gap-1.5 pl-1"
-        title="Optional condition — the breakpoint only fires when this Solidity expression evaluates to true at the snapshot."
+        title="Optional condition, the breakpoint only fires when this Solidity expression evaluates to true at the snapshot."
       >
         <CircleSlash2 size={12} className="text-(--color-fg-tertiary)" aria-hidden />
         <span className="text-[11px] text-(--color-fg-tertiary)">if</span>

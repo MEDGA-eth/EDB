@@ -12,7 +12,7 @@ export function StatusBar() {
   // True while a programmatic hash write is pending, so the resulting
   // `hashchange` event doesn't echo back into the store.
   const skipNextHashRef = useRef(false);
-  // Latest snapshot count — read inside listeners that outlive the closure.
+  // Latest snapshot count, read inside listeners that outlive the closure.
   const countRef = useRef<number | undefined>(count);
   useEffect(() => {
     countRef.current = count;
@@ -20,7 +20,7 @@ export function StatusBar() {
 
   // When the snapshot count itself shrinks (e.g., trace reload returns fewer
   // snapshots), reclamp `currentSnapshotId` so the URL never points past the
-  // last valid id. We deliberately skip the `count === 0` case — that's the
+  // last valid id. We deliberately skip the `count === 0` case, that's the
   // loading state, not an empty trace; the trace just hasn't arrived yet.
   useEffect(() => {
     if (!countLoaded) return;
@@ -71,7 +71,7 @@ export function StatusBar() {
       const next = parseInt(window.location.hash.replace(/^#/, ''), 10);
       if (!Number.isFinite(next)) return;
       const clamped = clampToRange(next);
-      // Only update the store if the hash genuinely differs — guards
+      // Only update the store if the hash genuinely differs, guards
       // against rapid-navigation echo loops under StrictMode.
       if (useSession.getState().currentSnapshotId !== clamped) setId(clamped);
       if (clamped !== next) {
@@ -106,7 +106,7 @@ export function StatusBar() {
         </span>
         <span className="text-(--color-fg-secondary)" data-testid="snapshot-label">
           snapshot{' '}
-          {/* Display as 1-based — internal store/URL/RPC stay 0-indexed.
+          {/* Display as 1-based, internal store/URL/RPC stay 0-indexed.
               The "first snapshot is #1" framing matches what users see in
               every other debugger and avoids the off-by-one rake when
               quoting positions in conversation. */}
@@ -125,7 +125,7 @@ export function StatusBar() {
   );
 }
 
-/** Detect macOS once per page load — doesn't change between renders. */
+/** Detect macOS once per page load, doesn't change between renders. */
 const IS_MAC =
   typeof navigator !== 'undefined' &&
   typeof navigator.platform === 'string' &&

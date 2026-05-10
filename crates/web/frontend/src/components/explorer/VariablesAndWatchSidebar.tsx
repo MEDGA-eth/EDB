@@ -25,11 +25,11 @@ export function VariablesAndWatchSidebar() {
       >
         <SectionHeader>Variables</SectionHeader>
         <div className="border-b border-(--color-border) px-3 pb-3">
-          <VarsView snap={snapQ.data} />
+          <VarsView snap={snapQ.data} compact />
         </div>
         <SectionHeader>Watch</SectionHeader>
         <div className="px-3 pb-3">
-          <WatchView snapshotId={id} />
+          <WatchView snapshotId={id} compact />
         </div>
       </div>
     </ErrorBoundary>

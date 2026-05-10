@@ -47,7 +47,7 @@ function SideBar({ activity, width }: { activity: ActivityKind; width: number })
 function SidePlaceholder({ activity }: { activity: ActivityKind }) {
   return (
     <div className="px-3 py-3 text-xs text-(--color-fg-tertiary)">
-      {activity} panel — coming soon.
+      {activity} panel, coming soon.
     </div>
   );
 }
@@ -97,7 +97,7 @@ export function IDELayout() {
   const showEmptyBanner = traceIsEmpty && noSnapshots;
 
   const shellRef = useRef<HTMLDivElement | null>(null);
-  // Sidebar width in CSS pixels — drag-resizable from its right edge,
+  // Sidebar width in CSS pixels, drag-resizable from its right edge,
   // clamped to a usable range and persisted between reloads.
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('edb-web:sidebar-width') : null;
@@ -139,7 +139,7 @@ export function IDELayout() {
           role="status"
           className="flex items-center justify-center border-b border-(--color-border) bg-(--color-bg-elevated) px-4 py-2 font-display text-xs text-(--color-fg-secondary)"
         >
-          No trace yet — run{' '}
+          No trace yet, run{' '}
           <code className="mx-1 font-mono">edb replay --ui=web &lt;tx&gt;</code>
           {' '}to load one.
         </div>

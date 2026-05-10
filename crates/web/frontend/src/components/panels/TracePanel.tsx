@@ -46,7 +46,7 @@ function buildTree(entries: TraceEntry[]): TreeNode[] {
     } else {
       const parent = nodes.get(e.parent_id);
       if (parent) parent.children.push(node);
-      else roots.push(node); // orphan — surface at root rather than dropping silently
+      else roots.push(node); // orphan, surface at root rather than dropping silently
     }
   }
   return roots;
@@ -262,7 +262,7 @@ function TracePanelInner() {
               data-pressed={active ? 'true' : 'false'}
               // aria-pressed reflects the *enabled* axis: when filter is on,
               // the chip is "pressed" (its calls are visible). When off, the
-              // chip is in the released state — visually dimmed + line-through
+              // chip is in the released state, visually dimmed + line-through
               // to make the disabled axis obvious at a glance.
               aria-pressed={active}
               onClick={() => toggleFilter(f)}
@@ -307,7 +307,7 @@ function TracePanelInner() {
  * Render the inline events list for a single trace entry. Collapsed by
  * default (a `📡 N events` summary); on expand, each event prints its
  * topic[0] and data hex truncated. Decoding the event signature is left
- * for a future feature — we don't currently ship a 4byte database.
+ * for a future feature, we don't currently ship a 4byte database.
  */
 function EventsList({ events, indent }: { events: LogData[]; indent: number }) {
   const [open, setOpen] = useState(false);
@@ -411,7 +411,7 @@ function TraceNode({
 
   /**
    * Left-click: ONLY open the source/disasm view for the entry's code
-   * address — do NOT advance the snapshot. This lets users skim the call
+   * address, do NOT advance the snapshot. This lets users skim the call
    * tree to read code without losing their stepping position. Right-click
    * (or Shift+click as a keyboard fallback) advances the snapshot via
    * {@link handleJump}, mirroring the previous behaviour for users who
@@ -441,7 +441,7 @@ function TraceNode({
   }
 
   function handleSelect(e: React.MouseEvent) {
-    // Shift+click acts as a keyboard alternative to the right-click menu —
+    // Shift+click acts as a keyboard alternative to the right-click menu,
     // jump to the entry's first snapshot AND reveal source.
     if (e.shiftKey) {
       setSnap(targetSnapshotId);
@@ -486,7 +486,7 @@ function TraceNode({
           data-current={isCurrent ? 'true' : undefined}
           onClick={handleSelect}
           onContextMenu={(e) => { e.preventDefault(); setMenuPos({ x: e.clientX, y: e.clientY }); }}
-          aria-label={`Reveal source for trace entry ${entry.id} (${label})${failed ? ' — reverted/errored' : ''}. Right-click for jump options.`}
+          aria-label={`Reveal source for trace entry ${entry.id} (${label})${failed ? ', reverted/errored' : ''}. Right-click for jump options.`}
           aria-pressed={isCurrent}
           title={`${label} → ${target}\nClick: open source.\nShift+click or right-click: jump to snapshot ${targetSnapshotId}.`}
           className={

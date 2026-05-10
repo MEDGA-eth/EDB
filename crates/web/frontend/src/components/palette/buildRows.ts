@@ -49,7 +49,7 @@ export function buildRows(query: string, b: BuildRowsCtx): PaletteRow[] {
   const enabledCommands = COMMANDS.filter((c) => (c.enabled ? c.enabled(b.ctx) : true));
   const commandRows: PaletteRow[] = enabledCommands.map((c) => commandToRow(c, b.ctx));
 
-  /* snapshots — only generate at most 50 to avoid huge lists */
+  /* snapshots, only generate at most 50 to avoid huge lists */
   const snapshotRows: PaletteRow[] = [];
   if (b.snapshotCount > 0) {
     const limit = Math.min(b.snapshotCount, 50);
@@ -83,7 +83,7 @@ export function buildRows(query: string, b: BuildRowsCtx): PaletteRow[] {
     label: shortAddr(addr),
     hint: addr,
     run: () => {
-      // jumping to an address doesn't change snapshot — we open its disasm/source as fallback
+      // jumping to an address doesn't change snapshot, we open its disasm/source as fallback
       const file = b.files.find((f) => f.addr === addr);
       if (file) b.openFile({ addr: file.addr, path: file.path });
     },

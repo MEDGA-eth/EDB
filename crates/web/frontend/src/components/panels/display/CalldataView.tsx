@@ -25,11 +25,11 @@ function selectorOf(calldataHex: string): string | null {
  *   calldata as the EVM sees it).
  * - Hook (source) snapshots don't include calldata in the snapshot detail;
  *   instead we look up the trace entry for the snapshot's `frame_id[0]`
- *   and surface its `input` field — i.e. the call's calldata at entry.
+ *   and surface its `input` field, i.e. the call's calldata at entry.
  *
  * The 4-byte selector is split out and rendered separately when present so
  * users can match it to a 4byte database without copying the full payload.
- * Full ABI decode (function name + arg values) is a follow-up — it requires
+ * Full ABI decode (function name + arg values) is a follow-up, it requires
  * a keccak256 implementation we don't currently ship.
  */
 export function CalldataView({ snap }: { snap: SnapshotInfo | undefined }) {

@@ -29,7 +29,7 @@ export function FileExplorer() {
 }
 
 /**
- * Flat row model — driven by per-address expansion state. The tree renders
+ * Flat row model, driven by per-address expansion state. The tree renders
  * by mapping over this list, which also determines focus order and Up/Down
  * navigation semantics.
  */
@@ -155,7 +155,7 @@ function FileExplorerInner() {
   if (addresses.length === 0)
     return (
       <div className="px-3 py-2 text-xs text-(--color-fg-tertiary)" data-testid="explorer-empty">
-        No trace yet — run <code className="font-mono">edb replay --ui=web &lt;tx&gt;</code> to load one.
+        No trace yet, run <code className="font-mono">edb replay --ui=web &lt;tx&gt;</code> to load one.
       </div>
     );
 

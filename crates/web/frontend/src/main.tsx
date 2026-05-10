@@ -57,7 +57,7 @@ function FileProtocolError() {
 
 if (rootEl) {
   if (typeof window !== 'undefined' && window.location.protocol === 'file:') {
-    // No SPA — fetches to '/' would be useless, and most browsers also
+    // No SPA, fetches to '/' would be useless, and most browsers also
     // refuse XHR cross-origin under file://.
     createRoot(rootEl).render(<FileProtocolError />);
   } else {

@@ -14,7 +14,7 @@ function MemoryGrid({ formatted }: { formatted: string }) {
   for (const line of lines) {
     const ix = line.indexOf(': ');
     if (ix < 0) {
-      // Non-conforming line — bail to plain pre to avoid mangling output.
+      // Non-conforming line, bail to plain pre to avoid mangling output.
       return <pre>{formatted}</pre>;
     }
     rows.push({ offset: line.slice(0, ix), hex: line.slice(ix + 2) });
