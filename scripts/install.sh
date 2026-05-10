@@ -245,6 +245,40 @@ check_cargo() {
     print_success "✓ cargo is installed"
 }
 
+# Check if bun is installed (required by crates/web/build.rs to bundle the web UI)
+check_bun() {
+    if ! command -v bun &> /dev/null; then
+        print_error "bun is not installed"
+        echo ""
+        echo "EDB's web UI is bundled at compile time and requires bun on PATH."
+        echo "Please install bun first:"
+        case "$OS" in
+            linux|macos)
+                echo "  Run: curl -fsSL https://bun.sh/install | bash"
+                echo "  Then restart your shell (or 'source ~/.bashrc' / 'source ~/.zshrc')"
+                echo "  so 'bun --version' resolves before re-running this script."
+                ;;
+            windows)
+                echo "  Run in PowerShell: irm bun.sh/install.ps1 | iex"
+                echo "  Or visit: https://bun.sh"
+                ;;
+            *)
+                echo "  Visit: https://bun.sh"
+                ;;
+        esac
+        echo ""
+        echo "Alternatively, if you don't need the web UI, you can bypass the bundle"
+        echo "by setting EDB_SKIP_WEB_BUILD=1 and running the source build manually:"
+        echo "  EDB_SKIP_WEB_BUILD=1 cargo install --path crates/edb"
+        echo "  EDB_SKIP_WEB_BUILD=1 cargo install --path crates/rpc-proxy"
+        echo "  EDB_SKIP_WEB_BUILD=1 cargo install --path crates/tui"
+        echo "(The TUI and CLI work; 'edb replay --ui=web' will fail at runtime"
+        echo " until you rebuild with bun installed.)"
+        exit 1
+    fi
+    print_success "✓ bun is installed"
+}
+
 # Create ~/.edb directory if it doesn't exist
 create_edb_dir() {
     EDB_DIR="$HOME/.edb"
@@ -468,6 +502,7 @@ main() {
     print_info "Checking prerequisites..."
     check_git
     check_cargo
+    check_bun
     echo ""
 
     # Step 2: Create ~/.edb directory
