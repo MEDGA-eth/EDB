@@ -72,7 +72,7 @@ const SECTIONS: Section[] = [
     Icon: Network,
     rows: [
       { keys: 'Click', desc: 'Reveal the source for the entry, does NOT change the snapshot' },
-      { keys: 'Right-click', desc: 'Open menu: Jump to snapshot N · Reveal source · Expand/Collapse' },
+      { keys: 'Right-click', desc: 'Open menu: Jump to snapshot N · Reveal source only · Toggle children (when collapsible)' },
       { keys: '⇧+Click', desc: 'Keyboard alternative for "Jump to snapshot"' },
     ],
   },

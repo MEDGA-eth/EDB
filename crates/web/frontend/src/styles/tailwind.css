@@ -122,3 +122,12 @@ html, body, #root {
   background-color: var(--color-accent-dim) !important;
   box-shadow: inset 2px 0 var(--color-accent);
 }
+
+/* Same look as `.cm-edb-current-line` but for the lightweight `<pre>`-based
+   opcode views (CodePanel + FileTabPanel disasm). Stripe sits on the left
+   edge of the row so the active PC is visually matched with the source-
+   level current-line indicator. */
+.opcodes-current-line {
+  background-color: var(--color-accent-dim);
+  box-shadow: inset 2px 0 var(--color-accent);
+}

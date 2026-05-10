@@ -59,12 +59,15 @@ export function useGlobalKeybinds(): void {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
 
-      // Cmd/Ctrl+Shift+P → palette in command mode
+      // Cmd/Ctrl+Shift+P → palette in command mode (prefilled with `>`).
+      // The palette treats a leading `>` as command-only filtering, so this
+      // shortcut lands the user directly on commands instead of files +
+      // commands. Mirrors VS Code.
       if (mod && e.shiftKey && (e.key === 'p' || e.key === 'P')) {
         if (isEditableTarget(e.target) && !useSession.getState().paletteOpen) return;
         e.preventDefault();
         e.stopPropagation();
-        useSession.getState().setPaletteOpen(true);
+        useSession.getState().openPaletteWith('>');
         return;
       }
 

@@ -272,8 +272,9 @@ check_bun() {
         echo "  EDB_SKIP_WEB_BUILD=1 cargo install --path crates/edb"
         echo "  EDB_SKIP_WEB_BUILD=1 cargo install --path crates/rpc-proxy"
         echo "  EDB_SKIP_WEB_BUILD=1 cargo install --path crates/tui"
-        echo "(The TUI and CLI work; 'edb replay --ui=web' will fail at runtime"
-        echo " until you rebuild with bun installed.)"
+        echo "(The TUI and CLI work; the default web UI will fail at runtime"
+        echo " until you rebuild with bun installed — 'edb replay --ui=tui'"
+        echo " is the fallback in the meantime.)"
         exit 1
     fi
     print_success "✓ bun is installed"

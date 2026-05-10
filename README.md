@@ -11,8 +11,9 @@
   <a href="#installation"><img src="https://img.shields.io/badge/-📦%20Install-047857?style=for-the-badge&labelColor=064e3b" alt="Install" /></a>
   <a href="#quickstart"><img src="https://img.shields.io/badge/-🚀%20Quickstart-0e7490?style=for-the-badge&labelColor=164e63" alt="Quickstart" /></a>
   <a href="#why-edb"><img src="https://img.shields.io/badge/-💡%20Why%20EDB%3F-7c3aed?style=for-the-badge&labelColor=4c1d95" alt="Why EDB?" /></a>
+  <a href="https://edb.zzhang.xyz"><img src="https://img.shields.io/badge/-🎓%20Online%20Tutor-d97706?style=for-the-badge&labelColor=92400e" alt="Online Tutor" /></a>
   <a href="#sponsors"><img src="https://img.shields.io/badge/-✨%20Sponsors-e04832?style=for-the-badge&labelColor=9a3412" alt="Sponsors" /></a>
-  <a href="https://t.me/edb_feedback"><img src="https://img.shields.io/badge/-💬%20Telegram%20Q%26A-26a5e4?style=for-the-badge&labelColor=075481&logo=telegram&logoColor=white" alt="Telegram Q&amp;A" /></a>
+  <a href="https://t.me/edb_feedback"><img src="https://img.shields.io/badge/-💬%20Q%26A-26a5e4?style=for-the-badge&labelColor=075481&logo=telegram&logoColor=white" alt="Q&amp;A" /></a>
 </p>
 
 EDB bridges the gap between high-level Solidity code and low-level EVM execution, providing four essential debugging features that have been missing from the Ethereum ecosystem:
@@ -33,19 +34,20 @@ EDB bridges the gap between high-level Solidity code and low-level EVM execution
 
 ## Installation
 
-### Prerequisites
-
-- **Rust** (stable, 2024 edition): [rustup.rs](https://rustup.rs)
-- **[Bun](https://bun.sh)**: required to build the embedded web UI
-- **Ethereum RPC endpoint**: public (Infura / Alchemy) or local node
-
 ### One-line Install
 
 ```bash
 curl -sSL https://install.edb.sh | bash
 ```
 
+The installer downloads a pre-built binary for your platform — no Rust or Bun toolchain needed.
+
 ### Build from Source
+
+#### Prerequisites
+
+- **Rust** (stable, 2024 edition): [rustup.rs](https://rustup.rs)
+- **[Bun](https://bun.sh)**: required to build the embedded web UI
 
 ```bash
 # Clone the repository
@@ -68,31 +70,20 @@ cargo install --path crates/tui
 Debug any transaction from mainnet or testnets:
 
 ```bash
-# Debug a transaction with the Terminal UI (default)
+# Debug a transaction with the browser UI (default)
 edb --rpc-urls <RPC_ENDPOINTS> replay 0x5bedd885ff628e935fe47dacb6065c6ac80514a85ec6444578fd1ba092904096
 
-# …or with the new browser UI
-edb --rpc-urls <RPC_ENDPOINTS> --ui=web replay 0x5bedd885ff628e935fe47dacb6065c6ac80514a85ec6444578fd1ba092904096
+# …or stay in the terminal with the TUI
+edb --rpc-urls <RPC_ENDPOINTS> --ui=tui replay 0x5bedd885ff628e935fe47dacb6065c6ac80514a85ec6444578fd1ba092904096
 ```
 
-The `RPC_ENDPOINTS` should be a comma-separated list of RPC endpoint URLs.
-EDB will utilize the RPC endpoints to obtain on-chain states to replay the transaction.
-The more RPC endpoints are provided, the faster the replay is.
-__If none is provided, EDB will default to the ten most popular public RPC endpoints, which may be slow and unreliable.__
+`<RPC_ENDPOINTS>` is a comma-separated list of Ethereum RPC URLs (public endpoints like Infura/Alchemy, or a local node). EDB queries these to fetch the on-chain state needed to replay the transaction; more endpoints means faster replay.
 
-#### Terminal UI (default)
+> If none is provided, EDB falls back to the ten most popular public RPC endpoints, which may be slow and unreliable — bring your own keys for the best experience.
 
-Without any extra flag, EDB launches its TUI:
+#### Web UI (default)
 
-<p align="center">
-  <img src="resources/edb-tui.png" alt="EDB TUI screenshot" width="98%" style="border: 1px solid #ddd; border-radius: 8px;">
-</p>
-
-Type `?` in the TUI to view the help page.
-
-#### Web UI (`--ui=web`)
-
-`edb --ui=web replay <tx>` opens a browser-based debugger that shares the engine's port (no extra binary). Both dark and light themes ship by default.
+Without any extra flag, EDB opens a browser-based debugger that shares the engine's port (no extra binary). Both dark and light themes ship by default.
 
 <p align="center">
   <img src="resources/edb-web-dark.png" alt="EDB Web UI screenshot (dark theme)" width="98%" style="border: 1px solid #ddd; border-radius: 8px;">
@@ -101,6 +92,18 @@ Type `?` in the TUI to view the help page.
 <p align="center">
   <img src="resources/edb-web.png" alt="EDB Web UI screenshot (light theme)" width="98%" style="border: 1px solid #ddd; border-radius: 8px;">
 </p>
+
+Click the `?` button in the status bar (or press the help shortcut) to view the keybinding & terminal-command reference.
+
+#### Terminal UI (`--ui=tui`)
+
+`edb --ui=tui replay <tx>` launches the keyboard-driven TUI, useful over SSH or in environments without a browser:
+
+<p align="center">
+  <img src="resources/edb-tui.png" alt="EDB TUI screenshot" width="98%" style="border: 1px solid #ddd; border-radius: 8px;">
+</p>
+
+Type `?` in the TUI to view the help page.
 
 For development setup and architecture details, see [DEV.md](DEV.md) and [ARCH.md](ARCH.md).
 
@@ -144,4 +147,18 @@ Join our Telegram Q&A group to ask questions, share insights, and connect with o
 </div>
 <br>
 
-<em>Love EDB? Your support keeps us building! <a href="https://github.com/sponsors/edb-rs">Buy us a coffee ☕</a> and help us dedicate more time to making Ethereum debugging better.</em>
+EDB is free and open-source, and we're short on funding to keep it growing. Two ways to chip in:
+
+<p align="center">
+  <a href="https://github.com/sponsors/edb-rs">
+    <img src="https://img.shields.io/badge/-☕%20Sponsor%20as%20an%20individual-7c3aed?style=for-the-badge&labelColor=4c1d95" alt="Sponsor as an individual via GitHub Sponsors" />
+  </a>
+  &nbsp;
+  <a href="mailto:zz@cs.columbia.edu?subject=EDB%20%C2%B7%20saying%20hi&body=Hi%20Zhuo%2C%0A%0AI%20represent%20%5BCOMPANY%5D%2C%20and%20we%20use%20EDB%20%2F%20are%20interested%20in%20the%20project.%20Could%20we%20set%20up%20a%20quick%20chat%3F%0A%0AThanks%2C%0A%5BYOUR%20NAME%5D%0A">
+    <img src="https://img.shields.io/badge/-🏢%20Sponsor%20as%20a%20company-d4608a?style=for-the-badge&labelColor=831843" alt="Sponsor as a company — email Zhuo" />
+  </a>
+</p>
+
+<p align="center">
+  <sub>Individuals → <a href="https://github.com/sponsors/edb-rs">GitHub Sponsors</a>. Companies & institutions → <a href="mailto:zz@cs.columbia.edu?subject=EDB%20%C2%B7%20saying%20hi">email us</a> — we're happy to talk features, integrations, or partnerships.</sub>
+</p>

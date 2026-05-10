@@ -196,7 +196,7 @@ export const STAGES: Stage[] = [
     body: (
       <>
         <Sec>The activity rail</Sec>
-        <p>
+        <p className="mobile-sheet-hide">
           VS Code-style icon column on the left. Four panes, one
           keystroke each.
         </p>
@@ -303,13 +303,13 @@ export const STAGES: Stage[] = [
         <Sec>When source is missing</Sec>
         <p>
           The file <code>0x9bf1…a213</code> here is a contract that
-          arrived with bytecode only. EDB will decompile it into
+          arrived with bytecode. EDB will decompile it into
           readable, fully-steppable pseudo-Solidity, so unverified
           calls debug just like your own code.
         </p>
         <Tip>
           <em>Coming soon</em> in a future release. The placeholder pops
-          out next to the bytecode-only file in the explorer tree.
+          out next to the bytecode file in the explorer tree.
         </Tip>
       </>
     ),

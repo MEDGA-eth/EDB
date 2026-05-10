@@ -2378,6 +2378,11 @@ a { color: inherit; }
   .mobile-sheet-hint { animation: none; opacity: 0.85; }
 }
 
+/* Body elements tagged to hide inside the mobile sheet only. The desktop
+   rail uses the same `stage.body` JSX so we scope to `.mobile-sheet`,
+   which is itself only mounted on mobile (App.tsx gates on isMobile). */
+.mobile-sheet .mobile-sheet-hide { display: none; }
+
 /* ══════════════════════════════════════════════════════════════
    Mobile nav (floating chevrons). JS-gated; no media wrapper.
    ══════════════════════════════════════════════════════════════ */
@@ -2460,13 +2465,31 @@ a { color: inherit; }
   .ide-code-line { grid-template-columns: 18px 28px 1fr; padding: 0 8px 0 6px; min-height: 15px; }
   .ide-line-num { font-size: 9px; padding-right: 8px; }
   .ide-bp { width: 9px; height: 9px; }
-  .ide-cond-pill { font-size: 9px; padding: 0 6px; right: 8px; }
-  .ide-stop-tag { font-size: 8.5px; padding: 0 6px; right: 8px; }
+  /* On phone-narrow viewports the source text reaches the right edge,
+     so the centered hit-tag overlapped the code. Lift the tag (and the
+     watchpoint-condition pill it cross-fades with) just above the line
+     so it's clear of the source — z-index keeps it visible over the
+     line above when one is present. */
+  .ide-cond-pill {
+    font-size: 9px; padding: 0 6px; right: 8px;
+    top: auto; bottom: 100%; transform: none; margin-bottom: 1px;
+  }
+  .ide-stop-tag {
+    font-size: 8.5px; padding: 0 6px; right: 8px;
+    top: auto; bottom: 100%; transform: none; margin-bottom: 1px;
+  }
 
   .ide-bottom-body { padding: 6px 10px; font-size: 10.5px; }
   .ide-subtab { padding: 3px 8px; font-size: 10px; }
   .ide-pane-title { font-size: 9px; }
   .ide-pane-empty { font-size: 9.5px; padding: 5px 8px; }
+  /* The empty LOCALS placeholder ("No locals here yet…") wastes vertical
+     real-estate on phones; STATE VARIABLES alone is enough on mobile. */
+  .ide-pane-locals { display: none; }
+
+  /* Mobile sheet card: trim a touch off each side so the popup feels
+     less wall-to-wall. ~24px each side vs the desktop max of 100vw-32px. */
+  .mobile-sheet-card { max-width: calc(100vw - 80px); }
 
   /* Variables / Watch sidebar (right activity-bar pane on mobile): shrink
      fonts and tighten padding so the cards fit in the 160px-wide column. */
