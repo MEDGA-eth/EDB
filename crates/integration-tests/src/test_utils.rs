@@ -50,8 +50,31 @@ pub mod init {
     /// Initialize test environment with cache directory and logging
     /// This is a convenience function that sets up both cache and logging
     pub fn init_test_environment(use_temp_dir: bool) {
+        // Default to cache-only mode for both proxy and etherscan reads so test
+        // runs don't dirty tracked cache shards. Devs can override explicitly:
+        //
+        //   EDB_TEST_PROXY_MODE= cargo test       # regenerate proxy cache
+        //   EDB_TEST_ETHERSCAN_MODE= cargo test   # regenerate etherscan cache
+        //
+        // CI already sets these in ci.yml; this matches that behavior locally.
+        set_cache_only_if_unset("EDB_TEST_PROXY_MODE");
+        set_cache_only_if_unset("EDB_TEST_ETHERSCAN_MODE");
+
         edb_common::test_utils::setup_test_environment(use_temp_dir);
         edb_common::logging::ensure_test_logging(None);
+    }
+
+    /// Sets the named environment variable to `"cache-only"` if it is not already set.
+    ///
+    /// This runs at test entry before any env-reading threads are spawned, so the
+    /// `unsafe` block is safe in practice (see Rust RFC 3445 / edition 2024 rules).
+    fn set_cache_only_if_unset(name: &str) {
+        if std::env::var_os(name).is_none() {
+            // SAFETY: called once at test init before any concurrent env reads.
+            unsafe {
+                std::env::set_var(name, "cache-only");
+            }
+        }
     }
 }
 
