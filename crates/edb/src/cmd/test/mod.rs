@@ -19,6 +19,7 @@
 pub mod discover;
 pub mod entrypoint;
 pub mod project;
+pub mod synth;
 
 use eyre::Result;
 
