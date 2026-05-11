@@ -16,6 +16,7 @@
 
 //! `edb test` — Foundry test debugging command.
 
+pub mod cheats;
 pub mod discover;
 pub mod entrypoint;
 pub mod project;

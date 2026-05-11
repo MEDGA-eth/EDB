@@ -112,6 +112,14 @@ Type `?` in the TUI to view the help page.
 For development setup and architecture details, see [DEV.md](DEV.md) and [ARCH.md](ARCH.md).
 
 
+## Foundry tests
+
+`edb test <Contract::testFn>` debugs a single Foundry test function inside
+EDB. The cheatcode interface is a hand-rolled subset of foundry's `Vm.sol`;
+see [`docs/cheatcode-coverage.md`](docs/cheatcode-coverage.md) for the full
+supported/rejected matrix.
+
+
 ## Why EDB?
 
 Traditional Ethereum debugging tools operate at the bytecode level, making it nearly impossible to understand what's happening in your Solidity code.
