@@ -34,9 +34,7 @@ alloy-transport-http = { workspace = true, features = ["reqwest"] }
 
 # foundry
 foundry-block-explorers.workspace = true
-foundry-cheatcodes.workspace = true
 foundry-compilers = { workspace = true, features = ["svm-solc"] }
-foundry-evm-core.workspace = true
 
 # revm
 revm = { workspace = true, features = [

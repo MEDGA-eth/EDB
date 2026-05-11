@@ -32,10 +32,8 @@ alloy-provider = { workspace = true, features = ["reqwest"] }
 alloy-rpc-types = { workspace = true, features = ["eth"] }
 
 # foundry
-foundry-cheatcodes.workspace = true
 foundry-config.workspace = true
 foundry-compilers.workspace = true
-foundry-evm-core.workspace = true
 
 # revm
 revm = { workspace = true, features = ["std", "serde"] }
