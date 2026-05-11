@@ -126,6 +126,47 @@ pub async fn download_verified_source_code(
     Ok(artifacts)
 }
 
+/// Pre-built index of local foundry artifacts, keyed by their deployed bytecode
+/// `keccak256` digest. Populated by `cmd::test` in `crates/edb` before invoking
+/// [`crate::Engine::prepare_with_router_and_cheats`].
+#[derive(Default, Debug, Clone)]
+pub struct LocalArtifactSet {
+    by_codehash: std::collections::HashMap<alloy_primitives::B256, crate::Artifact>,
+}
+
+impl LocalArtifactSet {
+    /// Insert an artifact keyed by its deployed-bytecode codehash.
+    pub fn insert(&mut self, codehash: alloy_primitives::B256, artifact: crate::Artifact) {
+        self.by_codehash.insert(codehash, artifact);
+    }
+
+    /// Look up an artifact by codehash.
+    pub fn get(&self, codehash: &alloy_primitives::B256) -> Option<&crate::Artifact> {
+        self.by_codehash.get(codehash)
+    }
+
+    /// Returns true if no artifacts have been inserted.
+    pub fn is_empty(&self) -> bool {
+        self.by_codehash.is_empty()
+    }
+}
+
+/// Look up local artifacts for each touched address by deployed-bytecode codehash.
+/// Addresses with no local match are silently dropped — the caller may fall back
+/// to Etherscan for the unmatched set.
+pub fn load_local_artifacts(
+    touched: &HashMap<Address, alloy_primitives::B256>,
+    local: &LocalArtifactSet,
+) -> HashMap<Address, crate::Artifact> {
+    let mut result = HashMap::new();
+    for (addr, codehash) in touched {
+        if let Some(art) = local.get(codehash) {
+            result.insert(*addr, art.clone());
+        }
+    }
+    result
+}
+
 /// Instrument and recompile the source code
 pub fn instrument_and_recompile_source_code(
     artifacts: &HashMap<Address, Artifact>,
@@ -274,4 +315,48 @@ pub fn instrument_and_recompile_source_code(
     }
 
     Ok(recompiled_artifacts)
+}
+
+#[cfg(test)]
+mod local_artifact_tests {
+    use super::*;
+    use alloy_primitives::{Address, B256, address};
+    use std::collections::HashMap;
+
+    fn sample_artifact_for_test(name: &str) -> crate::Artifact {
+        crate::Artifact::test_stub(name)
+    }
+
+    #[test]
+    fn empty_set_yields_empty_result() {
+        let touched: HashMap<Address, B256> = HashMap::new();
+        let local = LocalArtifactSet::default();
+        let result = load_local_artifacts(&touched, &local);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn matches_by_codehash() {
+        let addr = address!("0000000000000000000000000000000000000001");
+        let ch = B256::from([7u8; 32]);
+
+        let mut local = LocalArtifactSet::default();
+        local.insert(ch, sample_artifact_for_test("Sample"));
+
+        let mut touched = HashMap::new();
+        touched.insert(addr, ch);
+
+        let result = load_local_artifacts(&touched, &local);
+        assert_eq!(result.len(), 1);
+        assert!(result.contains_key(&addr));
+    }
+
+    #[test]
+    fn unmatched_addresses_are_dropped() {
+        let local = LocalArtifactSet::default();
+        let mut touched = HashMap::new();
+        touched.insert(address!("0000000000000000000000000000000000000002"), B256::from([9u8; 32]));
+        let result = load_local_artifacts(&touched, &local);
+        assert!(result.is_empty());
+    }
 }

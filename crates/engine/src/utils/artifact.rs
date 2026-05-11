@@ -37,6 +37,8 @@
 
 use alloy_primitives::Bytes;
 use foundry_block_explorers::contract::Metadata;
+#[cfg(test)]
+use foundry_block_explorers::contract::SourceCodeMetadata;
 use foundry_compilers::artifacts::{CompilerOutput, Contract, SolcInput};
 use serde::{Deserialize, Serialize};
 use tracing::error;
@@ -105,5 +107,29 @@ impl Artifact {
         }
 
         hooks
+    }
+}
+
+#[cfg(test)]
+impl Artifact {
+    /// Construct a minimal stub suitable for unit tests. The artifact has empty
+    /// source / compilation data; only `meta.contract_name` is set.
+    pub fn test_stub(name: &str) -> Self {
+        let meta = Metadata {
+            source_code: SourceCodeMetadata::SourceCode(String::new()),
+            abi: "[]".into(),
+            contract_name: name.to_string(),
+            compiler_version: "v0.8.0+commit.c7dfd78e".into(),
+            optimization_used: 0,
+            runs: 0,
+            constructor_arguments: Bytes::default(),
+            evm_version: "Default".into(),
+            library: String::new(),
+            license_type: String::new(),
+            proxy: 0,
+            implementation: None,
+            swarm_source: String::new(),
+        };
+        Self { meta, input: SolcInput::default(), output: CompilerOutput::default() }
     }
 }

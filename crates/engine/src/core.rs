@@ -46,12 +46,15 @@
 //! - **Instrumentation**: Automatic debugging hook injection
 //! - **Comprehensive inspection**: Opcode and source-level snapshot collection
 
-use alloy_primitives::TxHash;
+use alloy_primitives::{Address, TxHash};
 use dashmap::DashMap;
 use edb_common::ForkResult;
 use eyre::Result;
-use revm::{Database, DatabaseCommit, DatabaseRef, context::Host, database::CacheDB};
-use std::{net::SocketAddr, sync::Arc};
+use revm::{
+    Database, DatabaseCommit, DatabaseRef, context::Host, context_interface::ContextTr,
+    database::CacheDB,
+};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use tokio::sync::{Mutex, mpsc};
 use tracing::info;
 
@@ -107,6 +110,14 @@ impl EngineConfig {
     /// Get the Etherscan API key, either from config or rotate to the next available key
     pub fn get_etherscan_api_key(&self) -> String {
         self.etherscan_api_key.clone().unwrap_or(next_etherscan_api_key())
+    }
+
+    /// True when the engine has a usable upstream RPC for etherscan fallback /
+    /// fork-mode db reads. False when the URL is blank or `http://localhost:8545`
+    /// (the unset default in the struct).
+    pub fn has_upstream_rpc(&self) -> bool {
+        let u = self.rpc_proxy_url.trim();
+        !u.is_empty() && u != "http://localhost:8545"
     }
 }
 
@@ -212,6 +223,7 @@ impl Engine {
             progress_tx,
             extra_router,
             None,
+            None,
         )
         .await
     }
@@ -226,6 +238,7 @@ impl Engine {
         progress_tx: Option<mpsc::UnboundedSender<edb_common::ProgressMessage>>,
         extra_router: Option<Router>,
         cheats_factory: Option<Box<dyn Fn() -> Cheats + Send + Sync>>,
+        local_artifacts: Option<crate::orchestration::LocalArtifactSet>,
     ) -> Result<SocketAddr>
     where
         DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
@@ -289,14 +302,38 @@ impl Engine {
         let replay_result =
             orchestration::replay_and_collect_trace(ctx.clone(), tx.clone(), cheats1.as_mut())?;
 
-        // Step 2: Download verified source code for each contract
+        // Step 2: Resolve artifacts — prefer local (codehash-keyed), fall back to Etherscan.
         send_progress!(2, 8, "Downloading verified source code for each contract...");
-        let artifacts = orchestration::download_verified_source_code(
-            &self.config,
-            &replay_result,
-            ctx.chain_id().to::<u64>(),
-        )
-        .await?;
+
+        // Build a codehash map for every touched address.
+        let touched_with_codehashes =
+            build_touched_codehashes(&mut ctx, &replay_result.visited_addresses)?;
+
+        // Resolve as many addresses as possible from the local artifact set.
+        let mut artifacts = match local_artifacts.as_ref() {
+            Some(local) => orchestration::load_local_artifacts(&touched_with_codehashes, local),
+            None => HashMap::new(),
+        };
+
+        // For addresses still missing, fall back to Etherscan only when an upstream RPC exists.
+        let unmatched: Vec<Address> = touched_with_codehashes
+            .keys()
+            .filter(|a| !artifacts.contains_key(*a))
+            .copied()
+            .collect();
+        if !unmatched.is_empty() && self.config.has_upstream_rpc() {
+            let etherscan_artifacts = orchestration::download_verified_source_code(
+                &self.config,
+                &replay_result,
+                ctx.chain_id().to::<u64>(),
+            )
+            .await?;
+            for (addr, art) in etherscan_artifacts {
+                if unmatched.contains(&addr) {
+                    artifacts.insert(addr, art);
+                }
+            }
+        }
 
         // Step 3: Analyze source code to identify instrumentation points
         send_progress!(3, 8, "Analyzing source code to identify instrumentation points...");
@@ -380,4 +417,27 @@ impl Engine {
 
         Ok(addr)
     }
+}
+
+/// Build a map from touched contract address to its deployed-bytecode `code_hash`.
+/// Used to resolve artifacts from a [`crate::orchestration::LocalArtifactSet`].
+fn build_touched_codehashes<DB>(
+    ctx: &mut edb_common::EdbContext<DB>,
+    visited_addresses: &HashMap<Address, bool>,
+) -> Result<HashMap<Address, alloy_primitives::B256>>
+where
+    DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
+    <CacheDB<DB> as Database>::Error: Clone + Send + Sync,
+    <DB as Database>::Error: Clone + Send + Sync,
+{
+    let mut out = HashMap::new();
+    for addr in visited_addresses.keys() {
+        let info = ctx
+            .db_mut()
+            .basic(*addr)
+            .map_err(|e| eyre::eyre!("db.basic({addr}): {e:?}"))?
+            .unwrap_or_default();
+        out.insert(*addr, info.code_hash);
+    }
+    Ok(out)
 }
