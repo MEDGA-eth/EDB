@@ -142,3 +142,7 @@ crates/web/frontend/test-results/
 testdata/foundry-fixture/cache/
 testdata/foundry-fixture/out/
 testdata/foundry-fixture/broadcast/
+
+# External foundry projects fetched on demand for e2e tests
+/testdata/foundry-e2e/*
+!/testdata/foundry-e2e/.gitkeep
