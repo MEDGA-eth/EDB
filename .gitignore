@@ -137,3 +137,8 @@ crates/web/frontend/test-results/
 # Superpowers (brainstorming/planning artifacts — not for the repo)
 /docs/superpowers/
 .claude/
+
+# Foundry fixture build artifacts (source + lib are tracked)
+testdata/foundry-fixture/cache/
+testdata/foundry-fixture/out/
+testdata/foundry-fixture/broadcast/
