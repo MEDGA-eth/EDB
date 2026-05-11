@@ -310,6 +310,7 @@ where
         &mut self,
         hooks: Vec<(&Contract, &Contract, &Bytes)>,
     ) -> Result<()> {
+        debug!(target: "edb::hook::creation", incoming = hooks.len(), "registering creation hooks");
         for (original, hooked, args) in hooks {
             self.creation_hooks.push((
                 original
@@ -585,7 +586,18 @@ where
         let nonce = account.info.nonce;
         let predicted_address = inputs.created_address(nonce);
 
-        for (original_bytecode, hooked_bytecode, constructor_args) in &self.creation_hooks {
+        debug!(
+            target: "edb::hook::creation",
+            caller = ?inputs.caller(),
+            predicted = ?predicted_address,
+            init_code_len = inputs.init_code().len(),
+            num_hooks = self.creation_hooks.len(),
+            "CREATE intercepted; scanning hooks",
+        );
+
+        for (hook_idx, (original_bytecode, hooked_bytecode, constructor_args)) in
+            self.creation_hooks.iter().enumerate()
+        {
             // Check if constructor arguments are at the tail of input bytes
             if inputs.init_code().len() >= constructor_args.len() {
                 let input_args_start = inputs.init_code().len() - constructor_args.len();
@@ -609,9 +621,11 @@ where
 
                         // Log the replacement
                         debug!(
-                            "Replaced creation bytecode with hooked version for {:?} -> {:?}",
-                            inputs.caller(),
-                            predicted_address
+                            target: "edb::hook::creation",
+                            hook = hook_idx,
+                            caller = ?inputs.caller(),
+                            predicted = ?predicted_address,
+                            "creation bytecode replaced with hooked version",
                         );
 
                         break; // Found a match, no need to check other hooks

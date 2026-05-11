@@ -121,6 +121,12 @@ where
     <DB as Database>::Error: Clone,
 {
     info!("Tweaking bytecode");
+    debug!(
+        target: "edb::hook::creation",
+        recompiled = recompiled_artifacts.len(),
+        deployed_in_tx = deployed_in_tx.iter().filter(|(_, v)| **v).count(),
+        "tweak_bytecode: starting",
+    );
 
     let mut tweaker =
         CodeTweaker::new(ctx, config.rpc_proxy_url.clone(), config.etherscan_api_key.clone());

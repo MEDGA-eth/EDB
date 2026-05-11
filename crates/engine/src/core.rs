@@ -305,9 +305,16 @@ impl Engine {
         // Step 2: Resolve artifacts — prefer local (codehash-keyed), fall back to Etherscan.
         send_progress!(2, 8, "Downloading verified source code for each contract...");
 
-        // Build a codehash map for every touched address.
-        let touched_with_codehashes =
-            build_touched_codehashes(&mut ctx, &replay_result.visited_addresses)?;
+        // Build a codehash map for every touched address. For contracts that
+        // were CREATEd inside this transaction the pre-tx database doesn't yet
+        // know about them, so we prefer the post-deploy codehash captured by
+        // the CallTracer (`in_tx_codehashes`) and only fall back to the
+        // database for addresses already-on-chain at tx-start.
+        let touched_with_codehashes = build_touched_codehashes(
+            &mut ctx,
+            &replay_result.visited_addresses,
+            &replay_result.in_tx_codehashes,
+        )?;
 
         // Resolve as many addresses as possible from the local artifact set.
         let mut artifacts = match local_artifacts.as_ref() {
@@ -422,9 +429,15 @@ impl Engine {
 
 /// Build a map from touched contract address to its deployed-bytecode `code_hash`.
 /// Used to resolve artifacts from a [`crate::orchestration::LocalArtifactSet`].
+///
+/// Contracts deployed inside the current transaction don't exist in the pre-tx
+/// database yet, so `db.basic(addr)` would return `KECCAK_EMPTY`. For those
+/// addresses we use the post-deploy codehash captured by the [`CallTracer`]
+/// during replay (`in_tx_codehashes`).
 fn build_touched_codehashes<DB>(
     ctx: &mut edb_common::EdbContext<DB>,
     visited_addresses: &HashMap<Address, bool>,
+    in_tx_codehashes: &HashMap<Address, alloy_primitives::B256>,
 ) -> Result<HashMap<Address, alloy_primitives::B256>>
 where
     DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
@@ -433,6 +446,10 @@ where
 {
     let mut out = HashMap::new();
     for addr in visited_addresses.keys() {
+        if let Some(ch) = in_tx_codehashes.get(addr) {
+            out.insert(*addr, *ch);
+            continue;
+        }
         let info = ctx
             .db_mut()
             .basic(*addr)

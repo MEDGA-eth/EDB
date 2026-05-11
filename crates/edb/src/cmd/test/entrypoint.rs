@@ -109,6 +109,13 @@ pub fn compile_entrypoint(
         bail!("entrypoint compile errors:\n{output}");
     }
 
+    // Strip the project-root prefix so artifact ids (and `id.source`) use the
+    // same relative keys that solc emits in `metadata.sources` — otherwise
+    // `Artifact::from_foundry` ends up with an absolute `id.source` in
+    // `output.sources` while `input.sources` (lifted from metadata) keys are
+    // relative, causing analysis to fail with `MissingSource`.
+    let output = output.with_stripped_file_prefixes(project_root);
+
     let entry = output.artifact_ids().find(|(id, _)| id.name == ENTRYPOINT_NAME);
     let Some((entry_id, artifact)) = entry else {
         let _ = std::fs::remove_file(&entrypoint_path);

@@ -304,7 +304,16 @@ pub fn analyze(artifact: &Artifact) -> Result<AnalysisResult, AnalysisError> {
         .par_iter()
         .map(|(path, source_result)| {
             let source_id = source_result.id;
-            let source = sources.get(path).ok_or(AnalysisError::MissingSource)?;
+            let source = sources.get(path).ok_or_else(|| {
+                tracing::error!(
+                    target: "edb::analysis::common",
+                    "analyze: MissingSource for path={} (input.sources has {} entries: {:?})",
+                    path.display(),
+                    sources.0.len(),
+                    sources.0.keys().take(20).map(|p| p.display().to_string()).collect::<Vec<_>>(),
+                );
+                AnalysisError::MissingSource
+            })?;
             let mut source_ast = source_result.ast.clone().ok_or(AnalysisError::MissingAst)?;
 
             debug!(path=?path, "start pruning AST for analyzing source");

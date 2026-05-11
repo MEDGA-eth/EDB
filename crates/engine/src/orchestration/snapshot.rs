@@ -26,7 +26,7 @@ use revm::{
     Database, DatabaseCommit, DatabaseRef, InspectEvm, MainBuilder, context::TxEnv,
     database::CacheDB,
 };
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::{
     Artifact, HookSnapshotInspector, HookSnapshots, OpcodeSnapshotInspector, OpcodeSnapshots,
@@ -73,6 +73,12 @@ pub fn collect_creation_hooks<'a>(
     contracts_in_tx: Vec<Address>,
 ) -> Result<Vec<(&'a Contract, &'a Contract, &'a Bytes)>> {
     info!("Collecting creation hooks for contracts in transaction");
+    debug!(
+        target: "edb::hook::creation",
+        contracts_in_tx = contracts_in_tx.len(),
+        "collect_creation_hooks: candidate addresses = {:?}",
+        contracts_in_tx,
+    );
 
     let mut hook_creation = Vec::new();
     for address in contracts_in_tx {
@@ -86,6 +92,13 @@ pub fn collect_creation_hooks<'a>(
 
         hook_creation.extend(artifact.find_creation_hooks(recompiled_artifact));
     }
+
+    debug!(
+        target: "edb::hook::creation",
+        hooks = hook_creation.len(),
+        "collect_creation_hooks: produced {} creation hooks",
+        hook_creation.len(),
+    );
 
     Ok(hook_creation)
 }

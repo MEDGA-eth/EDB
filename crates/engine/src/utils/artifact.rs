@@ -46,7 +46,7 @@ use foundry_compilers::{
 };
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::PathBuf};
-use tracing::error;
+use tracing::{debug, error};
 
 /// Compiled contract artifact with comprehensive metadata and compilation data.
 ///
@@ -130,6 +130,14 @@ impl Artifact {
                 }
             }
         }
+        debug!(
+            target: "edb::hook::creation",
+            contract = %self.contract_name(),
+            hooks = hooks.len(),
+            "find_creation_hooks: produced {} hooks for {}",
+            hooks.len(),
+            self.contract_name(),
+        );
 
         hooks
     }
