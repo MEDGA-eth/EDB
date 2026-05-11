@@ -207,6 +207,32 @@ impl Engine {
         <CacheDB<DB> as Database>::Error: Clone + Send + Sync,
         <DB as Database>::Error: Clone + Send + Sync,
     {
+        self.prepare_with_router_and_cheats::<DB, crate::inspector::NoCheats>(
+            fork_result,
+            progress_tx,
+            extra_router,
+            None,
+        )
+        .await
+    }
+
+    /// Same as [`prepare_with_router`] but accepts an optional factory that yields
+    /// fresh `Cheats` inspector instances. Each orchestration pass (tracer / opcode /
+    /// hook) gets its own freshly-built `Cheats` so prank/mocked-call state doesn't
+    /// bleed between passes.
+    pub async fn prepare_with_router_and_cheats<DB, Cheats>(
+        &self,
+        fork_result: ForkResult<DB>,
+        progress_tx: Option<mpsc::UnboundedSender<edb_common::ProgressMessage>>,
+        extra_router: Option<Router>,
+        cheats_factory: Option<Box<dyn Fn() -> Cheats + Send + Sync>>,
+    ) -> Result<SocketAddr>
+    where
+        DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
+        <CacheDB<DB> as Database>::Error: Clone + Send + Sync,
+        <DB as Database>::Error: Clone + Send + Sync,
+        Cheats: revm::Inspector<edb_common::EdbContext<DB>> + Send + 'static,
+    {
         // a utility macro to send progress message to the progress channel, if it exists
         macro_rules! send_progress {
             // With step tracking: send_progress!(current, total, "message")
@@ -259,7 +285,9 @@ impl Engine {
             8,
             "Replaying the target transaction to collect call trace and touched contracts..."
         );
-        let replay_result = orchestration::replay_and_collect_trace(ctx.clone(), tx.clone())?;
+        let mut cheats1 = cheats_factory.as_ref().map(|f| f());
+        let replay_result =
+            orchestration::replay_and_collect_trace(ctx.clone(), tx.clone(), cheats1.as_mut())?;
 
         // Step 2: Download verified source code for each contract
         send_progress!(2, 8, "Downloading verified source code for each contract...");
@@ -281,11 +309,13 @@ impl Engine {
 
         // Step 5: Collect opcode-level step execution results
         send_progress!(5, 8, "Collecting opcode-level step execution results...");
+        let mut cheats2 = cheats_factory.as_ref().map(|f| f());
         let opcode_snapshots = orchestration::capture_opcode_level_snapshots(
             ctx.clone(),
             tx.clone(),
             artifacts.keys().cloned().collect(),
             &replay_result.execution_trace,
+            cheats2.as_mut(),
         )?;
 
         // Step 6: Replace original bytecode with instrumented versions
@@ -306,12 +336,14 @@ impl Engine {
             &recompiled_artifacts,
             contracts_in_tx,
         )?;
+        let mut cheats3 = cheats_factory.as_ref().map(|f| f());
         let hook_snapshots = orchestration::capture_hook_snapshots(
             ctx.clone(),
             tx.clone(),
             hook_creation,
             &replay_result.execution_trace,
             &analysis_results,
+            cheats3.as_mut(),
         )?;
 
         // Step 8: Start RPC server with analysis results and snapshots

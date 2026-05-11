@@ -35,25 +35,29 @@ use crate::{
 
 /// Time travel (i.e., snapshotting) at the opcode level for contracts we do not
 /// have source code.
-pub fn capture_opcode_level_snapshots<DB>(
+pub fn capture_opcode_level_snapshots<DB, Cheats>(
     ctx: EdbContext<DB>,
     tx: TxEnv,
     excluded_addresses: HashSet<Address>,
     trace: &Trace,
+    cheats: Option<&mut Cheats>,
 ) -> Result<OpcodeSnapshots<DB>>
 where
     DB: Database + DatabaseCommit + DatabaseRef + Clone,
     <CacheDB<DB> as Database>::Error: Clone,
     <DB as Database>::Error: Clone,
+    Cheats: revm::Inspector<EdbContext<DB>>,
 {
     info!("Collecting opcode-level step execution results");
 
     let mut inspector = OpcodeSnapshotInspector::new(&ctx, trace);
     inspector.with_excluded_addresses(excluded_addresses);
-    let mut evm = ctx.build_mainnet_with_inspector(&mut inspector);
-
-    evm.inspect_one_tx(tx)
-        .map_err(|e| eyre::eyre!("Failed to inspect the target transaction: {:?}", e))?;
+    {
+        let mut stack = crate::inspector::CheatedStack::new(cheats, &mut inspector);
+        let mut evm = ctx.build_mainnet_with_inspector(&mut stack);
+        evm.inspect_one_tx(tx)
+            .map_err(|e| eyre::eyre!("Failed to inspect the target transaction: {:?}", e))?;
+    }
 
     let snapshots = inspector.into_snapshots();
 
@@ -87,17 +91,19 @@ pub fn collect_creation_hooks<'a>(
 }
 
 /// Time travel (i.e., snapshotting) at hooks for contracts we have source code
-pub fn capture_hook_snapshots<'a, DB>(
+pub fn capture_hook_snapshots<'a, DB, Cheats>(
     mut ctx: EdbContext<DB>,
     mut tx: TxEnv,
     creation_hooks: Vec<(&'a Contract, &'a Contract, &'a Bytes)>,
     trace: &Trace,
     analysis_results: &HashMap<Address, AnalysisResult>,
+    cheats: Option<&mut Cheats>,
 ) -> Result<HookSnapshots<DB>>
 where
     DB: Database + DatabaseCommit + DatabaseRef + Clone,
     <CacheDB<DB> as Database>::Error: Clone,
     <DB as Database>::Error: Clone,
+    Cheats: revm::Inspector<EdbContext<DB>>,
 {
     info!("Re-executing transaction with snapshot collection");
 
@@ -108,10 +114,12 @@ where
 
     let mut inspector = HookSnapshotInspector::new(&ctx, trace, analysis_results);
     inspector.with_creation_hooks(creation_hooks)?;
-    let mut evm = ctx.build_mainnet_with_inspector(&mut inspector);
-
-    evm.inspect_one_tx(tx)
-        .map_err(|e| eyre::eyre!("Failed to inspect the target transaction: {:?}", e))?;
+    {
+        let mut stack = crate::inspector::CheatedStack::new(cheats, &mut inspector);
+        let mut evm = ctx.build_mainnet_with_inspector(&mut stack);
+        evm.inspect_one_tx(tx)
+            .map_err(|e| eyre::eyre!("Failed to inspect the target transaction: {:?}", e))?;
+    }
 
     let snapshots = inspector.into_snapshots();
 

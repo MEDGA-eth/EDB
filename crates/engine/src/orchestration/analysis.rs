@@ -39,16 +39,22 @@ use crate::{
 };
 
 /// Replay the target transaction and collect call trace with all touched addresses
-pub fn replay_and_collect_trace<DB>(ctx: EdbContext<DB>, tx: TxEnv) -> Result<TraceReplayResult>
+pub fn replay_and_collect_trace<DB, Cheats>(
+    ctx: EdbContext<DB>,
+    tx: TxEnv,
+    cheats: Option<&mut Cheats>,
+) -> Result<TraceReplayResult>
 where
     DB: Database + DatabaseCommit + DatabaseRef + Clone,
     <CacheDB<DB> as Database>::Error: Clone,
     <DB as Database>::Error: Clone,
+    Cheats: revm::Inspector<EdbContext<DB>>,
 {
     info!("Replaying transaction to collect call trace and touched addresses");
 
     let mut tracer = CallTracer::new();
-    let mut evm = ctx.build_mainnet_with_inspector(&mut tracer);
+    let mut stack = crate::inspector::CheatedStack::new(cheats, &mut tracer);
+    let mut evm = ctx.build_mainnet_with_inspector(&mut stack);
 
     let result = evm
         .inspect_one_tx(tx)
