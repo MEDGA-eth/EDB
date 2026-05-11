@@ -34,6 +34,9 @@ pub fn generate_entrypoint_source(
     let raw = raw.split('+').next().unwrap_or(raw);
     let major_minor = raw.split('.').take(3).collect::<Vec<_>>().join(".");
     let setup_call = if has_setup { "        t.setUp();\n" } else { "" };
+    // Solidity import paths use POSIX-style separators on every platform; on Windows
+    // `pathdiff::diff_paths` returns `\`, which solc parses as an escape (`\C` → bad escape).
+    let import_path = import_path.replace('\\', "/");
     format!(
         r#"// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^{major_minor};
@@ -188,6 +191,16 @@ mod tests {
     fn entrypoint_strips_compiler_version_prefix() {
         let src = generate_entrypoint_source("MyTest", "testFoo", false, "v0.8.20", "x.sol");
         assert!(src.contains("pragma solidity ^0.8.20;"));
+    }
+
+    #[test]
+    fn entrypoint_normalizes_windows_path_separators() {
+        // pathdiff::diff_paths returns `\`-separated paths on Windows; solc parses
+        // them as escape sequences. The generator must convert to POSIX `/`.
+        let src =
+            generate_entrypoint_source("MyTest", "testFoo", false, "0.8.20", r"test\MyTest.t.sol");
+        assert!(src.contains("import \"test/MyTest.t.sol\""), "got: {src}");
+        assert!(!src.contains(r"test\MyTest.t.sol"));
     }
 
     #[test]
