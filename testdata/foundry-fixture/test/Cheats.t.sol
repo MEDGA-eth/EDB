@@ -46,6 +46,18 @@ contract Cheats is Test {
         t.increment();
     }
 
+    function testAssumeTrue() public pure {
+        vm.assume(true); // no-op; test should succeed
+    }
+
+    function testEnvOrString() public {
+        string memory v = vm.envOr("EDB_TEST_NONEXISTENT_VAR_XYZ", string("fallback"));
+        require(
+            keccak256(bytes(v)) == keccak256(bytes("fallback")),
+            "vm.envOr should return fallback for unset var"
+        );
+    }
+
     function revertingFn() internal pure {
         revert("boom");
     }

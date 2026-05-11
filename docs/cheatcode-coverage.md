@@ -35,9 +35,24 @@ address (`0x7109709ECfa91a80626fF3989D68f67F5b1DD12D`) and dispatches by
 | `vm.getRecordedLogs()` | Returns the captured logs as `Log[]` (foundry's `Vm.Log` shape: `{ bytes32[] topics; bytes data; address emitter; }`), then resets the recorder. |
 | `vm.expectEmit()` / `vm.expectEmit(bool,bool,bool,bool)` / `vm.expectEmit(bool,bool,bool,bool,address)` / `vm.expectEmit(address)` | Soft-match v1 — see Limitations below. Registers a pending log expectation; verified when the registering frame ends. |
 | `vm.expectCall(address,bytes)` / `vm.expectCall(address,bytes,uint64)` | Asserts at least one (or `uint64` count) external call to the given target with the given calldata is observed before the registering frame ends. |
+| `vm.assume(bool)` | `true` → no-op. `false` → revert with an EDB violation message. In real Foundry fuzz mode this would silently skip the iteration; EDB surfaces it as a revert in unit-test-only mode so the author sees what happened. |
+| `vm.envBool(string)` | Reads the named process env var and parses `"true"`/`"1"` or `"false"`/`"0"` (case-insensitive). Reverts with a clear message on parse failure or if the var is not set. |
+| `vm.envBytes(string)` | Reads the named process env var and hex-decodes the value (must start with `0x`). Reverts on invalid hex or if the var is not set. |
+| `vm.envString(string)` | Reads the named process env var and returns it as a UTF-8 ABI-encoded `string`. Reverts if the var is not set. |
+| `vm.envOr(string,bool)` / `vm.envOr(string,bytes)` / `vm.envOr(string,string)` | Same as the corresponding `envXxx` but returns the second argument when the var is not set instead of reverting. |
 
 All selectors are verified at test time against `keccak256(canonical_signature)[..4]`;
 see the unit tests in `crates/edb/src/cmd/test/cheats.rs`.
+
+### `vm.envOr` variants deferred to v2
+
+The following `vm.envOr` overloads (int/uint/address types) are not yet implemented and will fall through to the "unknown selector" revert:
+
+- `vm.envOr(string,int256)` (and other int/uint widths)
+- `vm.envOr(string,uint256)` (and other uint widths)
+- `vm.envOr(string,address)`
+
+These will be added in v2 alongside `vm.envInt`, `vm.envUint`, `vm.envAddress`.
 
 ### Limitations: `vm.expectEmit` soft-match semantics (v1)
 
@@ -81,7 +96,8 @@ EDB: unknown cheatcode selector 0x<hex> (likely not implemented in v1)
 ```
 
 so authors can file an issue or PR. Common candidates for v2:
-`vm.env*`, `vm.assume`, `vm.pauseGasMetering`, `vm.lastCallGas`,
+`vm.envInt`, `vm.envUint`, `vm.envAddress` (and their `envOr` overloads),
+`vm.pauseGasMetering`, `vm.lastCallGas`,
 `vm.parseJson*`, `vm.parseToml*`.
 
 ## Want a cheatcode added?

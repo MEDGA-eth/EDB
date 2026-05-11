@@ -65,6 +65,13 @@ const SEL_EXPECT_EMIT_ADDR: [u8; 4] = [0x86, 0xb9, 0x62, 0x0d]; // expectEmit(ad
 const SEL_EXPECT_CALL: [u8; 4] = [0xbd, 0x6a, 0xf4, 0x34]; // expectCall(address,bytes)
 const SEL_EXPECT_CALL_COUNT: [u8; 4] = [0xc1, 0xad, 0xbb, 0xff]; // expectCall(address,bytes,uint64)
 const SEL_EXPECT_CALL_MIN_GAS: [u8; 4] = [0x08, 0xe4, 0xe1, 0x16]; // expectCallMinGas(address,uint256,uint64,bytes)
+const SEL_ASSUME: [u8; 4] = [0x4c, 0x63, 0xe5, 0x62]; // assume(bool)
+const SEL_ENV_BOOL: [u8; 4] = [0x7e, 0xd1, 0xec, 0x7d]; // envBool(string)
+const SEL_ENV_BYTES: [u8; 4] = [0x4d, 0x7b, 0xaf, 0x06]; // envBytes(string)
+const SEL_ENV_STRING: [u8; 4] = [0xf8, 0x77, 0xcb, 0x19]; // envString(string)
+const SEL_ENV_OR_BOOL: [u8; 4] = [0x47, 0x77, 0xf3, 0xcf]; // envOr(string,bool)
+const SEL_ENV_OR_BYTES: [u8; 4] = [0xb3, 0xe4, 0x77, 0x05]; // envOr(string,bytes)
+const SEL_ENV_OR_STRING: [u8; 4] = [0xd1, 0x45, 0x73, 0x6c]; // envOr(string,string)
 
 // Explicitly rejected — multi-fork / state-snapshot / scripting / fs+ffi.
 const SEL_SNAPSHOT_STATE: [u8; 4] = [0x9c, 0xd2, 0x38, 0x35]; // snapshotState()
@@ -527,6 +534,15 @@ impl EdbCheatcodes {
                      EDB's instrumented bytecode needs separate design work",
                 ),
             ),
+
+            // assume + env family
+            SEL_ASSUME => self.cheat_assume(inputs, args),
+            SEL_ENV_BOOL => self.cheat_env_bool(inputs, args),
+            SEL_ENV_BYTES => self.cheat_env_bytes(inputs, args),
+            SEL_ENV_STRING => self.cheat_env_string(inputs, args),
+            SEL_ENV_OR_BOOL => self.cheat_env_or_bool(inputs, args),
+            SEL_ENV_OR_BYTES => self.cheat_env_or_bytes(inputs, args),
+            SEL_ENV_OR_STRING => self.cheat_env_or_string(inputs, args),
 
             // Explicitly rejected — multi-fork
             SEL_CREATE_FORK
@@ -1155,6 +1171,223 @@ impl EdbCheatcodes {
         });
         ok_return(inputs.gas_limit, Bytes::new())
     }
+
+    // --- vm.assume -----------------------------------------------------------
+
+    fn cheat_assume(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        // ABI-decoded `bool` is a single 32-byte word; the bool is in the last byte.
+        let Some(cond) = read_bool(args, 0) else {
+            return revert_with(inputs.gas_limit, encode_error_string("vm.assume: bad calldata"));
+        };
+        if cond {
+            ok_return(inputs.gas_limit, Bytes::new())
+        } else {
+            revert_with(
+                inputs.gas_limit,
+                encode_error_string(
+                    "EDB: vm.assume(false) -- assumption violated \
+                     (real foundry would skip this fuzz iter; EDB surfaces it as a revert)",
+                ),
+            )
+        }
+    }
+
+    // --- vm.envBool / envBytes / envString -----------------------------------
+
+    fn cheat_env_bool(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(name) = read_string(args, 0) else {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.envBool: malformed calldata"),
+            );
+        };
+        match std::env::var(&name) {
+            Ok(v) => {
+                let lower = v.trim().to_lowercase();
+                let b = match lower.as_str() {
+                    "true" | "1" => true,
+                    "false" | "0" => false,
+                    _ => {
+                        return revert_with(
+                            inputs.gas_limit,
+                            encode_error_string(&format!(
+                                "EDB: vm.envBool: {name}={v:?} not parseable as bool"
+                            )),
+                        );
+                    }
+                };
+                let mut out = [0u8; 32];
+                out[31] = u8::from(b);
+                ok_return(inputs.gas_limit, Bytes::copy_from_slice(&out))
+            }
+            Err(_) => revert_with(
+                inputs.gas_limit,
+                encode_error_string(&format!("EDB: vm.envBool: {name} not set")),
+            ),
+        }
+    }
+
+    fn cheat_env_bytes(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(name) = read_string(args, 0) else {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.envBytes: malformed calldata"),
+            );
+        };
+        match std::env::var(&name) {
+            Ok(v) => {
+                let trimmed = v.trim();
+                let hex_body = if let Some(h) = trimmed.strip_prefix("0x") {
+                    h
+                } else {
+                    return revert_with(
+                        inputs.gas_limit,
+                        encode_error_string(&format!(
+                            "EDB: vm.envBytes: {name}={v:?} must start with 0x for hex decoding"
+                        )),
+                    );
+                };
+                match alloy_primitives::hex::decode(hex_body) {
+                    Ok(decoded) => ok_return(inputs.gas_limit, encode_abi_bytes(&decoded)),
+                    Err(_) => revert_with(
+                        inputs.gas_limit,
+                        encode_error_string(&format!(
+                            "EDB: vm.envBytes: {name}={v:?} not valid hex"
+                        )),
+                    ),
+                }
+            }
+            Err(_) => revert_with(
+                inputs.gas_limit,
+                encode_error_string(&format!("EDB: vm.envBytes: {name} not set")),
+            ),
+        }
+    }
+
+    fn cheat_env_string(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(name) = read_string(args, 0) else {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.envString: malformed calldata"),
+            );
+        };
+        match std::env::var(&name) {
+            Ok(v) => ok_return(inputs.gas_limit, encode_abi_string(&v)),
+            Err(_) => revert_with(
+                inputs.gas_limit,
+                encode_error_string(&format!("EDB: vm.envString: {name} not set")),
+            ),
+        }
+    }
+
+    // --- vm.envOr overloads --------------------------------------------------
+
+    fn cheat_env_or_bool(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        // ABI: (string name, bool defaultValue)
+        // head: [0..32) = offset to name (== 0x40), [32..64) = bool word
+        // tail: the string at offset 0x40
+        let Some(default_val) = read_bool(args, 1) else {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.envOr(string,bool): bad default arg"),
+            );
+        };
+        let Some(name) = read_string(args, 0) else {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.envOr(string,bool): malformed calldata"),
+            );
+        };
+        match std::env::var(&name) {
+            Ok(v) => {
+                let lower = v.trim().to_lowercase();
+                let b = match lower.as_str() {
+                    "true" | "1" => true,
+                    "false" | "0" => false,
+                    _ => {
+                        return revert_with(
+                            inputs.gas_limit,
+                            encode_error_string(&format!(
+                                "EDB: vm.envOr(string,bool): {name}={v:?} not parseable as bool"
+                            )),
+                        );
+                    }
+                };
+                let mut out = [0u8; 32];
+                out[31] = u8::from(b);
+                ok_return(inputs.gas_limit, Bytes::copy_from_slice(&out))
+            }
+            Err(_) => {
+                // Return the default value.
+                let mut out = [0u8; 32];
+                out[31] = u8::from(default_val);
+                ok_return(inputs.gas_limit, Bytes::copy_from_slice(&out))
+            }
+        }
+    }
+
+    fn cheat_env_or_bytes(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        // ABI: (string name, bytes defaultValue) — both dynamic
+        // head: [0..32) = offset to name, [32..64) = offset to bytes
+        // The name is always at head_index 0 and the bytes at head_index 1.
+        let Some(name) = read_string(args, 0) else {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.envOr(string,bytes): malformed calldata"),
+            );
+        };
+        let Some(default_val) = read_bytes(args, 1) else {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.envOr(string,bytes): bad default arg"),
+            );
+        };
+        match std::env::var(&name) {
+            Ok(v) => {
+                let trimmed = v.trim();
+                let hex_body = if let Some(h) = trimmed.strip_prefix("0x") {
+                    h
+                } else {
+                    return revert_with(
+                        inputs.gas_limit,
+                        encode_error_string(&format!(
+                            "EDB: vm.envOr(string,bytes): {name}={v:?} must start with 0x"
+                        )),
+                    );
+                };
+                match alloy_primitives::hex::decode(hex_body) {
+                    Ok(decoded) => ok_return(inputs.gas_limit, encode_abi_bytes(&decoded)),
+                    Err(_) => revert_with(
+                        inputs.gas_limit,
+                        encode_error_string(&format!(
+                            "EDB: vm.envOr(string,bytes): {name}={v:?} not valid hex"
+                        )),
+                    ),
+                }
+            }
+            Err(_) => ok_return(inputs.gas_limit, encode_abi_bytes(&default_val)),
+        }
+    }
+
+    fn cheat_env_or_string(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        // ABI: (string name, string defaultValue) — both dynamic
+        let Some(name) = read_string(args, 0) else {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.envOr(string,string): malformed calldata"),
+            );
+        };
+        let Some(default_val) = read_string(args, 1) else {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.envOr(string,string): bad default arg"),
+            );
+        };
+        match std::env::var(&name) {
+            Ok(v) => ok_return(inputs.gas_limit, encode_abi_string(&v)),
+            Err(_) => ok_return(inputs.gas_limit, encode_abi_string(&default_val)),
+        }
+    }
 }
 
 /// Argument-shape selector for the four supported `vm.expectEmit` overloads.
@@ -1228,6 +1461,30 @@ fn encode_error_string(msg: &str) -> Bytes {
     data.extend(std::iter::repeat_n(0u8, pad));
     payload.extend_from_slice(&data);
     Bytes::from(payload)
+}
+
+/// ABI-encode a `string` return value: `(bytes32 offset, bytes32 length, data padded)`.
+fn encode_abi_string(s: &str) -> Bytes {
+    encode_abi_bytes(s.as_bytes())
+}
+
+/// ABI-encode a `bytes` return value: `(bytes32 offset, bytes32 length, data padded)`.
+fn encode_abi_bytes(b: &[u8]) -> Bytes {
+    let pad = (32 - b.len() % 32) % 32;
+    let mut out = Vec::with_capacity(64 + b.len() + pad);
+    // offset = 0x20
+    let mut offset = [0u8; 32];
+    offset[31] = 0x20;
+    out.extend_from_slice(&offset);
+    // length
+    let mut len_word = [0u8; 32];
+    let l = b.len() as u64;
+    len_word[24..].copy_from_slice(&l.to_be_bytes());
+    out.extend_from_slice(&len_word);
+    // data right-padded to 32-byte multiple
+    out.extend_from_slice(b);
+    out.extend(std::iter::repeat_n(0u8, pad));
+    Bytes::from(out)
 }
 
 // ----------------------------------------------------------------------------
@@ -1485,6 +1742,38 @@ mod tests {
         assert_eq!(sel("expectCall(address,bytes)"), SEL_EXPECT_CALL);
         assert_eq!(sel("expectCall(address,bytes,uint64)"), SEL_EXPECT_CALL_COUNT);
         assert_eq!(sel("expectCallMinGas(address,uint256,uint64,bytes)"), SEL_EXPECT_CALL_MIN_GAS);
+    }
+    #[test]
+    fn assume_selector_matches_vm_sol() {
+        assert_eq!(sel("assume(bool)"), SEL_ASSUME);
+    }
+    #[test]
+    fn env_bool_selector_matches_vm_sol() {
+        assert_eq!(sel("envBool(string)"), SEL_ENV_BOOL);
+        assert_eq!(sel("envBytes(string)"), SEL_ENV_BYTES);
+        assert_eq!(sel("envString(string)"), SEL_ENV_STRING);
+    }
+    #[test]
+    fn env_or_bool_selector_matches_vm_sol() {
+        assert_eq!(sel("envOr(string,bool)"), SEL_ENV_OR_BOOL);
+        assert_eq!(sel("envOr(string,bytes)"), SEL_ENV_OR_BYTES);
+        assert_eq!(sel("envOr(string,string)"), SEL_ENV_OR_STRING);
+    }
+    #[test]
+    fn decode_encode_abi_string_roundtrip() {
+        let original = "hello world";
+        let encoded = encode_abi_string(original);
+        // ABI-encoded: [offset=0x20][length=11][data padded to 32]
+        assert_eq!(encoded.len(), 64 + 32); // offset + length + 1 padded chunk
+        // Verify via read_string: head slot 0 has offset 0x20 = 32 bytes.
+        // read_string interprets head_index=0 as the offset word, then reads
+        // (length, data) at that offset — all relative to the start of `args`.
+        // encode_abi_string starts with offset=0x20, so the (length, data) is
+        // at byte 0x20 = 32 within the encoded buffer, which corresponds to
+        // head_index=1 in read_word terms. read_string calls read_bytes which
+        // does: off = read_u256(args, 0) = 0x20 = 32; len = read_u256(args, 32/32=1).
+        let decoded = read_string(&encoded, 0).unwrap();
+        assert_eq!(decoded, original);
     }
     #[test]
     fn selector_rejected_set_matches_canonical_signatures() {

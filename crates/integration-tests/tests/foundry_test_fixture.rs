@@ -269,6 +269,73 @@ async fn cheats_expect_call_counts_matching_calls() -> Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_fixture)]
+async fn cheats_assume_true_succeeds() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testAssumeTrue",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(!trace.is_empty(), "trace was empty for Cheats::testAssumeTrue");
+
+    // vm.assume(true) is a no-op — the test function must complete without revert.
+    let top =
+        trace.iter().find(|e| e.depth == 0).expect("no depth-0 entry for Cheats::testAssumeTrue");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success when assume(true); got: {:?}",
+        top.result,
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_env_or_returns_fallback() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testEnvOrString",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(!trace.is_empty(), "trace was empty for Cheats::testEnvOrString");
+
+    // testEnvOrString calls vm.envOr("EDB_TEST_NONEXISTENT_VAR_XYZ", "fallback").
+    // The var is not set, so the fallback "fallback" should be returned; the
+    // Solidity `require` verifies the value, failing if envOr misbehaves.
+    let top =
+        trace.iter().find(|e| e.depth == 0).expect("no depth-0 entry for Cheats::testEnvOrString");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success when envOr returns fallback; got: {:?}",
+        top.result,
+    );
+
+    assert!(
+        !trace_revert_contains(&trace, "vm.envOr should return fallback"),
+        "envOr fallback check failed; trace = {trace:#?}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
 async fn boundary_select_fork_reverts_with_edb_message() -> Result<()> {
     init::init_test_environment(true);
     let root = fixture_root();
