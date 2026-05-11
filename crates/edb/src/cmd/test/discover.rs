@@ -145,11 +145,16 @@ fn build_resolved_test(
     })
 }
 
-fn closest_match<'a, I: IntoIterator<Item = &'a String>>(needle: &str, hay: I) -> String {
+/// Returns the closest string in `hay` to `needle` by Levenshtein edit distance.
+pub(crate) fn closest_match<'a, I: IntoIterator<Item = &'a String>>(
+    needle: &str,
+    hay: I,
+) -> String {
     hay.into_iter().min_by_key(|h| levenshtein(needle, h)).cloned().unwrap_or_default()
 }
 
-fn levenshtein(a: &str, b: &str) -> usize {
+/// Computes the Levenshtein edit distance between two strings.
+pub(crate) fn levenshtein(a: &str, b: &str) -> usize {
     let (a, b) = (a.as_bytes(), b.as_bytes());
     let mut prev: Vec<usize> = (0..=b.len()).collect();
     let mut cur = vec![0usize; b.len() + 1];

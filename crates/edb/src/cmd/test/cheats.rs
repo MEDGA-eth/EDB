@@ -97,6 +97,164 @@ const SEL_START_BROADCAST: [u8; 4] = [0x7f, 0xb5, 0x29, 0x7f]; // startBroadcast
 const SEL_STOP_BROADCAST: [u8; 4] = [0x76, 0xea, 0xdd, 0x36]; // stopBroadcast()
 
 // ----------------------------------------------------------------------------
+// Known-cheatcode catalog (selector → name)
+// ----------------------------------------------------------------------------
+
+/// Reverse-lookup table: cheatcode selector → cheatcode name (without `vm.` prefix).
+/// Covers EDB's implemented set, rejected boundary cheatcodes, and the most common
+/// not-yet-implemented cheatcodes. Used by the dispatch fall-through arm to produce
+/// a precise "not yet implemented" message instead of a raw hex selector.
+///
+/// To add an entry: compute `keccak256(b"<canonical_sig>")[..4]` and verify the bytes
+/// against the `keccak256_selectors_*` unit tests before baking them here.
+///
+/// Alphabetical by cheatcode name within each category.
+const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
+    // --- Supported in EDB v1 (should never reach the fall-through arm, but
+    //     listed so the "did you mean?" lookup covers the full known name set) ---
+    (&[0xea, 0x06, 0x02, 0x91], "allowCheatcodes"), // allowCheatcodes(address)
+    (&[0x4c, 0x63, 0xe5, 0x62], "assume"),          // assume(bool)
+    (&[0x40, 0x49, 0xdd, 0xd2], "chainId"),         // chainId(uint256)
+    (&[0x3f, 0xdf, 0x4e, 0x15], "clearMockedCalls"), // clearMockedCalls()
+    (&[0xc8, 0x8a, 0x5e, 0x6d], "deal"),            // deal(address,uint256)
+    (&[0x7e, 0xd1, 0xec, 0x7d], "envBool"),         // envBool(string)
+    (&[0x4d, 0x7b, 0xaf, 0x06], "envBytes"),        // envBytes(string)
+    (&[0x47, 0x77, 0xf3, 0xcf], "envOr"),           // envOr(string,bool)
+    (&[0xb3, 0xe4, 0x77, 0x05], "envOr"),           // envOr(string,bytes)
+    (&[0xd1, 0x45, 0x73, 0x6c], "envOr"),           // envOr(string,string)
+    (&[0xf8, 0x77, 0xcb, 0x19], "envString"),       // envString(string)
+    (&[0xb4, 0xd6, 0xc7, 0x82], "etch"),            // etch(address,bytes)
+    (&[0x44, 0x0e, 0xd1, 0x0d], "expectEmit"),      // expectEmit()
+    (&[0x86, 0xb9, 0x62, 0x0d], "expectEmit"),      // expectEmit(address)
+    (&[0x49, 0x1c, 0xc7, 0xc2], "expectEmit"),      // expectEmit(bool,bool,bool,bool)
+    (&[0x81, 0xba, 0xd6, 0xf3], "expectEmit"),      // expectEmit(bool,bool,bool,bool,address)
+    (&[0xf4, 0x84, 0x48, 0x14], "expectRevert"),    // expectRevert()
+    (&[0xf2, 0x8d, 0xce, 0xb3], "expectRevert"),    // expectRevert(bytes)
+    (&[0xbd, 0x6a, 0xf4, 0x34], "expectCall"),      // expectCall(address,bytes)
+    (&[0xc1, 0xad, 0xbb, 0xff], "expectCall"),      // expectCall(address,bytes,uint64)
+    (&[0x19, 0x15, 0x53, 0xa4], "getRecordedLogs"), // getRecordedLogs()
+    (&[0xc6, 0x57, 0xc7, 0x18], "label"),           // label(address,string)
+    (&[0x2b, 0x58, 0x9b, 0x28], "lastCallGas"),     // lastCallGas()
+    (&[0x66, 0x7f, 0x9d, 0x70], "load"),            // load(address,bytes32)
+    (&[0xb9, 0x62, 0x13, 0xe4], "mockCall"),        // mockCall(address,bytes,bytes)
+    (&[0xdb, 0xaa, 0xd1, 0x47], "mockCallRevert"),  // mockCallRevert(address,bytes,bytes)
+    (&[0xd1, 0xa5, 0xb3, 0x6f], "pauseGasMetering"), // pauseGasMetering()
+    (&[0xca, 0x66, 0x9f, 0xa7], "prank"),           // prank(address)
+    (&[0x41, 0xaf, 0x2f, 0x52], "recordLogs"),      // recordLogs()
+    (&[0x2b, 0xcd, 0x50, 0xe0], "resumeGasMetering"), // resumeGasMetering()
+    (&[0x1f, 0x7b, 0x4f, 0x30], "roll"),            // roll(uint256)
+    (&[0xf8, 0xe1, 0x8b, 0x57], "setNonce"),        // setNonce(address,uint64)
+    (&[0x06, 0x44, 0x7d, 0x56], "startPrank"),      // startPrank(address)
+    (&[0x90, 0xc5, 0x01, 0x3b], "stopPrank"),       // stopPrank()
+    (&[0x70, 0xca, 0x10, 0xbb], "store"),           // store(address,bytes32,bytes32)
+    (&[0xe5, 0xd6, 0xbf, 0x02], "warp"),            // warp(uint256)
+    // --- Explicitly rejected in EDB v1 ---
+    (&[0x2f, 0x10, 0x3f, 0x22], "activeFork"), // activeFork()
+    (&[0xaf, 0xc9, 0x80, 0x40], "broadcast"),  // broadcast()
+    (&[0x31, 0xba, 0x34, 0x98], "createFork"), // createFork(string)
+    (&[0x6b, 0xa3, 0xba, 0x2b], "createFork"), // createFork(string,uint256)
+    (&[0x7c, 0xa2, 0x96, 0x82], "createFork"), // createFork(string,bytes32)
+    (&[0x98, 0x68, 0x00, 0x34], "createSelectFork"), // createSelectFork(string)
+    (&[0x71, 0xee, 0x46, 0x4d], "createSelectFork"), // createSelectFork(string,uint256)
+    (&[0x84, 0xd5, 0x2b, 0x7a], "createSelectFork"), // createSelectFork(string,bytes32)
+    (&[0x08, 0xe4, 0xe1, 0x16], "expectCallMinGas"), // expectCallMinGas(address,uint256,uint64,bytes)
+    (&[0x89, 0x16, 0x04, 0x67], "ffi"),              // ffi(string[])
+    (&[0x57, 0xe2, 0x2d, 0xde], "makePersistent"),   // makePersistent(address)
+    (&[0x40, 0x74, 0xe0, 0xa8], "makePersistent"),   // makePersistent(address,address)
+    (&[0xef, 0xb7, 0x7a, 0x75], "makePersistent"),   // makePersistent(address,address,address)
+    (&[0x1d, 0x9e, 0x26, 0x9e], "makePersistent"),   // makePersistent(address[])
+    (&[0x60, 0xf9, 0xbb, 0x11], "readFile"),         // readFile(string)
+    (&[0xf1, 0xaf, 0xe0, 0x4d], "removeFile"),       // removeFile(string)
+    (&[0x44, 0xd7, 0xf0, 0xa4], "revertTo"),         // revertTo(uint256)
+    (&[0xc2, 0x52, 0x74, 0x05], "revertToState"),    // revertToState(uint256)
+    (&[0xd9, 0xbb, 0xf3, 0xa1], "rollFork"),         // rollFork(uint256)
+    (&[0x0f, 0x29, 0x77, 0x2b], "rollFork"),         // rollFork(bytes32)
+    (&[0xd7, 0x4c, 0x83, 0xa4], "rollFork"),         // rollFork(uint256,uint256)
+    (&[0xf2, 0x83, 0x0f, 0x7b], "rollFork"),         // rollFork(uint256,bytes32)
+    (&[0x9e, 0xbf, 0x68, 0x27], "selectFork"),       // selectFork(uint256)
+    (&[0x97, 0x11, 0x71, 0x5a], "snapshot"),         // snapshot()
+    (&[0x9c, 0xd2, 0x38, 0x35], "snapshotState"),    // snapshotState()
+    (&[0x7f, 0xb5, 0x29, 0x7f], "startBroadcast"),   // startBroadcast()
+    (&[0x7f, 0xec, 0x2a, 0x8d], "startBroadcast"),   // startBroadcast(address)
+    (&[0x76, 0xea, 0xdd, 0x36], "stopBroadcast"),    // stopBroadcast()
+    (&[0xbe, 0x64, 0x6d, 0xa1], "transact"),         // transact(bytes32)
+    (&[0x4d, 0x8a, 0xbc, 0x4b], "transact"),         // transact(uint256,bytes32)
+    (&[0x89, 0x7e, 0x0a, 0x97], "writeFile"),        // writeFile(string,string)
+    // --- Not yet implemented ---
+    (&[0x65, 0xbc, 0x94, 0x81], "accesses"), // accesses(address)
+    (&[0xff, 0xa1, 0x86, 0x49], "addr"),     // addr(uint256)
+    (&[0xf0, 0x25, 0x9e, 0x92], "breakpoint"), // breakpoint(string)
+    (&[0xf7, 0xd3, 0x9a, 0x8d], "breakpoint"), // breakpoint(string,bool)
+    (&[0x48, 0xc3, 0x24, 0x1f], "closeFile"), // closeFile(string)
+    (&[0x20, 0x3d, 0xac, 0x0d], "copyStorage"), // copyStorage(address,address)
+    (&[0x62, 0x29, 0x49, 0x8b], "deriveKey"), // deriveKey(string,uint32)
+    (&[0x70, 0x9e, 0xcd, 0x3f], "dumpState"), // dumpState(string)
+    (&[0x35, 0x0d, 0x56, 0xbf], "envAddress"), // envAddress(string)
+    (&[0x89, 0x2a, 0x0c, 0x61], "envInt"),   // envInt(string)
+    (&[0x56, 0x1f, 0xe5, 0x40], "envOr"),    // envOr(string,address)
+    (&[0xbb, 0xcb, 0x71, 0x3e], "envOr"),    // envOr(string,int256)
+    (&[0x5e, 0x97, 0x34, 0x8f], "envOr"),    // envOr(string,uint256)
+    (&[0xc1, 0x97, 0x8d, 0x1f], "envUint"),  // envUint(string)
+    (&[0x26, 0x1a, 0x32, 0x3e], "exists"),   // exists(string)
+    (&[0x6d, 0x01, 0x66, 0x88], "expectSafeMemory"), // expectSafeMemory(uint64,uint64)
+    (&[0xaf, 0x36, 0x8a, 0x08], "fsMetadata"), // fsMetadata(string)
+    (&[0x8d, 0x1c, 0xc9, 0x25], "getCode"),  // getCode(string)
+    (&[0x3e, 0xbf, 0x73, 0xb4], "getDeployedCode"), // getDeployedCode(string)
+    (&[0x17, 0xaa, 0x13, 0xce], "getMappingKeyOf"), // getMappingKeyOf(address,bytes32)
+    (&[0x2f, 0x2f, 0xd6, 0x3f], "getMappingLength"), // getMappingLength(address,bytes32)
+    (&[0xeb, 0xc7, 0x3a, 0xb4], "getMappingSlotAt"), // getMappingSlotAt(address,bytes32,uint256)
+    (&[0x2d, 0x03, 0x35, 0xab], "getNonce"), // getNonce(address)
+    (&[0x7d, 0x15, 0xd0, 0x19], "isDir"),    // isDir(string)
+    (&[0xe0, 0xeb, 0x04, 0xd4], "isFile"),   // isFile(string)
+    (&[0xd9, 0x2d, 0x8e, 0xfd], "isPersistent"), // isPersistent(address)
+    (&[0x52, 0x8a, 0x68, 0x3c], "keyExists"), // keyExists(string,string)
+    (&[0xb3, 0xa0, 0x56, 0xd7], "loadAllocs"), // loadAllocs(string)
+    (&[0xad, 0xf8, 0x4d, 0x21], "mockFunction"), // mockFunction(address,address,bytes)
+    (&[0x42, 0x34, 0x6c, 0x5e], "parseInt"), // parseInt(string)
+    (&[0x6a, 0x82, 0x60, 0x0a], "parseJson"), // parseJson(string)
+    (&[0x85, 0x94, 0x0e, 0xf1], "parseJson"), // parseJson(string,string)
+    (&[0x21, 0x3e, 0x41, 0x98], "parseJsonKeys"), // parseJsonKeys(string,string)
+    (&[0xc6, 0xce, 0x05, 0x9d], "parseAddress"), // parseAddress(string)
+    (&[0x97, 0x4e, 0xf9, 0x24], "parseBool"), // parseBool(string)
+    (&[0x8f, 0x5d, 0x23, 0x2d], "parseBytes"), // parseBytes(string)
+    (&[0x08, 0x7e, 0x6e, 0x81], "parseBytes32"), // parseBytes32(string)
+    (&[0x59, 0x21, 0x51, 0xf0], "parseToml"), // parseToml(string)
+    (&[0x37, 0x73, 0x6e, 0x08], "parseToml"), // parseToml(string,string)
+    (&[0xfa, 0x91, 0x45, 0x4d], "parseUint"), // parseUint(string)
+    (&[0xd9, 0x30, 0xa0, 0xe6], "projectRoot"), // projectRoot()
+    (&[0xc4, 0xbc, 0x59, 0xe0], "readDir"),  // readDir(string)
+    (&[0x70, 0xf5, 0x57, 0x28], "readLine"), // readLine(string)
+    (&[0x9f, 0x56, 0x84, 0xa2], "readLink"), // readLink(string)
+    (&[0x22, 0x10, 0x00, 0x64], "rememberKey"), // rememberKey(uint256)
+    (&[0x3c, 0xe9, 0x69, 0xe6], "revokePersistent"), // revokePersistent(address[])
+    (&[0x99, 0x7a, 0x02, 0x22], "revokePersistent"), // revokePersistent(address)
+    (&[0x97, 0x2c, 0x60, 0x62], "serializeAddress"), // serializeAddress(string,string,address)
+    (&[0xac, 0x22, 0xe9, 0x71], "serializeBool"), // serializeBool(string,string,bool)
+    (&[0xf2, 0x1d, 0x52, 0xc7], "serializeBytes"), // serializeBytes(string,string,bytes)
+    (&[0x2d, 0x81, 0x2b, 0x44], "serializeBytes32"), // serializeBytes32(string,string,bytes32)
+    (&[0x3f, 0x33, 0xdb, 0x60], "serializeInt"), // serializeInt(string,string,int256)
+    (&[0x88, 0xda, 0x6d, 0x35], "serializeString"), // serializeString(string,string,string)
+    (&[0x12, 0x9e, 0x90, 0x02], "serializeUint"), // serializeUint(string,string,uint256)
+    (&[0xe3, 0x41, 0xea, 0xa4], "sign"),     // sign(uint256,bytes32)
+    (&[0x3e, 0x97, 0x05, 0xc0], "startMappingRecording"), // startMappingRecording()
+    (&[0xcf, 0x22, 0xe3, 0xc9], "startStateDiffRecording"), // startStateDiffRecording()
+    (&[0xaa, 0x5c, 0xf9, 0x0e], "stopAndReturnStateDiff"), // stopAndReturnStateDiff()
+    (&[0x0d, 0x4a, 0xae, 0x9b], "stopMappingRecording"), // stopMappingRecording()
+    (&[0x71, 0xdc, 0xe7, 0xda], "toString"), // toString(bool)
+    (&[0x56, 0xca, 0x62, 0x3e], "toString"), // toString(address)
+    (&[0x71, 0xaa, 0xd1, 0x0d], "toString"), // toString(bytes)
+    (&[0xb1, 0x1a, 0x19, 0xe8], "toString"), // toString(bytes32)
+    (&[0xa3, 0x22, 0xc4, 0x0e], "toString"), // toString(int256)
+    (&[0x69, 0x00, 0xa3, 0xae], "toString"), // toString(uint256)
+    (&[0xe6, 0x96, 0x2c, 0xdb], "broadcast"), // broadcast(address)
+    (&[0x61, 0x9d, 0x89, 0x7f], "writeLine"), // writeLine(string,string)
+    (&[0xe2, 0x3c, 0xd1, 0x9f], "writeJson"), // writeJson(string,string)
+    (&[0x35, 0xd6, 0xad, 0x46], "writeJson"), // writeJson(string,string,string)
+    (&[0xc0, 0x86, 0x5b, 0xa7], "writeToml"), // writeToml(string,string)
+    (&[0x51, 0xac, 0x6a, 0x33], "writeToml"), // writeToml(string,string,string)
+];
+
+// ----------------------------------------------------------------------------
 // Config + state types
 // ----------------------------------------------------------------------------
 
@@ -614,12 +772,24 @@ impl EdbCheatcodes {
 
             _ => {
                 let hex = alloy_primitives::hex::encode(selector);
-                revert_with(
-                    inputs.gas_limit,
-                    encode_error_string(&format!(
-                        "EDB: unknown cheatcode selector 0x{hex} (likely not implemented in v1)"
-                    )),
-                )
+                // Look up the selector in the known-cheatcode catalog.
+                let known = KNOWN_CHEATCODES.iter().find(|(sel, _)| **sel == selector);
+                let msg = if let Some((_, name)) = known {
+                    format!(
+                        "EDB: cheatcode vm.{name} not yet implemented in v1 \
+                         (selector 0x{hex}). See docs/cheatcode-coverage.md"
+                    )
+                } else {
+                    // Selector is not in our catalog at all — likely a non-vm call
+                    // that accidentally hit the cheatcode address, or a very new
+                    // foundry cheatcode we haven't cataloged yet.
+                    format!(
+                        "EDB: unknown cheatcode selector 0x{hex} \
+                         (not in foundry's known cheatcode catalog — \
+                         check spelling or open an issue)"
+                    )
+                };
+                revert_with(inputs.gas_limit, encode_error_string(&msg))
             }
         }
     }
@@ -1882,6 +2052,83 @@ mod tests {
         assert_eq!(sel("ffi(string[])"), SEL_FFI);
         assert_eq!(sel("transact(bytes32)"), SEL_TRANSACT);
         assert_eq!(sel("broadcast()"), SEL_BROADCAST);
+    }
+
+    // --- KNOWN_CHEATCODES catalog tests ------------------------------------
+
+    /// Every selector in the catalog must be unique. Duplicates would mean
+    /// different cheatcodes mapped to the same selector, which is impossible
+    /// in EVM ABI encoding — it signals a copy-paste error.
+    #[test]
+    fn known_cheatcode_catalog_has_unique_selectors() {
+        let mut seen = std::collections::HashSet::new();
+        for (sel, name) in KNOWN_CHEATCODES {
+            assert!(
+                seen.insert(*sel),
+                "duplicate selector in KNOWN_CHEATCODES: {sel:?} (name={name:?})"
+            );
+        }
+    }
+
+    /// Spot-check that cheatcodes we DO implement are in the catalog, so the
+    /// catalog stays in sync as new cheatcodes are added to dispatch.
+    #[test]
+    fn known_cheatcode_catalog_covers_implemented_set() {
+        for sig in &[
+            b"warp(uint256)" as &[u8],
+            b"deal(address,uint256)",
+            b"prank(address)",
+            b"expectRevert()",
+            b"expectEmit()",
+            b"expectCall(address,bytes)",
+            b"assume(bool)",
+            b"envBool(string)",
+            b"pauseGasMetering()",
+            b"lastCallGas()",
+        ] {
+            let computed: [u8; 4] = keccak256(sig)[..4].try_into().unwrap();
+            assert!(
+                KNOWN_CHEATCODES.iter().any(|(s, _)| **s == computed),
+                "implemented cheatcode {:?} missing from KNOWN_CHEATCODES (selector {:?})",
+                std::str::from_utf8(sig).unwrap(),
+                computed,
+            );
+        }
+    }
+
+    /// Verify a sample of not-yet-implemented catalog entries against their
+    /// canonical keccak256 selectors so they don't silently drift.
+    #[test]
+    fn known_cheatcode_catalog_not_yet_selectors_are_canonical() {
+        // addr(uint256)
+        assert!(KNOWN_CHEATCODES.iter().any(|(s, n)| **s == sel("addr(uint256)") && *n == "addr"));
+        // parseJson(string)
+        assert!(
+            KNOWN_CHEATCODES
+                .iter()
+                .any(|(s, n)| **s == sel("parseJson(string)") && *n == "parseJson")
+        );
+        // expectSafeMemory(uint64,uint64)
+        assert!(KNOWN_CHEATCODES.iter().any(|(s, n)| **s
+            == sel("expectSafeMemory(uint64,uint64)")
+            && *n == "expectSafeMemory"));
+        // copyStorage(address,address)
+        assert!(
+            KNOWN_CHEATCODES
+                .iter()
+                .any(|(s, n)| **s == sel("copyStorage(address,address)") && *n == "copyStorage")
+        );
+    }
+
+    /// A selector NOT in the catalog should not be found (sanity for the lookup logic).
+    #[test]
+    fn known_cheatcode_catalog_unknown_selector_returns_none() {
+        // Use a nonsense selector that won't collide with any real cheatcode.
+        let bogus: [u8; 4] = [0xde, 0xad, 0xbe, 0xef];
+        assert!(
+            KNOWN_CHEATCODES.iter().find(|(s, _)| **s == bogus).is_none(),
+            "0xdeadbeef should not be in KNOWN_CHEATCODES"
+        );
     }
 
     // --- Revert payload + factory -------------------------------------------

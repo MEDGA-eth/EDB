@@ -91,15 +91,45 @@ These cheatcodes return a clear revert message — `EDB: cheatcode vm.<name> not
 
 ## Not yet implemented (unknown-selector revert)
 
-Anything not in the supported or rejected lists returns:
+Anything not in the supported or rejected lists returns a named error
+message when the selector is in EDB's known-cheatcode catalog:
 
 ```
-EDB: unknown cheatcode selector 0x<hex> (likely not implemented in v1)
+EDB: cheatcode vm.<name> not yet implemented in v1 (selector 0x<hex>). See docs/cheatcode-coverage.md
 ```
 
-so authors can file an issue or PR. Common candidates for v2:
+Common candidates for v2:
 `vm.envInt`, `vm.envUint`, `vm.envAddress` (and their `envOr` overloads),
-`vm.parseJson*`, `vm.parseToml*`.
+`vm.parseJson*`, `vm.parseToml*`, `vm.toString*`, `vm.serialize*`.
+
+## Error messages
+
+When `edb test` encounters a cheatcode it does not implement, the revert
+payload depends on whether the selector is in EDB's known-cheatcode catalog:
+
+- **Known selector** (in EDB's catalog of ~130 foundry cheatcodes): the revert says
+
+  ```
+  EDB: cheatcode vm.<name> not yet implemented in v1 (selector 0x<hex>). See docs/cheatcode-coverage.md
+  ```
+
+  This covers every cheatcode in the "Supported", "Explicitly rejected", and
+  "Not yet implemented" categories above, plus their overloads.
+
+- **Unknown selector** (not in EDB's catalog): the revert says
+
+  ```
+  EDB: unknown cheatcode selector 0x<hex> (not in foundry's known cheatcode catalog — check spelling or open an issue)
+  ```
+
+  This usually means either a very new foundry cheatcode that hasn't been
+  cataloged yet, or a non-vm call that accidentally hit the cheatcode
+  address.
+
+The catalog and dispatch live in `crates/edb/src/cmd/test/cheats.rs`
+(`KNOWN_CHEATCODES` constant + `dispatch` method). Each selector in the
+catalog is verified against `keccak256(canonical_signature)[..4]` by the
+`known_cheatcode_catalog_*` unit tests in the same file.
 
 ## Want a cheatcode added?
 
