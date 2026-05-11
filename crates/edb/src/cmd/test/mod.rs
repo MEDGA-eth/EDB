@@ -16,15 +16,18 @@
 
 //! `edb test` — Foundry test debugging command.
 
+pub mod project;
+
 use eyre::Result;
 
 pub async fn run_foundry_test(
-    _target: &str,
-    _root: Option<&str>,
-    _profile: Option<&str>,
+    target: &str,
+    root: Option<&str>,
+    profile: Option<&str>,
     _fork_url: Option<&str>,
     _fork_block_number: Option<u64>,
     _cli: &crate::Cli,
 ) -> Result<()> {
-    eyre::bail!("edb test is under active development on feat/foundry-test. Not yet implemented.")
+    let _resolved = project::resolve_project(root, profile)?;
+    eyre::bail!("edb test {target} (project resolved; rest pending)")
 }
