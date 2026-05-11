@@ -86,12 +86,10 @@ where
     }
 
     fn frame_start(&mut self, ctx: &mut CTX, frame_input: &mut FrameInput) -> Option<FrameResult> {
-        if let Some(c) = self.cheats.as_deref_mut()
-            && let Some(result) = c.frame_start(ctx, frame_input)
-        {
-            return Some(result);
-        }
-        self.inner.frame_start(ctx, frame_input)
+        let cheats_outcome =
+            self.cheats.as_deref_mut().and_then(|c| c.frame_start(ctx, frame_input));
+        let inner_outcome = self.inner.frame_start(ctx, frame_input);
+        cheats_outcome.or(inner_outcome)
     }
 
     fn frame_end(
@@ -107,12 +105,9 @@ where
     }
 
     fn call(&mut self, ctx: &mut CTX, inputs: &mut CallInputs) -> Option<CallOutcome> {
-        if let Some(c) = self.cheats.as_deref_mut()
-            && let Some(outcome) = c.call(ctx, inputs)
-        {
-            return Some(outcome);
-        }
-        self.inner.call(ctx, inputs)
+        let cheats_outcome = self.cheats.as_deref_mut().and_then(|c| c.call(ctx, inputs));
+        let inner_outcome = self.inner.call(ctx, inputs);
+        cheats_outcome.or(inner_outcome)
     }
 
     fn call_end(&mut self, ctx: &mut CTX, inputs: &CallInputs, outcome: &mut CallOutcome) {
@@ -123,12 +118,9 @@ where
     }
 
     fn create(&mut self, ctx: &mut CTX, inputs: &mut CreateInputs) -> Option<CreateOutcome> {
-        if let Some(c) = self.cheats.as_deref_mut()
-            && let Some(outcome) = c.create(ctx, inputs)
-        {
-            return Some(outcome);
-        }
-        self.inner.create(ctx, inputs)
+        let cheats_outcome = self.cheats.as_deref_mut().and_then(|c| c.create(ctx, inputs));
+        let inner_outcome = self.inner.create(ctx, inputs);
+        cheats_outcome.or(inner_outcome)
     }
 
     fn create_end(&mut self, ctx: &mut CTX, inputs: &CreateInputs, outcome: &mut CreateOutcome) {
