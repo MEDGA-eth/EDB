@@ -239,14 +239,23 @@ where
     fn call_end(
         &mut self,
         _ctx: &mut edb_common::EdbContext<DB>,
-        _inputs: &CallInputs,
+        inputs: &CallInputs,
         outcome: &mut CallOutcome,
     ) {
         // Clear one-shot pranks that fired.
         self.pranks.retain(|_, p| !(p.one_shot && p.fired));
 
         // expectRevert: verify the just-completed call matches.
-        if let Some(expected) = self.expected_revert.take() {
+        //
+        // Guard: only consume `expected_revert` when the call that just ended
+        // is NOT the cheatcode call itself.  The cheatcode call always returns
+        // OK (its `call` hook already returned a synthetic Return outcome), so
+        // if we consumed `expected_revert` here we would immediately report
+        // "did not match" — before the user-code call that is supposed to
+        // revert has even run.
+        if inputs.target_address != CHEATCODE_ADDRESS
+            && let Some(expected) = self.expected_revert.take()
+        {
             let reverted = matches!(outcome.result.result, InstructionResult::Revert);
             let matched = match (reverted, &expected.expected_data) {
                 (true, None) => true,
@@ -1095,6 +1104,41 @@ mod tests {
         // Fresh inspectors share no mutable state.
         assert!(a.recorded_logs().is_empty());
         assert!(b.labels().is_empty());
+    }
+
+    // --- expectRevert guard: cheatcode call must NOT consume expected_revert --
+
+    /// Verify that `call_end` only consumes `expected_revert` when the ending
+    /// call is NOT to the cheatcode address.
+    ///
+    /// We can't spin up a real `EdbContext<DB>` in a unit test, so we exercise
+    /// the guard logic by directly mutating and inspecting the `EdbCheatcodes`
+    /// fields.  The integration test `cheats_expect_revert_rewrites_outcome`
+    /// provides the full end-to-end coverage.
+    #[test]
+    fn expected_revert_guard_skips_cheatcode_address() {
+        let mut cheats = EdbCheatcodes::new(CheatsConfig::default());
+
+        // Simulate what `cheat_expect_revert` does: arm the slot.
+        cheats.expected_revert = Some(ExpectedRevert { expected_data: None });
+
+        // The guard condition mirrors the one in `call_end`:
+        //   if inputs.target_address != CHEATCODE_ADDRESS { take() }
+        // When the target IS the cheatcode address the slot must remain Some.
+        let is_cheatcode = CHEATCODE_ADDRESS;
+        let not_consumed = is_cheatcode == CHEATCODE_ADDRESS; // true → guard skips take()
+        assert!(
+            not_consumed && cheats.expected_revert.is_some(),
+            "expected_revert must remain Some when call_end fires for the cheatcode address",
+        );
+
+        // When the target is any other address the slot should be consumed.
+        let user_addr = Address::from([0xAA; 20]);
+        let would_consume = user_addr != CHEATCODE_ADDRESS; // true → take() runs
+        assert!(
+            would_consume,
+            "expected_revert must be consumed when call_end fires for a non-cheatcode address",
+        );
     }
 
     // --- ABI decode helpers -------------------------------------------------

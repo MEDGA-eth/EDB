@@ -140,15 +140,23 @@ async fn cheats_expect_revert_rewrites_outcome() -> Result<()> {
     .await?;
     let trace = session.fetch_trace().await?;
 
-    // Smoke check: the trace must contain frames (the engine ran the test
-    // through the synthesized entrypoint at least once). Detailed semantic
-    // assertions about the rewrite are deliberately omitted here — there's a
-    // known off-by-one in the hand-rolled shim's `call_end` where the
-    // cheatcode CALL itself consumes the `expected_revert` slot before the
-    // user code reverts (see TODO in `crates/edb/src/cmd/test/cheats.rs`).
-    // The matched-revert behavior is exercised by foundry's own tests once
-    // we move to the upstream cheatcodes inspector.
     assert!(!trace.is_empty(), "trace was empty for Cheats::testExpectRevert");
+
+    // Semantic assertion: vm.expectRevert() matched the revert from
+    // `revertingFn()` and rewrote it to a success.  The overall
+    // testExpectRevert frame must therefore NOT show up as a revert.
+    assert!(
+        !trace_has_revert(&trace),
+        "vm.expectRevert should have swallowed the revert; top-level trace still shows a revert: \
+         {trace:#?}",
+    );
+
+    // Belt-and-suspenders: no frame should carry our "did not match" error string.
+    assert!(
+        !trace_revert_contains(&trace, "expectRevert did not match"),
+        "expectRevert reported a mismatch — the cheatcode call likely consumed \
+         expected_revert instead of the user-code call: {trace:#?}",
+    );
 
     let _ = session.shutdown();
     Ok(())
