@@ -91,6 +91,11 @@ fn backfill_source_contents(art: &mut Artifact, project_root: &Path) {
             if candidate.is_file()
                 && let Ok(s) = std::fs::read_to_string(candidate)
             {
+                // Normalize line endings to LF. EDB's instrumenter slices source at AST-reported
+                // byte offsets; foundry-compilers may produce offsets against a normalized
+                // (LF-only) source even when the file on disk uses CRLF (Windows). Forcing LF
+                // here keeps the offsets and the source-bytes in lockstep.
+                let s = if s.contains("\r\n") { s.replace("\r\n", "\n") } else { s };
                 src.content = Arc::new(s);
                 filled = true;
                 tracing::debug!(

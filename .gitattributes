@@ -1,0 +1,12 @@
+# Force LF line endings for source files we read byte-precisely.
+# EDB's source instrumenter (crates/engine/src/instrumentation/) slices
+# Solidity source at AST-reported byte offsets. CRLF would shift those
+# offsets and produce a malformed instrumented source that solc rejects
+# (see PR #66's Windows CI failure on `cheats_*` tests for the worked example).
+*.sol text eol=lf
+*.rs text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
