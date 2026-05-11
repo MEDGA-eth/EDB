@@ -19,10 +19,6 @@
 //!   the inspector value itself; the engine builds a fresh inspector via
 //!   `build_cheats_factory` for each orchestration pass.
 
-// Task 5.7 wires this module into `run_foundry_test`; until then the bin
-// target legitimately doesn't reach any of this code.
-#![allow(dead_code)]
-
 use alloy_primitives::{Address, B256, Bytes, Log, U256, address};
 use revm::{
     Database, DatabaseCommit, DatabaseRef, Inspector,
@@ -91,6 +87,7 @@ const SEL_STOP_BROADCAST: [u8; 4] = [0x76, 0xea, 0xdd, 0x36]; // stopBroadcast()
 #[derive(Clone, Debug, Default)]
 pub struct CheatsConfig {
     /// Project root (used for future fs-allowlist; currently unused).
+    #[allow(dead_code)] // reserved for fs-allowlist in a future phase
     pub project_root: std::path::PathBuf,
 }
 
@@ -155,11 +152,13 @@ impl EdbCheatcodes {
     }
 
     /// Returns the address-label map collected via `vm.label`.
+    #[allow(dead_code)] // public API; consumed by trace pretty-printing in a future phase
     pub fn labels(&self) -> &HashMap<Address, String> {
         &self.labels
     }
 
     /// Returns the captured logs (filled by `vm.recordLogs`).
+    #[allow(dead_code)] // public API; consumed by test result reporting in a future phase
     pub fn recorded_logs(&self) -> &[Log] {
         &self.recorded_logs
     }
