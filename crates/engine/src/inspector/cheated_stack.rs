@@ -31,7 +31,8 @@
 use alloy_primitives::{Address, Log, U256};
 use revm::{
     Inspector,
-    interpreter::{CallInputs, CallOutcome, CreateInputs, CreateOutcome, Interpreter},
+    handler::FrameResult,
+    interpreter::{CallInputs, CallOutcome, CreateInputs, CreateOutcome, FrameInput, Interpreter},
 };
 
 /// Wraps an EDB inspector with an optional cheatcodes-style inspector.
@@ -75,6 +76,34 @@ where
             c.log(ctx, log.clone());
         }
         self.inner.log(ctx, log);
+    }
+
+    fn log_full(&mut self, interp: &mut Interpreter, ctx: &mut CTX, log: Log) {
+        if let Some(c) = self.cheats.as_deref_mut() {
+            c.log_full(interp, ctx, log.clone());
+        }
+        self.inner.log_full(interp, ctx, log);
+    }
+
+    fn frame_start(&mut self, ctx: &mut CTX, frame_input: &mut FrameInput) -> Option<FrameResult> {
+        if let Some(c) = self.cheats.as_deref_mut()
+            && let Some(result) = c.frame_start(ctx, frame_input)
+        {
+            return Some(result);
+        }
+        self.inner.frame_start(ctx, frame_input)
+    }
+
+    fn frame_end(
+        &mut self,
+        ctx: &mut CTX,
+        frame_input: &FrameInput,
+        frame_result: &mut FrameResult,
+    ) {
+        if let Some(c) = self.cheats.as_deref_mut() {
+            c.frame_end(ctx, frame_input, frame_result);
+        }
+        self.inner.frame_end(ctx, frame_input, frame_result);
     }
 
     fn call(&mut self, ctx: &mut CTX, inputs: &mut CallInputs) -> Option<CallOutcome> {
