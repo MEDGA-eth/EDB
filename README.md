@@ -111,13 +111,39 @@ Type `?` in the TUI to view the help page.
 
 For development setup and architecture details, see [DEV.md](DEV.md) and [ARCH.md](ARCH.md).
 
+### Debug a Foundry Test
 
-## Foundry tests
+From inside a Foundry project (or anywhere with `--root`):
 
-`edb test <Contract::testFn>` debugs a single Foundry test function inside
-EDB. The cheatcode interface is a hand-rolled subset of foundry's `Vm.sol`;
-see [`docs/cheatcode-coverage.md`](docs/cheatcode-coverage.md) for the full
-supported/rejected matrix.
+```bash
+edb test MyTest::testSomething
+```
+
+EDB locates `foundry.toml`, compiles the project with `foundry-compilers`,
+synthesizes a single-transaction entrypoint that deploys the test contract
+and invokes `setUp()` (if present) + the chosen test function, then drives
+the whole thing through EDB's source-level debugging pipeline. The web UI
+or TUI launches as usual.
+
+Forking is opt-in:
+
+```bash
+edb test MyTest::testForkedThing --fork-url $MAINNET_RPC --fork-block-number 18000000
+```
+
+`--fork-url` is also picked up from `foundry.toml`'s `eth_rpc_url` field
+(with `${VAR}` env-var expansion, matching `forge test`).
+
+**Cheatcode coverage:** EDB ships ~19 hand-rolled cheatcodes covering the
+state-mutating set used by the vast majority of `forge test` suites
+(`vm.warp`, `vm.deal`, `vm.prank`/`startPrank`/`stopPrank`,
+`vm.mockCall`, `vm.expectRevert`, `vm.store`/`load`/`etch`,
+`vm.label`, `vm.recordLogs`, …). Boundary cheatcodes that need
+multi-fork backend or mid-tx state branching (`vm.selectFork`,
+`vm.snapshotState`, `vm.transact`, `vm.broadcast`, fs/ffi) revert with
+a clear EDB error so you know exactly what's blocking. See
+[`docs/cheatcode-coverage.md`](docs/cheatcode-coverage.md) for the
+full matrix.
 
 
 ## Why EDB?

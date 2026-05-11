@@ -76,7 +76,11 @@ The main orchestrator that coordinates the entire debugging workflow:
 - `main.rs`: Entry point and CLI handling
 - `proxy.rs`: RPC proxy lifecycle management
 - `cmd/replay.rs`: Transaction replay command implementation
-- `cmd/debug.rs`: Foundry test debugging (future)
+- `cmd/test/`: Foundry test debugging — synthesizes a single
+  transaction that wraps deploy + setUp + test, embeds a hand-rolled
+  cheatcode inspector, and drives the whole thing through the standard
+  engine pipeline. See `docs/superpowers/specs/2026-05-10-edb-test-design.md`
+  for the design rationale (gitignored; local-only).
 
 ### 2. Common Module (`crates/common`)
 
@@ -349,7 +353,12 @@ Browser-based debugging interface, served by the same `edb` binary:
 ## Future Enhancements
 
 ### Near Term
-- **Foundry Integration**: Direct test debugging support
+- **Hook firing for instrumented entrypoint**: improve creation hook
+  matching for in-tx-deployed test contracts (Phase 6.3 landed an
+  initial fix; further hardening may be needed for nested CREATE/CREATE2).
+- **Cheatcode coverage expansion**: `vm.expectEmit`, `vm.expectCall`,
+  `vm.assume`, `vm.pauseGasMetering`, `vm.lastCallGas` — see
+  `docs/cheatcode-coverage.md`'s "Not yet implemented" list.
 - **Breakpoint Conditions**: Conditional breakpoints
 - **Watch Expressions**: Monitor specific variables
 

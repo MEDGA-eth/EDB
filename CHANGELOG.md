@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `edb test <Contract>::<testFn>` — Foundry test debugging command.
+  Walks parent dirs for `foundry.toml`, compiles via `foundry-compilers`,
+  synthesizes a single-tx entrypoint, embeds a hand-rolled cheatcode
+  inspector (19 cheatcodes), and runs the whole thing through EDB's
+  existing engine pipeline. See README's "Debug a Foundry Test" section
+  and [`docs/cheatcode-coverage.md`](docs/cheatcode-coverage.md).
+- `edb test --fork-url <rpc>` — opt-in mainnet/L2 forking for tests.
+  Falls back to `foundry.toml`'s `eth_rpc_url` (with `${VAR}` env-var
+  expansion).
+- `LocalArtifactSet` indexes locally-compiled contracts by deployed-bytecode
+  codehash, so `edb test` resolves source code without hitting Etherscan.
+- `CheatedStack` inspector wrapper (in `crates/engine`) for layering an
+  optional cheatcodes inspector over EDB's existing inspectors.
+- Per-snapshot `BlockEnv` + `CfgEnv` capture so cheatcode-driven mid-tx
+  env mutation (`vm.warp` / `vm.roll` / `vm.chainId`) shows up correctly
+  in snapshots.
+
+### Changed
+
+- `--rpc-urls` and `--proxy-port` moved from the top-level CLI to the
+  `replay` (and `proxy-status`) subcommands. `edb test` does not use the
+  proxy — it talks directly to the upstream RPC when forking, mirroring
+  `forge test` behavior.
+- TUI mouse capture is **disabled by default**. The `--disable-mouse`
+  flag is removed; `--enable-mouse` may return in a future release.
+- `Engine::prepare_with_router_and_cheats` is the new generic engine
+  entry point. The existing `prepare_with_router` delegates to it with
+  `None` for cheats + local artifacts, so the replay capability is
+  unaffected.
+
+### Removed
+
+- `cmd/debug.rs` stub (replaced by `cmd/test/`).
+- `TuiOptions::disable_mouse` flag (replaced by mouse-off default).
+
 ## [0.0.3] - 2026-05-10
 
 ### Added
