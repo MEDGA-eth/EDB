@@ -52,7 +52,29 @@ fn load_config_at(root: &Path) -> Result<Config> {
     // Config::load_with_root returns Result<Self, ExtractConfigError> in foundry-config v1.7.1.
     // `.sanitized()` canonicalises all relative paths against `config.root` so that callers
     // see absolute paths regardless of the process working directory.
-    Config::load_with_root(root).map_err(|e| eyre::eyre!("{e}")).map(|c| c.sanitized())
+    let mut config =
+        Config::load_with_root(root).map_err(|e| eyre::eyre!("{e}")).map(|c| c.sanitized())?;
+    // foundry-config stores `eth_rpc_url` as a raw string; `${VAR}` placeholders are NOT
+    // expanded at deserialization time (only `rpc_endpoints` aliases go through
+    // `resolve::interpolate`).  Expand them here so callers always see plain URLs.
+    if let Some(url) = config.eth_rpc_url.as_mut() {
+        *url = foundry_config::resolve::interpolate(url)
+            .map_err(|e| eyre::eyre!("eth_rpc_url env-var expansion failed: {e}"))?;
+    }
+    Ok(config)
+}
+
+/// Resolve the upstream fork RPC URL.
+///
+/// Precedence:
+///   1. `--fork-url` flag from CLI (highest priority).
+///   2. `foundry.toml`'s `eth_rpc_url` field (with `${VAR}` expansion already done).
+///   3. `None` — test runs fork-free.
+pub fn resolve_fork_url(cli_fork_url: Option<&str>, resolved: &ResolvedProject) -> Option<String> {
+    if let Some(u) = cli_fork_url {
+        return Some(u.to_owned());
+    }
+    resolved.config.eth_rpc_url.clone()
 }
 
 fn find_root_by_walking_up() -> Result<PathBuf> {
@@ -112,6 +134,61 @@ mod tests {
         unsafe {
             std::env::remove_var("FOUNDRY_PROFILE");
         }
+    }
+
+    #[test]
+    #[serial]
+    fn reads_eth_rpc_url_from_foundry_toml() {
+        unsafe {
+            std::env::remove_var("FOUNDRY_PROFILE");
+        }
+        let dir = TempDir::new().unwrap();
+        write_toml(dir.path(), "[profile.default]\neth_rpc_url = 'https://example.invalid'\n");
+        let resolved = resolve_project(Some(dir.path().to_str().unwrap()), None).unwrap();
+        assert_eq!(resolved.config.eth_rpc_url.as_deref(), Some("https://example.invalid"));
+    }
+
+    #[test]
+    #[serial]
+    fn expands_env_vars_in_eth_rpc_url() {
+        unsafe {
+            std::env::remove_var("FOUNDRY_PROFILE");
+            std::env::set_var("EDB_TEST_RPC_URL_8_1", "https://from-env.invalid");
+        }
+        let dir = TempDir::new().unwrap();
+        write_toml(dir.path(), "[profile.default]\neth_rpc_url = '${EDB_TEST_RPC_URL_8_1}'\n");
+        let resolved = resolve_project(Some(dir.path().to_str().unwrap()), None).unwrap();
+        unsafe {
+            std::env::remove_var("EDB_TEST_RPC_URL_8_1");
+        }
+        assert_eq!(resolved.config.eth_rpc_url.as_deref(), Some("https://from-env.invalid"));
+    }
+
+    #[test]
+    #[serial]
+    fn cli_fork_url_takes_precedence_over_toml() {
+        unsafe {
+            std::env::remove_var("FOUNDRY_PROFILE");
+        }
+        let dir = TempDir::new().unwrap();
+        write_toml(dir.path(), "[profile.default]\neth_rpc_url = 'https://from-toml.invalid'\n");
+        let resolved = resolve_project(Some(dir.path().to_str().unwrap()), None).unwrap();
+        assert_eq!(
+            resolve_fork_url(Some("https://from-cli.invalid"), &resolved).as_deref(),
+            Some("https://from-cli.invalid"),
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn returns_none_when_neither_set() {
+        unsafe {
+            std::env::remove_var("FOUNDRY_PROFILE");
+        }
+        let dir = TempDir::new().unwrap();
+        write_toml(dir.path(), "[profile.default]\n");
+        let resolved = resolve_project(Some(dir.path().to_str().unwrap()), None).unwrap();
+        assert_eq!(resolve_fork_url(None, &resolved), None);
     }
 
     #[test]

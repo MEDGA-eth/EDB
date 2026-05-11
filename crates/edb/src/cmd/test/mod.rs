@@ -36,11 +36,15 @@ pub async fn run_foundry_test(
     _fork_block_number: Option<u64>,
     cli: &crate::Cli,
 ) -> Result<()> {
-    if fork_url.is_some() {
-        eyre::bail!("--fork-url is not yet implemented; coming in a later phase");
-    }
-
     let project_ctx = project::resolve_project(root, profile)?;
+
+    let resolved_fork_url = project::resolve_fork_url(fork_url, &project_ctx);
+    if resolved_fork_url.is_some() {
+        // Phase 8.2 will build the forked ForkResult; until then, fail loudly.
+        eyre::bail!(
+            "--fork-url (or foundry.toml eth_rpc_url) is set but fork construction is pending Task 8.2."
+        );
+    }
     tracing::info!("Resolved project at {}", project_ctx.root.display());
 
     let mut project =
