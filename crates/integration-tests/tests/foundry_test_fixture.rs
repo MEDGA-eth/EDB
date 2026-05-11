@@ -193,6 +193,82 @@ async fn cheats_expect_revert_rewrites_outcome() -> Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_fixture)]
+async fn cheats_expect_emit_matches_softly() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testExpectEmit",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(!trace.is_empty(), "trace was empty for Cheats::testExpectEmit");
+
+    // Structural assertion: top-level (depth-0) frame must end in success.
+    // If the soft-match expectEmit fails, our cheatcode rewrites the
+    // registering frame to a Revert carrying "EDB: expectEmit did not match".
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry in trace for Cheats::testExpectEmit");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success when expectEmit matches; got: {:?}",
+        top.result,
+    );
+
+    // Belt-and-suspenders: no frame should carry the EDB expectEmit failure message.
+    assert!(
+        !trace_revert_contains(&trace, "expectEmit did not match"),
+        "expectEmit reported a mismatch; trace = {trace:#?}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_expect_call_counts_matching_calls() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testExpectCall",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(!trace.is_empty(), "trace was empty for Cheats::testExpectCall");
+
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry in trace for Cheats::testExpectCall");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success when expectCall is satisfied; got: {:?}",
+        top.result,
+    );
+
+    assert!(
+        !trace_revert_contains(&trace, "expectCall did not match"),
+        "expectCall reported a mismatch; trace = {trace:#?}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
 async fn boundary_select_fork_reverts_with_edb_message() -> Result<()> {
     init::init_test_environment(true);
     let root = fixture_root();

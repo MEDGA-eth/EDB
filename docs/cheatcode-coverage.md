@@ -33,9 +33,31 @@ address (`0x7109709ECfa91a80626fF3989D68f67F5b1DD12D`) and dispatches by
 | `vm.label(address, string)` | Records a human-readable label for an address (queryable on the inspector). |
 | `vm.recordLogs()` | Starts capturing logs into the inspector's recorder. |
 | `vm.getRecordedLogs()` | Returns the captured logs as `Log[]` (foundry's `Vm.Log` shape: `{ bytes32[] topics; bytes data; address emitter; }`), then resets the recorder. |
+| `vm.expectEmit()` / `vm.expectEmit(bool,bool,bool,bool)` / `vm.expectEmit(bool,bool,bool,bool,address)` / `vm.expectEmit(address)` | Soft-match v1 — see Limitations below. Registers a pending log expectation; verified when the registering frame ends. |
+| `vm.expectCall(address,bytes)` / `vm.expectCall(address,bytes,uint64)` | Asserts at least one (or `uint64` count) external call to the given target with the given calldata is observed before the registering frame ends. |
 
 All selectors are verified at test time against `keccak256(canonical_signature)[..4]`;
 see the unit tests in `crates/edb/src/cmd/test/cheats.rs`.
+
+### Limitations: `vm.expectEmit` soft-match semantics (v1)
+
+Foundry's `vm.expectEmit` infers an expected log template from the test
+contract's own `emit Foo(...)` statement between the cheatcode call and the
+next external call, then byte-compares each captured log against that
+template (honoring the `(bool t1, bool t2, bool t3, bool checkData)` mask).
+
+EDB's v1 ships a **soft-match** approximation:
+
+- The expectation accepts the first log whose emitter matches (when an
+  emitter is supplied) and whose topic slot count is at least the highest
+  index marked `true` in the bool mask. When `checkData` is `true` we
+  additionally require the log's data to be non-empty.
+- We do NOT compare topic values or data bytes against any template — there
+  is no template captured.
+
+This covers the common "did the contract emit any qualifying event?" smoke
+pattern at the cost of false positives for byte-equality checks. Faithful
+template matching is tracked for v2.
 
 ## Explicitly rejected (revert with EDB error)
 
@@ -48,6 +70,7 @@ These cheatcodes return a clear revert message — `EDB: cheatcode vm.<name> not
 | `vm.snapshotState`, `vm.revertToState`, plus legacy `vm.snapshot` / `vm.revertTo` | Mid-tx journal rewind is not exposed via EDB's CacheDB journal in v1. |
 | `vm.broadcast`, `vm.startBroadcast`, `vm.stopBroadcast` | Script-only; not applicable to `forge test`. |
 | `vm.ffi`, `vm.readFile`, `vm.writeFile`, `vm.removeFile` | Security: external process / fs access disabled in v1. |
+| `vm.expectCallMinGas(address,uint256,uint64,bytes)` | Gas accounting under EDB's instrumented bytecode needs separate design work; deferred to v2. |
 
 ## Not yet implemented (unknown-selector revert)
 
@@ -58,8 +81,8 @@ EDB: unknown cheatcode selector 0x<hex> (likely not implemented in v1)
 ```
 
 so authors can file an issue or PR. Common candidates for v2:
-`vm.expectEmit`, `vm.expectCall`, `vm.env*`, `vm.assume`,
-`vm.pauseGasMetering`, `vm.lastCallGas`, `vm.parseJson*`, `vm.parseToml*`.
+`vm.env*`, `vm.assume`, `vm.pauseGasMetering`, `vm.lastCallGas`,
+`vm.parseJson*`, `vm.parseToml*`.
 
 ## Want a cheatcode added?
 

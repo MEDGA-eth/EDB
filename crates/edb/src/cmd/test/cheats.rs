@@ -58,6 +58,13 @@ const SEL_EXPECT_REVERT_BYTES: [u8; 4] = [0xf2, 0x8d, 0xce, 0xb3]; // expectReve
 const SEL_LABEL: [u8; 4] = [0xc6, 0x57, 0xc7, 0x18]; // label(address,string)
 const SEL_RECORD_LOGS: [u8; 4] = [0x41, 0xaf, 0x2f, 0x52]; // recordLogs()
 const SEL_GET_RECORDED_LOGS: [u8; 4] = [0x19, 0x15, 0x53, 0xa4]; // getRecordedLogs()
+const SEL_EXPECT_EMIT_BARE: [u8; 4] = [0x44, 0x0e, 0xd1, 0x0d]; // expectEmit()
+const SEL_EXPECT_EMIT_FILTER4: [u8; 4] = [0x49, 0x1c, 0xc7, 0xc2]; // expectEmit(bool,bool,bool,bool)
+const SEL_EXPECT_EMIT_FILTER5: [u8; 4] = [0x81, 0xba, 0xd6, 0xf3]; // expectEmit(bool,bool,bool,bool,address)
+const SEL_EXPECT_EMIT_ADDR: [u8; 4] = [0x86, 0xb9, 0x62, 0x0d]; // expectEmit(address)
+const SEL_EXPECT_CALL: [u8; 4] = [0xbd, 0x6a, 0xf4, 0x34]; // expectCall(address,bytes)
+const SEL_EXPECT_CALL_COUNT: [u8; 4] = [0xc1, 0xad, 0xbb, 0xff]; // expectCall(address,bytes,uint64)
+const SEL_EXPECT_CALL_MIN_GAS: [u8; 4] = [0x08, 0xe4, 0xe1, 0x16]; // expectCallMinGas(address,uint256,uint64,bytes)
 
 // Explicitly rejected — multi-fork / state-snapshot / scripting / fs+ffi.
 const SEL_SNAPSHOT_STATE: [u8; 4] = [0x9c, 0xd2, 0x38, 0x35]; // snapshotState()
@@ -109,6 +116,27 @@ pub struct EdbCheatcodes {
     recording_logs: bool,
     /// Logs captured since the last `recordLogs()`.
     recorded_logs: Vec<Log>,
+    /// Pending log expectations from `vm.expectEmit`. Matched against incoming
+    /// logs via `Inspector::log`. Verified — and removed — when the registering
+    /// frame ends (its `call_end` fires). Failed expectations rewrite that
+    /// frame's outcome to a Revert with a clear `EDB: expectEmit ...` message.
+    ///
+    /// v1 SOFT-MATCH semantics: we don't capture a "template log" from the
+    /// next `emit Foo(...)` in the test contract (foundry's full semantics).
+    /// Instead, an expectation matches the first log it sees that satisfies
+    /// emitter+topic-presence constraints. See `docs/cheatcode-coverage.md`.
+    expected_emits: Vec<ExpectedEmit>,
+    /// Pending call expectations from `vm.expectCall`. Inspector::call
+    /// increments `observed` for matching (target, calldata) pairs. Verified
+    /// when the registering frame ends.
+    expected_calls: Vec<ExpectedCall>,
+    /// Monotonic frame-depth counter for non-cheatcode calls. Incremented in
+    /// `Inspector::call` for non-cheatcode targets, decremented in `call_end`
+    /// for the same. Used to scope `expected_emits` / `expected_calls` to the
+    /// frame that registered them — robust to the "emit happens in the same
+    /// frame as the registration, with no intervening sub-call" case (where
+    /// REVM's own `depth()` would never cross a child boundary).
+    call_depth: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -133,6 +161,46 @@ struct ExpectedRevert {
     expected_data: Option<Bytes>,
 }
 
+/// Pending `vm.expectEmit` expectation. v1 soft-match semantics: we don't
+/// know the template log content at registration time (foundry infers it from
+/// the test contract's own next `emit Foo(...)` between the cheatcode call and
+/// the next external call), so the expectation matches the first log that
+/// satisfies the structural constraints recorded here.
+#[derive(Clone, Debug)]
+struct ExpectedEmit {
+    /// Whether each of the 4 topic slots must be present in the matched log.
+    /// Foundry's `(bool t1, bool t2, bool t3, bool t4)` overloads encode this
+    /// directly. In soft-match mode we only verify the matched log HAS the
+    /// requested topic at the requested index; we do not compare its value
+    /// against a template (we have no template).
+    check_topics: [bool; 4],
+    /// Whether data presence is required. In soft-match mode we only verify
+    /// the matched log carries non-empty data when this is true; we do not
+    /// compare data bytes against a template.
+    check_data: bool,
+    /// `None` = match any emitter, `Some(addr)` = only logs from this emitter.
+    expected_emitter: Option<Address>,
+    /// Set to true once a log matched. Read at the registering frame's
+    /// `call_end` to decide pass/fail.
+    matched: bool,
+    /// Frame-depth at which `vm.expectEmit` ran (see `EdbCheatcodes::call_depth`).
+    registered_at_call_depth: u64,
+}
+
+#[derive(Clone, Debug)]
+struct ExpectedCall {
+    target: Address,
+    calldata: Bytes,
+    /// Minimum number of matching calls required to satisfy the expectation.
+    /// `vm.expectCall(addr, data)` sets this to 1; the (..., uint64 count)
+    /// overload uses the supplied count.
+    min_count: u64,
+    /// Number of matching (target, calldata) calls observed so far.
+    observed: u64,
+    /// Frame-depth at which the expectation was set.
+    registered_at_call_depth: u64,
+}
+
 // ----------------------------------------------------------------------------
 // Construction + public accessors
 // ----------------------------------------------------------------------------
@@ -148,6 +216,9 @@ impl EdbCheatcodes {
             labels: HashMap::new(),
             recording_logs: false,
             recorded_logs: Vec::new(),
+            expected_emits: Vec::new(),
+            expected_calls: Vec::new(),
+            call_depth: 0,
         }
     }
 
@@ -192,11 +263,19 @@ where
         inputs: &mut CallInputs,
     ) -> Option<CallOutcome> {
         // 1) target == cheatcode address → decode & dispatch.
+        //    The cheatcode call itself does NOT count toward `call_depth`; it
+        //    is intercepted before any real frame work happens.
         if inputs.target_address == CHEATCODE_ADDRESS {
             return Some(self.dispatch(ctx, inputs));
         }
 
-        // 2) Active prank for this depth?
+        // 2) Bump the non-cheatcode call-depth counter. We do this BEFORE
+        //    mock interception so a fully mocked call still participates in
+        //    `expectCall` accounting and frame-scoping (its `call_end` will
+        //    fire and decrement again).
+        self.call_depth += 1;
+
+        // 3) Active prank for this depth?
         //    Pranks are keyed by the depth at which they were installed; we
         //    apply them to calls made *at the next depth down*, which mirrors
         //    forge's "vm.prank affects the next call" semantics. In practice
@@ -213,24 +292,34 @@ where
             }
         }
 
-        // 3) mockCall match?
-        if let Some(mocks) = self.mocks.get(&inputs.target_address) {
-            let calldata = match &inputs.input {
-                revm::interpreter::CallInput::Bytes(b) => b.clone(),
-                revm::interpreter::CallInput::SharedBuffer(range) => {
-                    use revm::context_interface::LocalContextTr;
-                    ctx.local
-                        .shared_memory_buffer_slice(range.clone())
-                        .map(|b| Bytes::from(b.to_vec()))
-                        .unwrap_or_default()
-                }
-            };
-            if let Some(mock) = mocks.get(&calldata) {
-                return Some(match mock {
-                    MockReturn::Return(data) => ok_return(inputs.gas_limit, data.clone()),
-                    MockReturn::Revert(data) => revert_with(inputs.gas_limit, data.clone()),
-                });
+        // 4) Resolve calldata once (shared by expectCall accounting + mockCall lookup).
+        let calldata = match &inputs.input {
+            revm::interpreter::CallInput::Bytes(b) => b.clone(),
+            revm::interpreter::CallInput::SharedBuffer(range) => {
+                use revm::context_interface::LocalContextTr;
+                ctx.local
+                    .shared_memory_buffer_slice(range.clone())
+                    .map(|b| Bytes::from(b.to_vec()))
+                    .unwrap_or_default()
             }
+        };
+
+        // 5) expectCall accounting — any pending expectation whose (target, calldata)
+        //    match this call has its observed counter incremented.
+        for ec in self.expected_calls.iter_mut() {
+            if ec.target == inputs.target_address && ec.calldata == calldata {
+                ec.observed = ec.observed.saturating_add(1);
+            }
+        }
+
+        // 6) mockCall match?
+        if let Some(mocks) = self.mocks.get(&inputs.target_address)
+            && let Some(mock) = mocks.get(&calldata)
+        {
+            return Some(match mock {
+                MockReturn::Return(data) => ok_return(inputs.gas_limit, data.clone()),
+                MockReturn::Revert(data) => revert_with(inputs.gas_limit, data.clone()),
+            });
         }
 
         None
@@ -242,20 +331,23 @@ where
         inputs: &CallInputs,
         outcome: &mut CallOutcome,
     ) {
+        // Cheatcode call_end is a no-op for everything below: the cheatcode
+        // call is intercepted in `call()`, never counted toward `call_depth`,
+        // and never satisfies any expectation. Skip outright.
+        if inputs.target_address == CHEATCODE_ADDRESS {
+            return;
+        }
+
+        // Snapshot the frame depth this call belongs to before we decrement,
+        // and decrement to mirror the increment in `call()`.
+        let ending_depth = self.call_depth;
+        self.call_depth = self.call_depth.saturating_sub(1);
+
         // Clear one-shot pranks that fired.
         self.pranks.retain(|_, p| !(p.one_shot && p.fired));
 
         // expectRevert: verify the just-completed call matches.
-        //
-        // Guard: only consume `expected_revert` when the call that just ended
-        // is NOT the cheatcode call itself.  The cheatcode call always returns
-        // OK (its `call` hook already returned a synthetic Return outcome), so
-        // if we consumed `expected_revert` here we would immediately report
-        // "did not match" — before the user-code call that is supposed to
-        // revert has even run.
-        if inputs.target_address != CHEATCODE_ADDRESS
-            && let Some(expected) = self.expected_revert.take()
-        {
+        if let Some(expected) = self.expected_revert.take() {
             let reverted = matches!(outcome.result.result, InstructionResult::Revert);
             let matched = match (reverted, &expected.expected_data) {
                 (true, None) => true,
@@ -272,14 +364,91 @@ where
                 outcome.result.output = encode_error_string(
                     "EDB: expectRevert did not match: the call did not revert as expected",
                 );
+                // Early-out: don't also try to verify expectEmit/expectCall on
+                // a frame we're already rewriting to a failure.
+                return;
             }
+        }
+
+        // expectEmit: any expectation registered AT or BELOW this frame's depth
+        // has now had its window closed (the registering frame is ending). For
+        // soft-match v1 we require `matched == true`; otherwise rewrite the
+        // outcome to a Revert with a clear EDB error.
+        //
+        // We collect failures before mutating `outcome` so a single unfulfilled
+        // expectation reports a deterministic message.
+        let unfulfilled_emit = self
+            .expected_emits
+            .iter()
+            .find(|e| e.registered_at_call_depth >= ending_depth && !e.matched)
+            .cloned();
+        self.expected_emits.retain(|e| e.registered_at_call_depth < ending_depth);
+        if let Some(_unfulfilled) = unfulfilled_emit {
+            outcome.result.result = InstructionResult::Revert;
+            outcome.result.output = encode_error_string(
+                "EDB: expectEmit did not match: no log emitted that satisfied the expected \
+                 emitter/topics/data constraints before the registering frame ended",
+            );
+            // Clear any same-frame expectCalls too — they're no longer relevant.
+            self.expected_calls.retain(|ec| ec.registered_at_call_depth < ending_depth);
+            return;
+        }
+
+        // expectCall: same window-closing logic.
+        let unfulfilled_call = self
+            .expected_calls
+            .iter()
+            .find(|ec| ec.registered_at_call_depth >= ending_depth && ec.observed < ec.min_count)
+            .cloned();
+        self.expected_calls.retain(|ec| ec.registered_at_call_depth < ending_depth);
+        if let Some(uc) = unfulfilled_call {
+            outcome.result.result = InstructionResult::Revert;
+            outcome.result.output = encode_error_string(&format!(
+                "EDB: expectCall did not match (target=0x{}, calldata len={}, expected>={}, observed={})",
+                alloy_primitives::hex::encode(uc.target),
+                uc.calldata.len(),
+                uc.min_count,
+                uc.observed,
+            ));
         }
     }
 
     fn log(&mut self, _ctx: &mut edb_common::EdbContext<DB>, log: Log) {
         if self.recording_logs {
-            self.recorded_logs.push(log);
+            self.recorded_logs.push(log.clone());
         }
+        // First-fit match against pending expectEmits: the earliest unmatched
+        // expectation that accepts this log wins. We bind one-log-per-expect.
+        for emit in self.expected_emits.iter_mut() {
+            if !emit.matched && emit.matches(&log) {
+                emit.matched = true;
+                break;
+            }
+        }
+    }
+}
+
+impl ExpectedEmit {
+    /// Soft-match: accept the log if its emitter matches (when constrained),
+    /// and if the requested topic indices are PRESENT (not necessarily equal
+    /// to a template — we don't have a template in v1). When `check_data` is
+    /// true we additionally require non-empty data.
+    fn matches(&self, log: &Log) -> bool {
+        if let Some(want) = self.expected_emitter
+            && log.address != want
+        {
+            return false;
+        }
+        let topics = log.topics();
+        for (i, &check) in self.check_topics.iter().enumerate() {
+            if check && i >= topics.len() {
+                return false;
+            }
+        }
+        if self.check_data && log.data.data.is_empty() {
+            return false;
+        }
+        true
     }
 }
 
@@ -339,6 +508,25 @@ impl EdbCheatcodes {
             SEL_LABEL => self.cheat_label(ctx, inputs, args),
             SEL_RECORD_LOGS => self.cheat_record_logs(inputs),
             SEL_GET_RECORDED_LOGS => self.cheat_get_recorded_logs(inputs),
+            SEL_EXPECT_EMIT_BARE => self.cheat_expect_emit(ctx, inputs, args, ExpectEmitMode::All),
+            SEL_EXPECT_EMIT_FILTER4 => {
+                self.cheat_expect_emit(ctx, inputs, args, ExpectEmitMode::Filter4)
+            }
+            SEL_EXPECT_EMIT_FILTER5 => {
+                self.cheat_expect_emit(ctx, inputs, args, ExpectEmitMode::Filter5)
+            }
+            SEL_EXPECT_EMIT_ADDR => {
+                self.cheat_expect_emit(ctx, inputs, args, ExpectEmitMode::AnyTopicsFromEmitter)
+            }
+            SEL_EXPECT_CALL => self.cheat_expect_call(ctx, inputs, args, 1),
+            SEL_EXPECT_CALL_COUNT => self.cheat_expect_call_with_count(ctx, inputs, args),
+            SEL_EXPECT_CALL_MIN_GAS => revert_with(
+                inputs.gas_limit,
+                encode_error_string(
+                    "EDB: cheatcode vm.expectCallMinGas not supported in v1: gas accounting under \
+                     EDB's instrumented bytecode needs separate design work",
+                ),
+            ),
 
             // Explicitly rejected — multi-fork
             SEL_CREATE_FORK
@@ -773,6 +961,213 @@ impl EdbCheatcodes {
         let encoded = abi_encode_logs(&logs);
         ok_return(inputs.gas_limit, encoded)
     }
+
+    // --- expectEmit ---------------------------------------------------------
+
+    fn cheat_expect_emit<DB>(
+        &mut self,
+        _ctx: &mut edb_common::EdbContext<DB>,
+        inputs: &CallInputs,
+        args: &[u8],
+        mode: ExpectEmitMode,
+    ) -> CallOutcome
+    where
+        DB: Database + DatabaseCommit + DatabaseRef + Clone,
+        <CacheDB<DB> as Database>::Error: Clone,
+        <DB as Database>::Error: Clone,
+    {
+        let (check_topics, check_data, expected_emitter) = match mode {
+            ExpectEmitMode::All => ([true; 4], true, None),
+            ExpectEmitMode::Filter4 => {
+                let Some(t1) = read_bool(args, 0) else {
+                    return revert_with(
+                        inputs.gas_limit,
+                        encode_error_string("vm.expectEmit(bool,bool,bool,bool): bad arg 0"),
+                    );
+                };
+                let Some(t2) = read_bool(args, 1) else {
+                    return revert_with(
+                        inputs.gas_limit,
+                        encode_error_string("vm.expectEmit(bool,bool,bool,bool): bad arg 1"),
+                    );
+                };
+                let Some(t3) = read_bool(args, 2) else {
+                    return revert_with(
+                        inputs.gas_limit,
+                        encode_error_string("vm.expectEmit(bool,bool,bool,bool): bad arg 2"),
+                    );
+                };
+                let Some(t4) = read_bool(args, 3) else {
+                    return revert_with(
+                        inputs.gas_limit,
+                        encode_error_string("vm.expectEmit(bool,bool,bool,bool): bad arg 3"),
+                    );
+                };
+                // Foundry's bools are (check_topic_1, check_topic_2, check_topic_3, check_data).
+                // We map them onto our 4-topic + data layout: topic[0] is the
+                // event sig (always present when emitted), topics[1..4] are
+                // the 3 indexed args.
+                ([true, t1, t2, t3], t4, None)
+            }
+            ExpectEmitMode::Filter5 => {
+                let Some(t1) = read_bool(args, 0) else {
+                    return revert_with(
+                        inputs.gas_limit,
+                        encode_error_string(
+                            "vm.expectEmit(bool,bool,bool,bool,address): bad arg 0",
+                        ),
+                    );
+                };
+                let Some(t2) = read_bool(args, 1) else {
+                    return revert_with(
+                        inputs.gas_limit,
+                        encode_error_string(
+                            "vm.expectEmit(bool,bool,bool,bool,address): bad arg 1",
+                        ),
+                    );
+                };
+                let Some(t3) = read_bool(args, 2) else {
+                    return revert_with(
+                        inputs.gas_limit,
+                        encode_error_string(
+                            "vm.expectEmit(bool,bool,bool,bool,address): bad arg 2",
+                        ),
+                    );
+                };
+                let Some(t4) = read_bool(args, 3) else {
+                    return revert_with(
+                        inputs.gas_limit,
+                        encode_error_string(
+                            "vm.expectEmit(bool,bool,bool,bool,address): bad arg 3",
+                        ),
+                    );
+                };
+                let Some(emitter) = read_address(args, 4) else {
+                    return revert_with(
+                        inputs.gas_limit,
+                        encode_error_string(
+                            "vm.expectEmit(bool,bool,bool,bool,address): bad emitter arg",
+                        ),
+                    );
+                };
+                ([true, t1, t2, t3], t4, Some(emitter))
+            }
+            ExpectEmitMode::AnyTopicsFromEmitter => {
+                let Some(emitter) = read_address(args, 0) else {
+                    return revert_with(
+                        inputs.gas_limit,
+                        encode_error_string("vm.expectEmit(address): bad emitter arg"),
+                    );
+                };
+                ([true; 4], true, Some(emitter))
+            }
+        };
+        self.expected_emits.push(ExpectedEmit {
+            check_topics,
+            check_data,
+            expected_emitter,
+            matched: false,
+            registered_at_call_depth: self.call_depth,
+        });
+        ok_return(inputs.gas_limit, Bytes::new())
+    }
+
+    // --- expectCall ---------------------------------------------------------
+
+    fn cheat_expect_call<DB>(
+        &mut self,
+        _ctx: &mut edb_common::EdbContext<DB>,
+        inputs: &CallInputs,
+        args: &[u8],
+        default_count: u64,
+    ) -> CallOutcome
+    where
+        DB: Database + DatabaseCommit + DatabaseRef + Clone,
+        <CacheDB<DB> as Database>::Error: Clone,
+        <DB as Database>::Error: Clone,
+    {
+        let Some(target) = read_address(args, 0) else {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.expectCall: bad address arg"),
+            );
+        };
+        let Some(calldata) = read_bytes(args, 1) else {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.expectCall: bad calldata arg"),
+            );
+        };
+        self.expected_calls.push(ExpectedCall {
+            target,
+            calldata,
+            min_count: default_count,
+            observed: 0,
+            registered_at_call_depth: self.call_depth,
+        });
+        ok_return(inputs.gas_limit, Bytes::new())
+    }
+
+    fn cheat_expect_call_with_count<DB>(
+        &mut self,
+        _ctx: &mut edb_common::EdbContext<DB>,
+        inputs: &CallInputs,
+        args: &[u8],
+    ) -> CallOutcome
+    where
+        DB: Database + DatabaseCommit + DatabaseRef + Clone,
+        <CacheDB<DB> as Database>::Error: Clone,
+        <DB as Database>::Error: Clone,
+    {
+        let Some(target) = read_address(args, 0) else {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.expectCall(...,uint64): bad address arg"),
+            );
+        };
+        let Some(calldata) = read_bytes(args, 1) else {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.expectCall(...,uint64): bad calldata arg"),
+            );
+        };
+        let Some(count_word) = read_u256(args, 2) else {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.expectCall(...,uint64): bad count arg"),
+            );
+        };
+        let count: u64 = match count_word.try_into() {
+            Ok(v) => v,
+            Err(_) => {
+                return revert_with(
+                    inputs.gas_limit,
+                    encode_error_string("vm.expectCall(...,uint64): count does not fit in u64"),
+                );
+            }
+        };
+        self.expected_calls.push(ExpectedCall {
+            target,
+            calldata,
+            min_count: count,
+            observed: 0,
+            registered_at_call_depth: self.call_depth,
+        });
+        ok_return(inputs.gas_limit, Bytes::new())
+    }
+}
+
+/// Argument-shape selector for the four supported `vm.expectEmit` overloads.
+#[derive(Clone, Copy, Debug)]
+enum ExpectEmitMode {
+    /// `vm.expectEmit()` — all topics + data checked, any emitter.
+    All,
+    /// `vm.expectEmit(bool,bool,bool,bool)` — t1/t2/t3 + data, any emitter.
+    Filter4,
+    /// `vm.expectEmit(bool,bool,bool,bool,address)` — t1/t2/t3 + data, explicit emitter.
+    Filter5,
+    /// `vm.expectEmit(address)` — all topics + data checked, explicit emitter.
+    AnyTopicsFromEmitter,
 }
 
 // ----------------------------------------------------------------------------
@@ -868,6 +1263,13 @@ fn read_address(args: &[u8], head_index: usize) -> Option<Address> {
     let w = read_word(args, head_index)?;
     // Address is right-aligned in the 32-byte word.
     Some(Address::from_slice(&w[12..32]))
+}
+
+/// Read a Solidity `bool` (ABI: a 32-byte word that is all zero for `false`
+/// and ends with `0x01` for `true`; technically any non-zero word is `true`).
+fn read_bool(args: &[u8], head_index: usize) -> Option<bool> {
+    let w = read_word(args, head_index)?;
+    Some(w.iter().any(|&b| b != 0))
 }
 
 /// Read a dynamic `bytes` argument: head slot at `head_index` contains the
@@ -1072,6 +1474,19 @@ mod tests {
         assert_eq!(sel("getRecordedLogs()"), SEL_GET_RECORDED_LOGS);
     }
     #[test]
+    fn selector_expect_emit() {
+        assert_eq!(sel("expectEmit()"), SEL_EXPECT_EMIT_BARE);
+        assert_eq!(sel("expectEmit(bool,bool,bool,bool)"), SEL_EXPECT_EMIT_FILTER4);
+        assert_eq!(sel("expectEmit(bool,bool,bool,bool,address)"), SEL_EXPECT_EMIT_FILTER5);
+        assert_eq!(sel("expectEmit(address)"), SEL_EXPECT_EMIT_ADDR);
+    }
+    #[test]
+    fn selector_expect_call() {
+        assert_eq!(sel("expectCall(address,bytes)"), SEL_EXPECT_CALL);
+        assert_eq!(sel("expectCall(address,bytes,uint64)"), SEL_EXPECT_CALL_COUNT);
+        assert_eq!(sel("expectCallMinGas(address,uint256,uint64,bytes)"), SEL_EXPECT_CALL_MIN_GAS);
+    }
+    #[test]
     fn selector_rejected_set_matches_canonical_signatures() {
         // Spot-check a handful of rejected selectors so the rejected list
         // doesn't silently drift from the canonical Vm.sol signatures.
@@ -1158,6 +1573,67 @@ mod tests {
         let addr = read_address(&buf, 0).expect("address");
         assert_eq!(addr, Address::from_slice(&[0xde; 20]));
         assert_eq!(read_u256(&buf, 1).expect("u256"), U256::from(1_000_000u64));
+    }
+
+    #[test]
+    fn read_bool_decodes_canonical_words() {
+        // false = all zero word
+        let mut zero = vec![0u8; 32];
+        assert_eq!(read_bool(&zero, 0), Some(false));
+        // true = canonical 0x...01 word
+        zero[31] = 1;
+        assert_eq!(read_bool(&zero, 0), Some(true));
+        // any non-zero byte counts as true (be permissive on encoded forms)
+        let mut other = vec![0u8; 32];
+        other[7] = 0xff;
+        assert_eq!(read_bool(&other, 0), Some(true));
+        // truncated input returns None
+        assert_eq!(read_bool(&[0u8; 16], 0), None);
+    }
+
+    #[test]
+    fn expected_emit_soft_match_rules() {
+        let addr = Address::from([0x11; 20]);
+        let other = Address::from([0x22; 20]);
+        let log_full = Log::new_unchecked(
+            addr,
+            vec![B256::from([0xaa; 32]), B256::from([0xbb; 32]), B256::from([0xcc; 32])],
+            Bytes::from_static(b"payload"),
+        );
+        let log_empty_data = Log::new_unchecked(addr, vec![B256::from([0xaa; 32])], Bytes::new());
+
+        // Default expectEmit() with all bits → must satisfy 4 topics and non-empty data.
+        // `log_full` has 3 topics but expectation asks for 4 → fail.
+        let all = ExpectedEmit {
+            check_topics: [true; 4],
+            check_data: true,
+            expected_emitter: None,
+            matched: false,
+            registered_at_call_depth: 0,
+        };
+        assert!(!all.matches(&log_full), "all-topics expectation needs 4 topics");
+
+        // Relax: only require topic[0] (the event sig) + data.
+        let lax = expect_emit_simple();
+        assert!(lax.matches(&log_full), "topic[0]+data must match a non-empty log");
+        assert!(!lax.matches(&log_empty_data), "check_data must reject empty data");
+
+        // Emitter filter
+        let mut with_emitter = lax;
+        with_emitter.expected_emitter = Some(other);
+        assert!(!with_emitter.matches(&log_full), "wrong emitter must reject");
+        with_emitter.expected_emitter = Some(addr);
+        assert!(with_emitter.matches(&log_full));
+    }
+
+    fn expect_emit_simple() -> ExpectedEmit {
+        ExpectedEmit {
+            check_topics: [true, false, false, false],
+            check_data: true,
+            expected_emitter: None,
+            matched: false,
+            registered_at_call_depth: 0,
+        }
     }
 
     #[test]
