@@ -44,6 +44,30 @@ fn trace_revert_contains(trace: &edb_common::types::Trace, needle: &str) -> bool
     })
 }
 
+/// ABI-decode a Solidity `Error(string)` revert payload.
+///
+/// Layout:
+/// - `[0..4)`   — selector `0x08c379a0`
+/// - `[4..36)`  — offset (== 0x20)
+/// - `[36..68)` — string length (big-endian u256, fits in usize)
+/// - `[68..68+len)` — UTF-8 string bytes
+///
+/// Returns `None` if the bytes are not a well-formed `Error(string)`.
+fn decode_error_string(bytes: &[u8]) -> Option<String> {
+    if bytes.len() < 68 || bytes[..4] != [0x08, 0xc3, 0x79, 0xa0] {
+        return None;
+    }
+    // Length lives in the last 4 bytes of the 32-byte length word (bytes 36..68).
+    // For any realistic string the upper bytes are zero; we read the low 4 bytes.
+    let len_bytes: [u8; 4] = bytes[64..68].try_into().ok()?;
+    let len = u32::from_be_bytes(len_bytes) as usize;
+    let data_end = 68usize.checked_add(len)?;
+    if bytes.len() < data_end {
+        return None;
+    }
+    std::str::from_utf8(&bytes[68..data_end]).ok().map(String::from)
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_fixture)]
 async fn basic_test_trivial_runs() -> Result<()> {
@@ -142,13 +166,18 @@ async fn cheats_expect_revert_rewrites_outcome() -> Result<()> {
 
     assert!(!trace.is_empty(), "trace was empty for Cheats::testExpectRevert");
 
-    // Semantic assertion: vm.expectRevert() matched the revert from
-    // `revertingFn()` and rewrote it to a success.  The overall
-    // testExpectRevert frame must therefore NOT show up as a revert.
+    // Structural assertion: the top-level entrypoint frame (depth 0) must end
+    // in success.  vm.expectRevert rewrites the matched revert to a Return at
+    // call_end time, so this frame — which encompasses the entire test — must
+    // be Success when the cheatcode works correctly.
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry in trace for Cheats::testExpectRevert");
     assert!(
-        !trace_has_revert(&trace),
-        "vm.expectRevert should have swallowed the revert; top-level trace still shows a revert: \
-         {trace:#?}",
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level (depth-0) frame should be Success after expectRevert match; got: {:?}",
+        top.result,
     );
 
     // Belt-and-suspenders: no frame should carry our "did not match" error string.
@@ -177,14 +206,35 @@ async fn boundary_select_fork_reverts_with_edb_message() -> Result<()> {
     .await?;
     let trace = session.fetch_trace().await?;
 
-    // The hand-rolled cheatcode shim groups multi-fork cheatcodes together and
-    // rejects them with a single shared message.
-    let needle = "EDB: cheatcode vm.multi-fork";
-    let edb_needle = "selectFork";
+    // The hand-rolled cheatcode shim rejects multi-fork cheatcodes with an
+    // ABI-encoded Error(string) whose message contains "EDB: cheatcode vm."
+    // and "selectFork".  We collect all Revert outputs, ABI-decode them as
+    // Error(string), and assert that at least one decodes to the expected
+    // rejection message — verifying both the ABI encoding and the content.
+    let revert_outputs: Vec<Vec<u8>> = trace
+        .iter()
+        .filter_map(|entry| match &entry.result {
+            Some(CallResult::Revert { output, .. }) => Some(output.to_vec()),
+            _ => None,
+        })
+        .collect();
     assert!(
-        trace_revert_contains(&trace, needle) && trace_revert_contains(&trace, edb_needle),
-        "expected revert with EDB rejection message mentioning {needle:?} and \
-         {edb_needle:?}; got: {trace:#?}",
+        !revert_outputs.is_empty(),
+        "expected at least one revert in trace for testSelectForkIsRejected; got: {trace:#?}",
+    );
+
+    let any_edb_error = revert_outputs.iter().any(|bytes| {
+        decode_error_string(bytes)
+            .is_some_and(|s| s.contains("EDB: cheatcode vm.") && s.contains("selectFork"))
+    });
+    assert!(
+        any_edb_error,
+        "expected ABI-decoded Error(string) containing EDB selectFork rejection; \
+         got revert outputs: {:?}",
+        revert_outputs
+            .iter()
+            .map(|b| decode_error_string(b).unwrap_or_else(|| format!("<raw {} bytes>", b.len())))
+            .collect::<Vec<_>>(),
     );
 
     let _ = session.shutdown();
