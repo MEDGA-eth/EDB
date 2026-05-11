@@ -376,6 +376,85 @@ impl Engine {
 
         // Step 7: Re-execute the transaction with snapshot collection
         send_progress!(7, 8, "Collecting creation hooks for contracts in transaction...");
+        // Build an address-keyed map for nested-CREATE substitution: each
+        // contract that was CREATEd inside this transaction (and for which
+        // we have a recompiled / instrumented artifact) gets registered so
+        // the hook-snapshot inspector can swap its init code in by predicted
+        // address at runtime, even if the parent contract's embedded copy of
+        // the child's creation bytecode doesn't byte-identically match the
+        // child's standalone artifact bytecode (which is exactly what happens
+        // for nested `new Inner(...)` in tests — see commit message).
+        let mut creation_by_address: HashMap<Address, (alloy_primitives::Bytes, usize)> =
+            HashMap::new();
+        let contracts_in_tx_for_address_map: Vec<Address> = contracts_in_tx.clone();
+        for addr in &contracts_in_tx_for_address_map {
+            use foundry_compilers::Artifact as FoundryArtifact;
+            if let Some(art) = recompiled_artifacts.get(addr) {
+                // Walk the recompiled artifact's per-(path,name) contracts
+                // and pick the one whose contract name matches the address's
+                // primary artifact contract name. For the `edb test` flow
+                // each address maps to exactly one contract; for safety we
+                // fall back to the *first* non-empty bytecode if the name
+                // lookup fails.
+                let target_name = art.meta.contract_name.clone();
+                let mut hooked: Option<(alloy_primitives::Bytes, Option<&Vec<_>>)> = None;
+                for contracts in art.output.contracts.values() {
+                    if let Some(c) = contracts.get(&target_name)
+                        && let Some(b) = c.get_bytecode_bytes()
+                        && !b.is_empty()
+                    {
+                        // Pull the constructor params from this contract's ABI
+                        // (if present) — we need them to compute the static
+                        // args byte size below.
+                        let abi_params = c
+                            .abi
+                            .as_ref()
+                            .and_then(|abi| abi.constructor.as_ref())
+                            .map(|ctor| &ctor.inputs);
+                        hooked = Some((b.as_ref().clone(), abi_params));
+                        break;
+                    }
+                }
+                if hooked.is_none() {
+                    'outer: for contracts in art.output.contracts.values() {
+                        for c in contracts.values() {
+                            if let Some(b) = c.get_bytecode_bytes()
+                                && !b.is_empty()
+                            {
+                                let abi_params = c
+                                    .abi
+                                    .as_ref()
+                                    .and_then(|abi| abi.constructor.as_ref())
+                                    .map(|ctor| &ctor.inputs);
+                                hooked = Some((b.as_ref().clone(), abi_params));
+                                break 'outer;
+                            }
+                        }
+                    }
+                }
+                if let Some((bytecode, abi_params)) = hooked {
+                    // Compute the constructor's static encoded arg size from
+                    // the ABI. For dynamic types (string / bytes / dynamic
+                    // arrays) the encoded size is variable; we approximate
+                    // with the static head (32 bytes per parameter) — the
+                    // CREATE that actually fires at runtime carries the args
+                    // in its init_code tail and the engine's recompiled
+                    // creation bytecode expects that exact layout, so for
+                    // tests with static args this is correct; for dynamic
+                    // args it would under-count and is left as a TODO (no
+                    // foundry test fixture we ship today exercises that
+                    // case).
+                    let args_size = abi_params
+                        .map(|params| {
+                            params
+                                .iter()
+                                .fold(0usize, |acc, p| acc + constructor_param_head_size(&p.ty))
+                        })
+                        .unwrap_or(0);
+                    creation_by_address.insert(*addr, (bytecode, args_size));
+                }
+            }
+        }
         let hook_creation = orchestration::collect_creation_hooks(
             &artifacts,
             &recompiled_artifacts,
@@ -386,6 +465,7 @@ impl Engine {
             ctx.clone(),
             tx.clone(),
             hook_creation,
+            creation_by_address,
             &replay_result.execution_trace,
             &analysis_results,
             cheats3.as_mut(),
@@ -458,4 +538,71 @@ where
         out.insert(*addr, info.code_hash);
     }
     Ok(out)
+}
+
+/// Compute the **head** byte size of a single ABI-encoded parameter — i.e.
+/// the bytes that appear inline in the encoded args stream for that type
+/// (ignoring any tail data that dynamic types append after all heads).
+///
+/// For static types (`uint*`, `int*`, `bool`, `address`, `bytesN`, fixed-size
+/// arrays of static types, structs of static types) the head IS the whole
+/// encoding and is exactly 32 bytes per slot. For dynamic types (`bytes`,
+/// `string`, dynamic arrays) the head is a 32-byte offset pointer; the tail
+/// data follows after all heads.
+///
+/// We use this to estimate the constructor args byte size for nested-CREATE
+/// hook substitution. The estimate is exact for any constructor with only
+/// static-types — which covers every constructor in our test fixtures. For
+/// dynamic-args constructors we under-count, and substitution falls back to
+/// zero args (the inspector clamps if init_code is shorter than args_size).
+fn constructor_param_head_size(ty: &str) -> usize {
+    // ABI head is 32 bytes per param for every supported type — even dynamic
+    // ones use a 32-byte offset pointer in the head. Fixed-size arrays of
+    // static types occupy `N * 32` bytes inline (no offset pointer). We
+    // approximate fixed arrays via parsing `T[N]` and recursing on `T`.
+    let ty = ty.trim();
+    if let Some(open) = ty.rfind('[')
+        && let Some(close) = ty.rfind(']')
+        && close > open
+    {
+        let inner_size = constructor_param_head_size(&ty[..open]);
+        let count_str = &ty[open + 1..close];
+        if count_str.is_empty() {
+            // dynamic array — head is 32-byte offset pointer
+            return 32;
+        }
+        if let Ok(n) = count_str.parse::<usize>() {
+            return inner_size.saturating_mul(n);
+        }
+        return 32;
+    }
+    // Tuple types are encoded as concatenated heads of fields; we approximate
+    // (the foundry-recompile artifact rarely emits raw tuple constructors).
+    32
+}
+
+#[cfg(test)]
+mod constructor_param_head_size_tests {
+    use super::constructor_param_head_size;
+
+    #[test]
+    fn statics_are_32() {
+        assert_eq!(constructor_param_head_size("uint256"), 32);
+        assert_eq!(constructor_param_head_size("address"), 32);
+        assert_eq!(constructor_param_head_size("bool"), 32);
+        assert_eq!(constructor_param_head_size("bytes32"), 32);
+    }
+
+    #[test]
+    fn dynamics_are_32_pointer() {
+        assert_eq!(constructor_param_head_size("bytes"), 32);
+        assert_eq!(constructor_param_head_size("string"), 32);
+        assert_eq!(constructor_param_head_size("uint256[]"), 32);
+    }
+
+    #[test]
+    fn fixed_array_of_static() {
+        assert_eq!(constructor_param_head_size("uint256[3]"), 96);
+        assert_eq!(constructor_param_head_size("address[5]"), 160);
+    }
 }

@@ -367,6 +367,106 @@ async fn cheats_gas_metering_stubs_dont_revert() -> Result<()> {
     Ok(())
 }
 
+/// Regression guard for Task 6.3 (nested CREATE): the synthetic entrypoint
+/// CREATEs `NestedDeploy` at depth 1; `NestedDeploy`'s `setUp()` then CREATEs
+/// `Inner` at depth 2. We confirm two things end-to-end:
+///
+/// 1. The top-level frame succeeds (no unexpected reverts).
+/// 2. The trace contains a `created_contract == true` entry at depth >= 2
+///    (the nested CREATE for `Inner`), AND that nested address has at least
+///    one *hook* snapshot bound to its bytecode — i.e. the instrumentation
+///    pipeline reached the nested deployment and not just the test contract.
+///
+/// If hook snapshots only fire for the directly-CREATEd test contract, this
+/// test fails on assertion 2.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn nested_deploy_hooks_fire_for_inner_contract() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "NestedDeploy::testInnerWasDeployed",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    let trace = session.fetch_trace().await?;
+
+    // (1) Top-level entrypoint frame must succeed.
+    let top = trace.iter().find(|e| e.depth == 0).expect("no depth-0 entry in trace");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success for NestedDeploy::testInnerWasDeployed; got: {:?}",
+        top.result,
+    );
+    assert!(
+        !trace_has_revert(&trace),
+        "NestedDeploy::testInnerWasDeployed should not produce any revert; trace = {trace:#?}",
+    );
+
+    // (2a) Find the nested CREATE entry: `Inner` is created by NestedDeploy's
+    // setUp / constructor, so it shows up at depth >= 2 with created_contract.
+    let inner_create = trace
+        .iter()
+        .find(|e| e.created_contract && e.depth >= 2)
+        .expect("no nested CREATE (depth >= 2) found in trace — fixture or trace shape changed");
+    let inner_address = inner_create.target;
+    assert_ne!(
+        inner_address,
+        alloy_primitives::Address::ZERO,
+        "nested CREATE target_address is ZERO (creation reverted?)",
+    );
+
+    // (2b) Pull every snapshot and count hook snapshots per bytecode_address.
+    // We require at least one *hook* snapshot bound to Inner's address. We
+    // also collect the set of all hook-snapshot bytecode addresses for the
+    // debug message, so a regression report is actionable.
+    let count = session.snapshot_count().await?;
+    assert!(count > 0, "engine produced zero snapshots — nothing was instrumented");
+
+    let mut hook_addrs: std::collections::HashSet<alloy_primitives::Address> =
+        std::collections::HashSet::new();
+    let mut inner_hook_count = 0usize;
+    for id in 0..count {
+        let info = session.fetch_snapshot_info(id as u64).await?;
+        // `detail` is an enum serialized as { "Hook": {..} } | { "Opcode": {..} }.
+        let is_hook = info.get("detail").and_then(|d| d.get("Hook")).is_some();
+        if !is_hook {
+            continue;
+        }
+        let bytecode_addr_str =
+            info.get("bytecode_address").and_then(|v| v.as_str()).unwrap_or_default();
+        let parsed: alloy_primitives::Address =
+            bytecode_addr_str.parse().unwrap_or(alloy_primitives::Address::ZERO);
+        hook_addrs.insert(parsed);
+        if parsed == inner_address {
+            inner_hook_count += 1;
+        }
+    }
+
+    assert!(
+        inner_hook_count > 0,
+        "no hook snapshots fired for nested-CREATEd Inner at {inner_address}; \
+         observed hook bytecode addresses = {hook_addrs:?}",
+    );
+
+    // Sanity: we should see at least 2 distinct hook-snapshot bytecode
+    // addresses (test contract + Inner). If everything collapses to a single
+    // address, instrumentation is only reaching the top contract.
+    assert!(
+        hook_addrs.len() >= 2,
+        "expected hook snapshots from >= 2 distinct addresses (test contract + Inner); \
+         got {} unique addresses = {hook_addrs:?}",
+        hook_addrs.len(),
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_fixture)]
 async fn boundary_select_fork_reverts_with_edb_message() -> Result<()> {

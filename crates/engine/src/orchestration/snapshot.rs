@@ -104,10 +104,19 @@ pub fn collect_creation_hooks<'a>(
 }
 
 /// Time travel (i.e., snapshotting) at hooks for contracts we have source code
+///
+/// `creation_by_address` is an optional predicted-address-keyed map of
+/// hooked creation bytecode. Entries here let the inspector apply the
+/// substitution by predicted address (the address that *will* be CREATEd)
+/// rather than by bytecode prefix-match — required for nested CREATEs where
+/// the parent's embedded child-creation-code does not byte-identically match
+/// the child's standalone artifact bytecode.
+#[allow(clippy::too_many_arguments)]
 pub fn capture_hook_snapshots<'a, DB, Cheats>(
     mut ctx: EdbContext<DB>,
     mut tx: TxEnv,
     creation_hooks: Vec<(&'a Contract, &'a Contract, &'a Bytes)>,
+    creation_by_address: HashMap<Address, (Bytes, usize)>,
     trace: &Trace,
     analysis_results: &HashMap<Address, AnalysisResult>,
     cheats: Option<&mut Cheats>,
@@ -127,6 +136,7 @@ where
 
     let mut inspector = HookSnapshotInspector::new(&ctx, trace, analysis_results);
     inspector.with_creation_hooks(creation_hooks)?;
+    inspector.with_creation_by_address(creation_by_address);
     {
         let mut stack = crate::inspector::CheatedStack::new(cheats, &mut inspector);
         let mut evm = ctx.build_mainnet_with_inspector(&mut stack);
