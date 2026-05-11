@@ -99,14 +99,24 @@ This document outlines the development roadmap for EDB (Ethereum Debugger), orga
   - Implement cache invalidation strategy
   - Support incremental analysis updates
   - Reduce re-analysis time for repeated debugging sessions
+  - Note: deferred as of 2026-05-11; not blocking edb test usability
+    (startup latency is ~5s — acceptable for v0.0.4)
 
 ### 🔧 Milestone 4: Tool Integration
 **Goal**: Seamless integration with popular Ethereum development tools
 
-- [ ] **Foundry Test Debugging**
-  - Full support for debugging Foundry test cases
-  - Integration with forge test runner
-  - Test failure root cause analysis
+- [x] **Foundry Test Debugging** (v0.0.4)
+  - Single-tx synthetic entrypoint pipeline through the existing engine
+  - 19 hand-rolled cheatcodes (warp/deal/prank/mockCall/expectRevert/…)
+  - Boundary cheatcodes rejected with clear EDB error
+  - See `docs/cheatcode-coverage.md`
+
+- [ ] **Foundry Fuzz/Invariant Debugging** (deferred)
+  - Multi-call sequence replay (each call → engine snapshot)
+  - Shrunken failing-sequence inspection
+  - Note: not a near-term priority per user (2026-05-11); the synthetic-
+    entrypoint pattern from v0.0.4 generalizes naturally but the shrink
+    replay UX is substantial work
 
 - [ ] **Hardhat Test Support**
   - Support for Hardhat test debugging
@@ -119,6 +129,8 @@ This document outlines the development roadmap for EDB (Ethereum Debugger), orga
   - Source code highlighting and breakpoint management
   - Variable inspection and watch panels
   - Integration with existing Solidity extensions
+  - Note: deprioritized as of 2026-05-11 in favor of cheatcode coverage
+    + multi-fork backend
 
 ### 🌐 Milestone 5: Multi-Chain & L2 Support
 **Goal**: Extend debugging capabilities beyond Ethereum mainnet with L2-specific features
