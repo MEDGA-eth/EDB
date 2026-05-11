@@ -314,9 +314,13 @@ async fn track_connection(
 /// Represents messages sent to the worker thread for handling operations involving types that are
 /// not `Send`.
 pub enum WorkerMessage {
+    /// Request to replay a transaction on a fresh fork.
     Replay {
+        /// Transaction hash to replay.
         tx_hash: TxHash,
+        /// Channel for sending progress updates to the client.
         progress_tx: mpsc::UnboundedSender<ProgressMessage>,
+        /// Channel for sending the completed RPC port back to the caller.
         response_tx: oneshot::Sender<Result<u16>>,
     },
 }

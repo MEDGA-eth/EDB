@@ -28,6 +28,7 @@ use tracing::{debug, info, warn};
 const PROXY_HEARTBEAT_INTERVAL: u64 = 10;
 const PROXY_GRACE_PERIOD: u64 = 30;
 
+/// Ensure an `edb-rpc-proxy` instance is running at `proxy_port`, spawning one if necessary.
 pub async fn ensure_proxy_running(
     rpc_urls: &str,
     proxy_port: u16,

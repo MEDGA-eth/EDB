@@ -94,6 +94,7 @@ pub fn find_tui_binary() -> Result<PathBuf> {
 #[derive(Debug, Default, Args)]
 pub struct TuiOptions {}
 
+/// Spawn the `edb-tui` binary and wait for it or Ctrl-C.
 pub async fn start_tui(_options: &TuiOptions, rpc_server_addr: SocketAddr) -> Result<()> {
     // Launch Terminal UI
     tracing::info!("Launching Terminal UI...");

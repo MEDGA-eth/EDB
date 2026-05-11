@@ -12,11 +12,15 @@ use std::path::{Path, PathBuf};
 #[derive(Debug)]
 #[allow(dead_code)] // fields consumed by downstream tasks (3.3+)
 pub struct ResolvedProject {
+    /// Absolute path to the Foundry project root.
     pub root: PathBuf,
+    /// Active Foundry profile name.
     pub profile_name: String,
+    /// Loaded and sanitized Foundry config for the project.
     pub config: Config,
 }
 
+/// Resolve the Foundry project context from optional CLI arguments.
 pub fn resolve_project(
     root_arg: Option<&str>,
     profile_arg: Option<&str>,

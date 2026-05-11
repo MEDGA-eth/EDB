@@ -9,10 +9,13 @@
 use alloy_primitives::{Bytes, address};
 use eyre::{Result, bail};
 
+/// Name of the generated synthetic entrypoint contract.
 #[allow(dead_code)] // consumed by downstream tasks (4.2+)
 pub const ENTRYPOINT_NAME: &str = "_EdbTestEntrypoint";
+/// Filename of the generated synthetic entrypoint source file.
 #[allow(dead_code)] // consumed by downstream tasks (4.2+)
 pub const ENTRYPOINT_FILE: &str = "_EdbTestEntrypoint.sol";
+/// Deterministic address where the entrypoint is deployed.
 #[allow(dead_code)] // consumed by downstream tasks (4.2+)
 pub const ENTRYPOINT_ADDR: alloy_primitives::Address =
     address!("ED0100000000000000000000000000000000ED01");
@@ -56,7 +59,9 @@ contract {ENTRYPOINT_NAME} {{
 /// Result of compiling the synthetic entrypoint.
 #[allow(dead_code)] // consumed by downstream tasks (4.2+)
 pub struct CompiledEntrypoint {
+    /// Deployed bytecode of the compiled entrypoint contract.
     pub deployed_bytecode: Bytes,
+    /// 4-byte selector for the `run()` function.
     pub run_selector: [u8; 4],
     /// Foundry-lifted artifact for the synthesized entrypoint, ready to be
     /// inserted into a `LocalArtifactSet` for source-level analysis /

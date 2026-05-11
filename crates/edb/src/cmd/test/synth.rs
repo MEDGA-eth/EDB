@@ -36,8 +36,10 @@ pub const CHEATCODE_SENTINEL_BYTECODE: &[u8] = &[0xfe];
 /// Default chain id for fork-free test sessions. Matches forge's default.
 #[allow(dead_code)] // consumed by downstream tasks (4.3+)
 pub const DEFAULT_FORK_FREE_CHAIN_ID: u64 = 31337;
+/// Default block number for fork-free test sessions.
 #[allow(dead_code)] // consumed by downstream tasks (4.3+)
 pub const DEFAULT_FORK_FREE_BLOCK: u64 = 1;
+/// Default block timestamp for fork-free test sessions.
 #[allow(dead_code)] // consumed by downstream tasks (4.3+)
 pub const DEFAULT_FORK_FREE_TIMESTAMP: u64 = 1;
 

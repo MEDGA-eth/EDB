@@ -43,13 +43,21 @@ pub fn validate_test_function_name(name: &str) -> Result<()> {
 /// Located test artifact and its compiled form.
 #[allow(dead_code)] // consumed by downstream tasks (3.4+)
 pub struct ResolvedTest {
+    /// Name of the test contract.
     pub contract_name: String,
+    /// Name of the test function to invoke.
     pub test_function: String,
+    /// Path to the artifact source file.
     pub artifact_path: PathBuf,
+    /// ABI of the test contract.
     pub abi: JsonAbi,
+    /// Deployed bytecode of the test contract.
     pub deployed_bytecode: Bytes,
+    /// Creation bytecode of the test contract.
     pub creation_bytecode: Bytes,
+    /// Whether the contract has a `setUp` function.
     pub has_setup: bool,
+    /// Solidity compiler version used.
     pub compiler_version: String,
 }
 

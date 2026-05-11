@@ -26,14 +26,6 @@
 //! behind the `test-harness` Cargo feature and live in
 //! [`cmd::test::harness`](crate::cmd::test).
 //!
-//! Note: most internals were originally written for the `bin` target where
-//! the `missing_docs` lint was a warn-by-default escape hatch. Promoting
-//! them into a `lib` would turn the same warnings into errors under the
-//! workspace's `-D warnings` policy. We blanket-allow `missing_docs` at the
-//! library root to avoid an unrelated documentation churn within this task.
-
-#![allow(missing_docs)]
-
 pub mod cli;
 pub mod cmd;
 pub mod proxy;
