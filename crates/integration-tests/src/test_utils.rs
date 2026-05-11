@@ -27,15 +27,21 @@ pub mod paths {
 
     use super::*;
 
-    /// Get the baseline directory path
-    pub fn get_baseline_dir() -> PathBuf {
+    /// Resolve the EDB workspace root from this crate's manifest dir.
+    ///
+    /// `crates/integration-tests` -> `crates/` -> workspace root.
+    pub fn workspace_root() -> PathBuf {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         manifest_dir
             .parent() // crates/
             .and_then(|p| p.parent()) // workspace root
             .expect("Failed to find workspace root")
-            .join("testdata")
-            .join("rpc_baseline")
+            .to_path_buf()
+    }
+
+    /// Get the baseline directory path
+    pub fn get_baseline_dir() -> PathBuf {
+        workspace_root().join("testdata").join("rpc_baseline")
     }
 }
 

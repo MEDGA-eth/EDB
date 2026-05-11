@@ -11,9 +11,17 @@ homepage.workspace = true
 repository.workspace = true
 exclude.workspace = true
 
+[lib]
+name = "edb"
+path = "src/lib.rs"
+
 [[bin]]
 name = "edb"
 path = "src/main.rs"
+
+[features]
+# Expose programmatic entrypoints for integration tests (e.g. `run_foundry_test_for_test`).
+test-harness = []
 
 [lints]
 workspace = true

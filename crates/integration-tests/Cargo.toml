@@ -20,6 +20,9 @@ workspace = true
 edb-common.workspace = true
 edb-rpc-proxy.workspace = true
 edb-engine.workspace = true
+# The `edb` binary crate also ships a small library facade used by the
+# integration tests (see `crates/edb/src/cmd/test/harness.rs`).
+edb = { path = "../edb", features = ["test-harness"] }
 
 # Test dependencies
 tokio = { workspace = true, features = ["full"] }
@@ -41,3 +44,8 @@ alloy-dyn-abi = { workspace = true }
 
 # REVM for hardfork specs
 revm = { workspace = true, features = ["std", "serde"] }
+
+[dev-dependencies]
+# Serializes integration tests that mutate process-global state
+# (FOUNDRY_PROFILE, current directory, etc.) — see foundry_test_fixture.rs.
+serial_test = "3"

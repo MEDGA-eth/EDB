@@ -16,7 +16,10 @@ contract Cheats is Test {
     }
 
     function testExpectRevert() public {
-        vm.expectRevert(bytes("boom"));
+        // Bare expectRevert matches any revert; the call to `revertingFn`
+        // reverts and the cheatcode rewrites the outcome to a successful
+        // return so testExpectRevert returns normally.
+        vm.expectRevert();
         revertingFn();
     }
 

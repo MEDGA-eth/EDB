@@ -23,6 +23,12 @@ pub mod entrypoint;
 pub mod project;
 pub mod synth;
 
+#[cfg(feature = "test-harness")]
+pub mod harness;
+
+#[cfg(feature = "test-harness")]
+pub use harness::{TestSessionHandle, run_foundry_test_for_test};
+
 use eyre::Result;
 
 /// Run a single Foundry test function inside the EDB debugger.
