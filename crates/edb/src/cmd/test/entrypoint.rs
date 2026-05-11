@@ -55,6 +55,10 @@ contract {ENTRYPOINT_NAME} {{
 pub struct CompiledEntrypoint {
     pub deployed_bytecode: Bytes,
     pub run_selector: [u8; 4],
+    /// Foundry-lifted artifact for the synthesized entrypoint, ready to be
+    /// inserted into a `LocalArtifactSet` for source-level analysis /
+    /// instrumentation of the test contract.
+    pub artifact: edb_engine::Artifact,
 }
 
 /// Generate and compile the synthetic entrypoint using foundry-compilers.
@@ -90,7 +94,12 @@ pub fn compile_entrypoint(
     let config = foundry_config::Config::load_with_root(project_root)
         .map_err(|e| eyre::eyre!("foundry-config load_with_root: {e}"))?
         .sanitized();
-    let project = config.project().map_err(|e| eyre::eyre!("project setup: {e}"))?;
+    let mut project = config.project().map_err(|e| eyre::eyre!("project setup: {e}"))?;
+    // EDB needs AST in the compile output to drive source-level analysis;
+    // request the full output selection so the lifted Artifact carries it.
+    project.update_output_selection(|sel| {
+        *sel = foundry_compilers::artifacts::output_selection::OutputSelection::complete_output_selection();
+    });
     let output = project
         .compile_file(&entrypoint_path)
         .map_err(|e| eyre::eyre!("compile entrypoint: {e}"))?;
@@ -100,9 +109,8 @@ pub fn compile_entrypoint(
         bail!("entrypoint compile errors:\n{output}");
     }
 
-    let entry_artifact =
-        output.artifact_ids().find(|(id, _)| id.name == ENTRYPOINT_NAME).map(|(_, art)| art);
-    let Some(artifact) = entry_artifact else {
+    let entry = output.artifact_ids().find(|(id, _)| id.name == ENTRYPOINT_NAME);
+    let Some((entry_id, artifact)) = entry else {
         let _ = std::fs::remove_file(&entrypoint_path);
         bail!("entrypoint artifact not produced (compile output had {ENTRYPOINT_NAME}?)");
     };
@@ -113,12 +121,38 @@ pub fn compile_entrypoint(
         .ok_or_else(|| eyre::eyre!("entrypoint missing deployed bytecode"))?
         .into_owned();
 
+    // Lift the foundry artifact into EDB's `Artifact` shape so the engine can
+    // run source-level analysis / instrumentation against the synthesized
+    // entrypoint without an Etherscan round-trip.
+    let mut lifted = edb_engine::Artifact::from_foundry(&entry_id, artifact)
+        .map_err(|e| eyre::eyre!("lift entrypoint artifact: {e}"))?;
+    // The entrypoint file is deleted on exit (see the cleanup below), so
+    // `cmd::test::artifacts::backfill_source_contents` cannot read it from
+    // disk later. Patch the in-memory source body directly so analysis has
+    // the entrypoint contents available.
+    {
+        use std::sync::Arc;
+        let path_in_input = lifted
+            .input
+            .sources
+            .0
+            .keys()
+            .find(|p| p.file_name().and_then(|n| n.to_str()) == Some(ENTRYPOINT_FILE))
+            .cloned();
+        if let Some(p) = path_in_input
+            && let Some(s) = lifted.input.sources.0.get_mut(&p)
+        {
+            s.content = Arc::new(src);
+        }
+    }
+
     // Best-effort cleanup; if the user re-runs we'll just overwrite.
     let _ = std::fs::remove_file(&entrypoint_path);
 
     Ok(CompiledEntrypoint {
         deployed_bytecode: deployed,
         run_selector: alloy_primitives::keccak256(b"run()")[..4].try_into().unwrap(),
+        artifact: lifted,
     })
 }
 

@@ -16,6 +16,7 @@
 
 //! `edb test` — Foundry test debugging command.
 
+pub mod artifacts;
 pub mod cheats;
 pub mod discover;
 pub mod entrypoint;
@@ -42,7 +43,14 @@ pub async fn run_foundry_test(
     let project_ctx = project::resolve_project(root, profile)?;
     tracing::info!("Resolved project at {}", project_ctx.root.display());
 
-    let project = project_ctx.config.project().map_err(|e| eyre::eyre!("project setup: {e}"))?;
+    let mut project =
+        project_ctx.config.project().map_err(|e| eyre::eyre!("project setup: {e}"))?;
+    // EDB needs AST in the compile output to drive source-level analysis /
+    // instrumentation. `foundry-config`'s default `extra_output` doesn't request
+    // AST, so we widen the selection here.
+    project.update_output_selection(|sel| {
+        *sel = foundry_compilers::artifacts::output_selection::OutputSelection::complete_output_selection();
+    });
     let compile_output = project.compile().map_err(|e| eyre::eyre!("compile: {e}"))?;
     if compile_output.has_compiler_errors() {
         eyre::bail!("compilation errors:\n{compile_output}");
@@ -84,6 +92,17 @@ pub async fn run_foundry_test(
         compiled_entry.run_selector,
     )?;
 
+    // Build a codehash-keyed index of every locally-compiled artifact (project
+    // contracts + the synthesized entrypoint). The engine will use this to
+    // resolve source for the synthetic addresses in this test transaction
+    // without needing Etherscan.
+    let local_artifacts = artifacts::build_local_artifact_set(
+        &compile_output,
+        &compiled_entry.deployed_bytecode,
+        compiled_entry.artifact.clone(),
+        &project_ctx.root,
+    )?;
+
     let engine_config = edb_engine::EngineConfig::default().with_quick_mode(cli.quick);
     let engine = edb_engine::Engine::new(engine_config);
 
@@ -97,7 +116,7 @@ pub async fn run_foundry_test(
             None,
             Some(edb_web::router()),
             Some(cheats_factory),
-            None,
+            Some(local_artifacts),
         )
         .await?;
 

@@ -363,6 +363,7 @@ impl Engine {
             &artifacts,
             &recompiled_artifacts,
             tx_hash,
+            &replay_result.visited_addresses,
         )
         .await?;
 
