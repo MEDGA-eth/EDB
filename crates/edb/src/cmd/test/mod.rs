@@ -23,23 +23,26 @@ pub mod synth;
 
 use eyre::Result;
 
+/// Run a single Foundry test function inside the EDB debugger.
+///
+/// Currently only fork-free tests (no `--fork-url`) are supported.
 pub async fn run_foundry_test(
     target: &str,
     root: Option<&str>,
     profile: Option<&str>,
     fork_url: Option<&str>,
-    fork_block_number: Option<u64>,
-    _cli: &crate::Cli,
+    _fork_block_number: Option<u64>,
+    cli: &crate::Cli,
 ) -> Result<()> {
+    if fork_url.is_some() {
+        eyre::bail!("--fork-url is not yet implemented; coming in a later phase");
+    }
+
     let project_ctx = project::resolve_project(root, profile)?;
     tracing::info!("Resolved project at {}", project_ctx.root.display());
 
-    let project = project_ctx
-        .config
-        .project()
-        .map_err(|e| eyre::eyre!("foundry project setup failed: {e}"))?;
-    let compile_output =
-        project.compile().map_err(|e| eyre::eyre!("foundry compile failed: {e}"))?;
+    let project = project_ctx.config.project().map_err(|e| eyre::eyre!("project setup: {e}"))?;
+    let compile_output = project.compile().map_err(|e| eyre::eyre!("compile: {e}"))?;
     if compile_output.has_compiler_errors() {
         eyre::bail!("compilation errors:\n{compile_output}");
     }
@@ -47,16 +50,55 @@ pub async fn run_foundry_test(
 
     let resolved = discover::resolve_test(target, &project_ctx.root, &compile_output)?;
     tracing::info!(
-        "Resolved {}::{}  (setUp={}, solc={})",
+        "Resolved {}::{} (setUp={}, solc={})",
         resolved.contract_name,
         resolved.test_function,
         resolved.has_setup,
         resolved.compiler_version,
     );
 
-    eyre::bail!(
-        "compiled + resolved (entrypoint and synthetic tx pending). fork_url={:?} block={:?}",
-        fork_url,
-        fork_block_number
-    )
+    // Canonicalize both paths before computing the relative import path so that
+    // symlinks (e.g. macOS /tmp → /private/tmp) do not produce spurious `../../`
+    // prefixes in the generated entrypoint `import` statement.
+    let canonical_artifact =
+        resolved.artifact_path.canonicalize().unwrap_or_else(|_| resolved.artifact_path.clone());
+    let canonical_root =
+        project_ctx.root.canonicalize().unwrap_or_else(|_| project_ctx.root.clone());
+    let test_source_rel = pathdiff::diff_paths(&canonical_artifact, &canonical_root)
+        .unwrap_or_else(|| resolved.artifact_path.clone());
+
+    let compiled_entry = entrypoint::compile_entrypoint(
+        &resolved.contract_name,
+        &resolved.test_function,
+        resolved.has_setup,
+        &resolved.compiler_version,
+        &project_ctx.root,
+        &test_source_rel,
+    )?;
+
+    let fork_result = synth::build_clean_fork_result(
+        compiled_entry.deployed_bytecode.clone(),
+        &resolved.contract_name,
+        &resolved.test_function,
+        compiled_entry.run_selector,
+    )?;
+
+    let engine_config = edb_engine::EngineConfig::default().with_quick_mode(cli.quick);
+    let engine = edb_engine::Engine::new(engine_config);
+
+    let rpc_server_addr = engine
+        .prepare_with_router_and_cheats::<_, edb_engine::NoCheats>(
+            fork_result,
+            None,
+            Some(edb_web::router()),
+            None,
+            None,
+        )
+        .await?;
+
+    crate::utils::launch_ui_and_wait(cli, rpc_server_addr).await?;
+
+    let tx_hash = synth::synthetic_tx_hash(&resolved.contract_name, &resolved.test_function);
+    let _ = engine.shutdown_rpc_server(&tx_hash);
+    Ok(())
 }

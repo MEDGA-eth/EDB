@@ -131,6 +131,26 @@ pub async fn start_tui(_options: &TuiOptions, rpc_server_addr: SocketAddr) -> Re
     Ok(())
 }
 
+/// Launch whichever UI the user requested and block until it exits.
+///
+/// - `Tui`: spawns the `edb-tui` binary and waits for it or Ctrl-C.
+/// - `Web`: opens the browser and waits for Ctrl-C.
+pub async fn launch_ui_and_wait(
+    cli: &crate::Cli,
+    rpc_server_addr: std::net::SocketAddr,
+) -> eyre::Result<()> {
+    match cli.ui {
+        crate::Ui::Tui => start_tui(&cli.tui_options, rpc_server_addr).await,
+        crate::Ui::Web => {
+            let url = format!("http://{rpc_server_addr}/");
+            open_browser(&url);
+            tracing::info!("Web UI ready. Press Ctrl+C to exit.");
+            tokio::signal::ctrl_c().await?;
+            Ok(())
+        }
+    }
+}
+
 /// Open `url` in the user's default browser.
 ///
 /// On failure, logs a warning and prints the URL to stdout so the user can

@@ -54,6 +54,7 @@ webbrowser.workspace = true
 # misc
 dotenv.workspace = true
 eyre.workspace = true
+pathdiff = "0.2"
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 serde.workspace = true

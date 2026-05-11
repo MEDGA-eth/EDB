@@ -45,17 +45,7 @@ pub async fn replay_transaction(tx_hash: TxHash, cli: &crate::Cli, rpc_url: &str
         Ui::Web => engine.prepare_with_router(fork_result, None, Some(edb_web::router())).await?,
     };
 
-    match cli.ui {
-        Ui::Tui => {
-            utils::start_tui(&cli.tui_options, rpc_server_addr).await?;
-        }
-        Ui::Web => {
-            let url = format!("http://{rpc_server_addr}/");
-            utils::open_browser(&url);
-            tracing::info!("Web UI ready. Press Ctrl+C to exit.");
-            tokio::signal::ctrl_c().await?;
-        }
-    }
+    utils::launch_ui_and_wait(cli, rpc_server_addr).await?;
 
     tracing::info!("Shutting down EDB...");
     engine.shutdown_rpc_server(&tx_hash)?;
