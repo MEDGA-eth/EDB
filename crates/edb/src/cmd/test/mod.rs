@@ -87,12 +87,16 @@ pub async fn run_foundry_test(
     let engine_config = edb_engine::EngineConfig::default().with_quick_mode(cli.quick);
     let engine = edb_engine::Engine::new(engine_config);
 
+    let cheats_config =
+        cheats::CheatsConfig { project_root: project_ctx.root.clone(), upstream_rpc: None };
+    let cheats_factory = cheats::build_cheats_factory(cheats_config);
+
     let rpc_server_addr = engine
-        .prepare_with_router_and_cheats::<_, edb_engine::NoCheats>(
+        .prepare_with_router_and_cheats::<_, cheats::EdbCheatcodes<foundry_evm_core::evm::EthEvmNetwork>>(
             fork_result,
             None,
             Some(edb_web::router()),
-            None,
+            Some(Box::new(cheats_factory)),
             None,
         )
         .await?;

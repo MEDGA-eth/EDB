@@ -7,11 +7,13 @@
 
 use std::{path::PathBuf, sync::Arc};
 
+use edb_common::EdbContext;
 use foundry_cheatcodes::Cheatcodes;
-use foundry_evm_core::evm::{EthEvmNetwork, FoundryContextFor, FoundryEvmNetwork};
+use foundry_evm_core::evm::{EthEvmNetwork, FoundryEvmNetwork};
+use revm::Database;
 
 /// EDB-side configuration for the cheatcodes inspector.
-#[allow(dead_code)] // consumed by downstream tasks (5.3+)
+#[allow(dead_code)] // `upstream_rpc` consumed by Tasks 8.x (fork-URL support)
 #[derive(Clone, Debug)]
 pub struct CheatsConfig {
     /// Path to the foundry project root. Used by cheatcodes that read project
@@ -30,132 +32,58 @@ impl CheatsConfig {
     }
 }
 
-/// EDB wrapper around foundry's `Cheatcodes<FEN>` inspector. Forwards all
-/// Inspector hooks to the inner implementation. Boundary-cheatcode rejection
-/// comes in Task 7.1.
-#[allow(dead_code)] // consumed by downstream tasks (5.3+)
+/// EDB wrapper around foundry's `Cheatcodes<FEN>` inspector.
+///
+/// # Context compatibility
+///
+/// EDB's orchestration runs the EVM against `EdbContext<DB>` (=
+/// `revm::Context<BlockEnv, TxEnv, CfgEnv, CacheDB<DB>>`).  Foundry's
+/// `Cheatcodes<FEN>` implements `Inspector` only for its own
+/// `FoundryContextFor<'_, FEN>` (= `Context<..., &mut dyn DatabaseExt<..>>`),
+/// whose database layer exposes fork management and cheatcode-access-list APIs
+/// that plain `CacheDB<DB>` does not provide.
+///
+/// Bridging the two requires adopting foundry's `Backend` as EDB's database —
+/// a deeper architectural change scheduled for a later task.  For now
+/// `EdbCheatcodes` carries the `Cheatcodes<FEN>` value so it is ready to be
+/// activated once the context migration lands, and provides a **no-op**
+/// `Inspector<EdbContext<DB>>` impl that satisfies the engine's trait bound
+/// without panicking at runtime.
 pub struct EdbCheatcodes<FEN: FoundryEvmNetwork = EthEvmNetwork> {
     inner: Cheatcodes<FEN>,
 }
 
 impl<FEN: FoundryEvmNetwork> EdbCheatcodes<FEN> {
-    #[allow(dead_code)] // consumed by downstream tasks (5.3+)
     pub fn new(inner: Cheatcodes<FEN>) -> Self {
         Self { inner }
     }
+
+    /// Expose the inner foundry `Cheatcodes<FEN>` for future use when EDB
+    /// migrates to a foundry-compatible execution context.
+    #[allow(dead_code)]
+    pub fn into_inner(self) -> Cheatcodes<FEN> {
+        self.inner
+    }
 }
 
-// Implement revm::Inspector by forwarding every hook to the inner
-// `Cheatcodes<FEN>`.  The CTX is the concrete `FoundryContextFor<'_, FEN>`
-// that `Cheatcodes<FEN>` already implements `Inspector` for.
-impl<'db, FEN: FoundryEvmNetwork> revm::Inspector<FoundryContextFor<'db, FEN>>
+// ─── Inspector<EdbContext<DB>> ───────────────────────────────────────────────
+//
+// All hooks default to no-ops.  EDB's orchestration executes against
+// `EdbContext<DB>` whose database is `CacheDB<DB>` — a type that does not
+// implement foundry's `DatabaseExt` trait.  Forwarding to the inner
+// `Cheatcodes<FEN>` is therefore not yet possible; the inner value is
+// preserved for the upcoming context-migration task.
+impl<FEN: FoundryEvmNetwork, DB: Database + revm::DatabaseRef> revm::Inspector<EdbContext<DB>>
     for EdbCheatcodes<FEN>
-where
-    Cheatcodes<FEN>: revm::Inspector<FoundryContextFor<'db, FEN>>,
 {
-    fn initialize_interp(
-        &mut self,
-        interp: &mut revm::interpreter::Interpreter,
-        ctx: &mut FoundryContextFor<'db, FEN>,
-    ) {
-        self.inner.initialize_interp(interp, ctx);
-    }
-
-    fn step(
-        &mut self,
-        interp: &mut revm::interpreter::Interpreter,
-        ctx: &mut FoundryContextFor<'db, FEN>,
-    ) {
-        self.inner.step(interp, ctx);
-    }
-
-    fn step_end(
-        &mut self,
-        interp: &mut revm::interpreter::Interpreter,
-        ctx: &mut FoundryContextFor<'db, FEN>,
-    ) {
-        self.inner.step_end(interp, ctx);
-    }
-
-    fn log(&mut self, ctx: &mut FoundryContextFor<'db, FEN>, log: alloy_primitives::Log) {
-        self.inner.log(ctx, log);
-    }
-
-    fn log_full(
-        &mut self,
-        interp: &mut revm::interpreter::Interpreter,
-        ctx: &mut FoundryContextFor<'db, FEN>,
-        log: alloy_primitives::Log,
-    ) {
-        self.inner.log_full(interp, ctx, log);
-    }
-
-    fn frame_start(
-        &mut self,
-        ctx: &mut FoundryContextFor<'db, FEN>,
-        frame_input: &mut revm::interpreter::FrameInput,
-    ) -> Option<revm::handler::FrameResult> {
-        self.inner.frame_start(ctx, frame_input)
-    }
-
-    fn frame_end(
-        &mut self,
-        ctx: &mut FoundryContextFor<'db, FEN>,
-        frame_input: &revm::interpreter::FrameInput,
-        frame_result: &mut revm::handler::FrameResult,
-    ) {
-        self.inner.frame_end(ctx, frame_input, frame_result);
-    }
-
-    fn call(
-        &mut self,
-        ctx: &mut FoundryContextFor<'db, FEN>,
-        inputs: &mut revm::interpreter::CallInputs,
-    ) -> Option<revm::interpreter::CallOutcome> {
-        self.inner.call(ctx, inputs)
-    }
-
-    fn call_end(
-        &mut self,
-        ctx: &mut FoundryContextFor<'db, FEN>,
-        inputs: &revm::interpreter::CallInputs,
-        outcome: &mut revm::interpreter::CallOutcome,
-    ) {
-        self.inner.call_end(ctx, inputs, outcome);
-    }
-
-    fn create(
-        &mut self,
-        ctx: &mut FoundryContextFor<'db, FEN>,
-        inputs: &mut revm::interpreter::CreateInputs,
-    ) -> Option<revm::interpreter::CreateOutcome> {
-        self.inner.create(ctx, inputs)
-    }
-
-    fn create_end(
-        &mut self,
-        ctx: &mut FoundryContextFor<'db, FEN>,
-        inputs: &revm::interpreter::CreateInputs,
-        outcome: &mut revm::interpreter::CreateOutcome,
-    ) {
-        self.inner.create_end(ctx, inputs, outcome);
-    }
-
-    fn selfdestruct(
-        &mut self,
-        contract: alloy_primitives::Address,
-        target: alloy_primitives::Address,
-        value: alloy_primitives::U256,
-    ) {
-        self.inner.selfdestruct(contract, target, value);
-    }
+    // Default no-op implementations are sufficient for compilation.
+    // Real cheatcode dispatch will be wired once EDB adopts foundry's Backend.
 }
 
 /// Build a factory yielding fresh `EdbCheatcodes<EthEvmNetwork>` per call.
 /// Each pass of the engine pipeline (tracer / opcode / hook) gets a clean
 /// cheatcodes inspector so `vm.prank`/`vm.mockCall`/etc state doesn't bleed
 /// between passes.
-#[allow(dead_code)] // consumed by downstream tasks (5.3+)
 pub fn build_cheats_factory(
     config: CheatsConfig,
 ) -> impl Fn() -> EdbCheatcodes<EthEvmNetwork> + Send + Sync {
