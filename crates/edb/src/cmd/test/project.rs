@@ -50,7 +50,9 @@ pub fn resolve_project(
 
 fn load_config_at(root: &Path) -> Result<Config> {
     // Config::load_with_root returns Result<Self, ExtractConfigError> in foundry-config v1.7.1.
-    Config::load_with_root(root).map_err(|e| eyre::eyre!("{e}"))
+    // `.sanitized()` canonicalises all relative paths against `config.root` so that callers
+    // see absolute paths regardless of the process working directory.
+    Config::load_with_root(root).map_err(|e| eyre::eyre!("{e}")).map(|c| c.sanitized())
 }
 
 fn find_root_by_walking_up() -> Result<PathBuf> {

@@ -25,10 +25,36 @@ pub async fn run_foundry_test(
     target: &str,
     root: Option<&str>,
     profile: Option<&str>,
-    _fork_url: Option<&str>,
-    _fork_block_number: Option<u64>,
+    fork_url: Option<&str>,
+    fork_block_number: Option<u64>,
     _cli: &crate::Cli,
 ) -> Result<()> {
-    let _resolved = project::resolve_project(root, profile)?;
-    eyre::bail!("edb test {target} (project resolved; rest pending)")
+    let project_ctx = project::resolve_project(root, profile)?;
+    tracing::info!("Resolved project at {}", project_ctx.root.display());
+
+    let project = project_ctx
+        .config
+        .project()
+        .map_err(|e| eyre::eyre!("foundry project setup failed: {e}"))?;
+    let compile_output =
+        project.compile().map_err(|e| eyre::eyre!("foundry compile failed: {e}"))?;
+    if compile_output.has_compiler_errors() {
+        eyre::bail!("compilation errors:\n{compile_output}");
+    }
+    let compile_output = compile_output.with_stripped_file_prefixes(&project_ctx.root);
+
+    let resolved = discover::resolve_test(target, &project_ctx.root, &compile_output)?;
+    tracing::info!(
+        "Resolved {}::{}  (setUp={}, solc={})",
+        resolved.contract_name,
+        resolved.test_function,
+        resolved.has_setup,
+        resolved.compiler_version,
+    );
+
+    eyre::bail!(
+        "compiled + resolved (entrypoint and synthetic tx pending). fork_url={:?} block={:?}",
+        fork_url,
+        fork_block_number
+    )
 }
