@@ -336,6 +336,39 @@ async fn cheats_env_or_returns_fallback() -> Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_fixture)]
+async fn cheats_gas_metering_stubs_dont_revert() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testGasMeteringStubs",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(!trace.is_empty(), "trace was empty for Cheats::testGasMeteringStubs");
+
+    // All three gas-metering cheatcodes are stubs that must not revert.
+    // The test confirms the full call sequence flows through without error.
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry for Cheats::testGasMeteringStubs");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success for gas metering stubs; got: {:?}",
+        top.result,
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
 async fn boundary_select_fork_reverts_with_edb_message() -> Result<()> {
     init::init_test_environment(true);
     let root = fixture_root();

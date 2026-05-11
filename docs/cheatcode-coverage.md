@@ -40,6 +40,8 @@ address (`0x7109709ECfa91a80626fF3989D68f67F5b1DD12D`) and dispatches by
 | `vm.envBytes(string)` | Reads the named process env var and hex-decodes the value (must start with `0x`). Reverts on invalid hex or if the var is not set. |
 | `vm.envString(string)` | Reads the named process env var and returns it as a UTF-8 ABI-encoded `string`. Reverts if the var is not set. |
 | `vm.envOr(string,bool)` / `vm.envOr(string,bytes)` / `vm.envOr(string,string)` | Same as the corresponding `envXxx` but returns the second argument when the var is not set instead of reverting. |
+| `vm.pauseGasMetering()` / `vm.resumeGasMetering()` | **Stub.** Tracks a `gas_metering_paused` flag but does NOT actually pause REVM's gas accounting. Tests that call these for flow control (don't crash) work fine; tests that assert different gas behavior between paused and running may see unexpected values. |
+| `vm.lastCallGas() returns (Gas memory)` | **Stub.** Returns an all-zero `Gas` struct (`gasLimit`, `gasTotalUsed`, `gasMemoryUsed`, `gasRefunded`, `gasRemaining` all 0). EDB runs the same transaction in multiple instrumented passes; real REVM gas values differ between passes and would cause non-determinism, so zero is the correct deterministic stub. Tests that assert specific gas values will fail; tests that only flow through (don't assert gas) will work. |
 
 All selectors are verified at test time against `keccak256(canonical_signature)[..4]`;
 see the unit tests in `crates/edb/src/cmd/test/cheats.rs`.
@@ -97,7 +99,6 @@ EDB: unknown cheatcode selector 0x<hex> (likely not implemented in v1)
 
 so authors can file an issue or PR. Common candidates for v2:
 `vm.envInt`, `vm.envUint`, `vm.envAddress` (and their `envOr` overloads),
-`vm.pauseGasMetering`, `vm.lastCallGas`,
 `vm.parseJson*`, `vm.parseToml*`.
 
 ## Want a cheatcode added?

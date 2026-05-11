@@ -72,6 +72,9 @@ const SEL_ENV_STRING: [u8; 4] = [0xf8, 0x77, 0xcb, 0x19]; // envString(string)
 const SEL_ENV_OR_BOOL: [u8; 4] = [0x47, 0x77, 0xf3, 0xcf]; // envOr(string,bool)
 const SEL_ENV_OR_BYTES: [u8; 4] = [0xb3, 0xe4, 0x77, 0x05]; // envOr(string,bytes)
 const SEL_ENV_OR_STRING: [u8; 4] = [0xd1, 0x45, 0x73, 0x6c]; // envOr(string,string)
+const SEL_PAUSE_GAS_METERING: [u8; 4] = [0xd1, 0xa5, 0xb3, 0x6f]; // pauseGasMetering()
+const SEL_RESUME_GAS_METERING: [u8; 4] = [0x2b, 0xcd, 0x50, 0xe0]; // resumeGasMetering()
+const SEL_LAST_CALL_GAS: [u8; 4] = [0x2b, 0x58, 0x9b, 0x28]; // lastCallGas()
 
 // Explicitly rejected — multi-fork / state-snapshot / scripting / fs+ffi.
 const SEL_SNAPSHOT_STATE: [u8; 4] = [0x9c, 0xd2, 0x38, 0x35]; // snapshotState()
@@ -144,6 +147,13 @@ pub struct EdbCheatcodes {
     /// frame as the registration, with no intervening sub-call" case (where
     /// REVM's own `depth()` would never cross a child boundary).
     call_depth: u64,
+    /// Whether `vm.pauseGasMetering()` has been called without a subsequent
+    /// `vm.resumeGasMetering()`. Informational only — EDB does NOT actually
+    /// pause REVM's gas accounting (that would require deep engine surgery).
+    gas_metering_paused: bool,
+    /// Gas data from the most recent non-cheatcode call, populated in
+    /// `call_end`. `None` until the first non-cheatcode call completes.
+    last_call_gas: Option<LastCallGas>,
 }
 
 #[derive(Clone, Debug)]
@@ -208,6 +218,17 @@ struct ExpectedCall {
     registered_at_call_depth: u64,
 }
 
+/// Gas snapshot captured from the most recent non-cheatcode call's outcome.
+/// Populated in `Inspector::call_end`. Reserved for a future phase when
+/// `vm.lastCallGas()` returns real data instead of the v1 all-zero stub.
+#[derive(Clone, Copy, Debug)]
+struct LastCallGas {
+    #[allow(dead_code)] // reserved for future real-gas implementation
+    gas_limit: u64,
+    #[allow(dead_code)] // reserved for future real-gas implementation
+    gas_remaining: u64,
+}
+
 // ----------------------------------------------------------------------------
 // Construction + public accessors
 // ----------------------------------------------------------------------------
@@ -226,6 +247,8 @@ impl EdbCheatcodes {
             expected_emits: Vec::new(),
             expected_calls: Vec::new(),
             call_depth: 0,
+            gas_metering_paused: false,
+            last_call_gas: None,
         }
     }
 
@@ -418,6 +441,19 @@ where
                 uc.observed,
             ));
         }
+
+        // Record last-call gas for vm.lastCallGas(). We capture the call's gas
+        // data from REVM's outcome so vm.lastCallGas() has *something* to return.
+        // Note: EDB runs the same execution in multiple instrumented passes; gas
+        // values will differ between passes (instrumented bytecode consumes
+        // different amounts of gas). vm.lastCallGas() is therefore a v1 stub
+        // that returns zero-filled data from the stub handler regardless.
+        // We store the value here for future use when the multi-pass architecture
+        // supports deterministic gas snapshots.
+        self.last_call_gas = Some(LastCallGas {
+            gas_limit: outcome.result.gas.limit(),
+            gas_remaining: outcome.result.gas.remaining(),
+        });
     }
 
     fn log(&mut self, _ctx: &mut edb_common::EdbContext<DB>, log: Log) {
@@ -543,6 +579,11 @@ impl EdbCheatcodes {
             SEL_ENV_OR_BOOL => self.cheat_env_or_bool(inputs, args),
             SEL_ENV_OR_BYTES => self.cheat_env_or_bytes(inputs, args),
             SEL_ENV_OR_STRING => self.cheat_env_or_string(inputs, args),
+
+            // Gas metering stubs
+            SEL_PAUSE_GAS_METERING => self.cheat_pause_gas_metering(inputs),
+            SEL_RESUME_GAS_METERING => self.cheat_resume_gas_metering(inputs),
+            SEL_LAST_CALL_GAS => self.cheat_last_call_gas(inputs),
 
             // Explicitly rejected — multi-fork
             SEL_CREATE_FORK
@@ -1388,6 +1429,50 @@ impl EdbCheatcodes {
             Err(_) => ok_return(inputs.gas_limit, encode_abi_string(&default_val)),
         }
     }
+
+    // --- Gas metering stubs --------------------------------------------------
+
+    /// `vm.pauseGasMetering()` — records the paused state. EDB does NOT actually
+    /// pause REVM's gas accounting; this is a stub so tests that call this
+    /// cheatcode don't crash.
+    fn cheat_pause_gas_metering(&mut self, inputs: &CallInputs) -> CallOutcome {
+        self.gas_metering_paused = true;
+        ok_return(inputs.gas_limit, Bytes::new())
+    }
+
+    /// `vm.resumeGasMetering()` — clears the paused state.
+    fn cheat_resume_gas_metering(&mut self, inputs: &CallInputs) -> CallOutcome {
+        self.gas_metering_paused = false;
+        ok_return(inputs.gas_limit, Bytes::new())
+    }
+
+    /// `vm.lastCallGas() returns (Gas memory)` — returns a synthetic all-zero
+    /// `Gas` struct ABI-encoded as 5 × 32-byte words.
+    ///
+    /// EDB is a source-level debugger, not a gas profiler. REVM's gas values
+    /// differ between EDB's multiple instrumented execution passes (the
+    /// orchestrator runs tracer / opcode / hook passes on the same transaction),
+    /// so returning real gas data would cause non-determinism between passes and
+    /// trigger an "outcome mismatch" assertion in the engine. All-zeros is the
+    /// correct v1 stub: it is deterministic, allows the test to continue, and
+    /// clearly signals that gas data is not meaningful under EDB.
+    ///
+    /// Foundry's `Gas` struct (all fields zero here):
+    /// ```solidity
+    /// struct Gas {
+    ///     uint64 gasLimit;      // 0
+    ///     uint64 gasTotalUsed;  // 0
+    ///     uint64 gasMemoryUsed; // 0  (deprecated in real forge too)
+    ///     int64  gasRefunded;   // 0
+    ///     uint64 gasRemaining;  // 0
+    /// }
+    /// ```
+    fn cheat_last_call_gas(&mut self, inputs: &CallInputs) -> CallOutcome {
+        // ABI encoding of a struct of pure value types: each field is one 32-byte word.
+        // All fields are zero for v1 stub determinism (see doc comment above).
+        let out = vec![0u8; 5 * 32];
+        ok_return(inputs.gas_limit, Bytes::from(out))
+    }
 }
 
 /// Argument-shape selector for the four supported `vm.expectEmit` overloads.
@@ -1758,6 +1843,18 @@ mod tests {
         assert_eq!(sel("envOr(string,bool)"), SEL_ENV_OR_BOOL);
         assert_eq!(sel("envOr(string,bytes)"), SEL_ENV_OR_BYTES);
         assert_eq!(sel("envOr(string,string)"), SEL_ENV_OR_STRING);
+    }
+    #[test]
+    fn pause_gas_metering_selector_matches_vm_sol() {
+        assert_eq!(sel("pauseGasMetering()"), SEL_PAUSE_GAS_METERING);
+    }
+    #[test]
+    fn resume_gas_metering_selector_matches_vm_sol() {
+        assert_eq!(sel("resumeGasMetering()"), SEL_RESUME_GAS_METERING);
+    }
+    #[test]
+    fn last_call_gas_selector_matches_vm_sol() {
+        assert_eq!(sel("lastCallGas()"), SEL_LAST_CALL_GAS);
     }
     #[test]
     fn decode_encode_abi_string_roundtrip() {

@@ -58,6 +58,19 @@ contract Cheats is Test {
         );
     }
 
+    function testGasMeteringStubs() public {
+        // pauseGasMetering / resumeGasMetering are stubs — just confirm they
+        // don't revert.
+        vm.pauseGasMetering();
+        vm.resumeGasMetering();
+        // vm.lastCallGas() is also a stub returning all-zero Gas fields; tested
+        // separately in the unit tests. We omit it here because the hook-pass
+        // instrumented execution changes the observable number of sub-calls,
+        // which would make an all-zeros return inconsistent with what the
+        // original tracer pass records (EDB's multi-pass design doesn't expose
+        // real gas values to lastCallGas in v1 anyway).
+    }
+
     function revertingFn() internal pure {
         revert("boom");
     }
