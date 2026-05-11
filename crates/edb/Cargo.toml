@@ -26,6 +26,7 @@ edb-tui.workspace = true
 edb-web.workspace = true
 
 # alloy - using individual crates like Foundry does
+alloy-json-abi.workspace = true
 alloy-primitives = { workspace = true, features = ["getrandom", "rand"] }
 alloy-provider = { workspace = true, features = ["reqwest"] }
 alloy-rpc-types = { workspace = true, features = ["eth"] }

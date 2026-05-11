@@ -16,6 +16,7 @@
 
 //! `edb test` — Foundry test debugging command.
 
+pub mod discover;
 pub mod project;
 
 use eyre::Result;
