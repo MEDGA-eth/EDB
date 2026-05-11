@@ -43,7 +43,7 @@ pub mod macros;
 pub mod opcode;
 /// Progress message types for tracking operation progress
 pub mod progress;
-mod provider_db;
+pub mod provider_db;
 /// Specification ID utilities for handling different Ethereum hardforks and protocol versions
 pub mod spec_id;
 /// Testing utilities and helpers for integration and unit tests

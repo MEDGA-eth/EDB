@@ -27,24 +27,18 @@ use eyre::Result;
 
 /// Run a single Foundry test function inside the EDB debugger.
 ///
-/// Currently only fork-free tests (no `--fork-url`) are supported.
+/// Supports both fork-free tests and forked tests (via `--fork-url` or
+/// `foundry.toml`'s `eth_rpc_url`).
 pub async fn run_foundry_test(
     target: &str,
     root: Option<&str>,
     profile: Option<&str>,
     fork_url: Option<&str>,
-    _fork_block_number: Option<u64>,
+    fork_block_number: Option<u64>,
     cli: &crate::Cli,
 ) -> Result<()> {
     let project_ctx = project::resolve_project(root, profile)?;
-
     let resolved_fork_url = project::resolve_fork_url(fork_url, &project_ctx);
-    if resolved_fork_url.is_some() {
-        // Phase 8.2 will build the forked ForkResult; until then, fail loudly.
-        eyre::bail!(
-            "--fork-url (or foundry.toml eth_rpc_url) is set but fork construction is pending Task 8.2."
-        );
-    }
     tracing::info!("Resolved project at {}", project_ctx.root.display());
 
     let mut project =
@@ -89,19 +83,73 @@ pub async fn run_foundry_test(
         &test_source_rel,
     )?;
 
-    let fork_result = synth::build_clean_fork_result(
-        compiled_entry.deployed_bytecode.clone(),
-        &resolved.contract_name,
-        &resolved.test_function,
-        compiled_entry.run_selector,
-    )?;
+    match resolved_fork_url {
+        Some(upstream) => {
+            tracing::info!("Forking from {upstream} at block {:?}", fork_block_number);
+            let fork_result = synth::build_forked_fork_result(
+                compiled_entry.deployed_bytecode.clone(),
+                &resolved.contract_name,
+                &resolved.test_function,
+                compiled_entry.run_selector,
+                &upstream,
+                fork_block_number,
+            )
+            .await?;
+            drive_engine_with_fork_result(
+                fork_result,
+                &project_ctx,
+                &compile_output,
+                &compiled_entry,
+                &resolved,
+                cli,
+            )
+            .await
+        }
+        None => {
+            if fork_block_number.is_some() {
+                eyre::bail!(
+                    "--fork-block-number specified but no upstream RPC configured. \
+                     Either pass --fork-url or set eth_rpc_url in foundry.toml."
+                );
+            }
+            let fork_result = synth::build_clean_fork_result(
+                compiled_entry.deployed_bytecode.clone(),
+                &resolved.contract_name,
+                &resolved.test_function,
+                compiled_entry.run_selector,
+            )?;
+            drive_engine_with_fork_result(
+                fork_result,
+                &project_ctx,
+                &compile_output,
+                &compiled_entry,
+                &resolved,
+                cli,
+            )
+            .await
+        }
+    }
+}
 
-    // Build a codehash-keyed index of every locally-compiled artifact (project
-    // contracts + the synthesized entrypoint). The engine will use this to
-    // resolve source for the synthetic addresses in this test transaction
-    // without needing Etherscan.
+/// Wire a `ForkResult<DB>` through the full engine pipeline: cheats factory,
+/// local artifact set, `prepare_with_router_and_cheats`, UI launch, shutdown.
+///
+/// Shared by both the fork-free and forked paths in `run_foundry_test`.
+async fn drive_engine_with_fork_result<DB>(
+    fork_result: edb_common::ForkResult<DB>,
+    project_ctx: &project::ResolvedProject,
+    compile_output: &foundry_compilers::ProjectCompileOutput,
+    compiled_entry: &entrypoint::CompiledEntrypoint,
+    resolved: &discover::ResolvedTest,
+    cli: &crate::Cli,
+) -> Result<()>
+where
+    DB: revm::Database + revm::DatabaseCommit + revm::DatabaseRef + Clone + Send + Sync + 'static,
+    <revm::database::CacheDB<DB> as revm::Database>::Error: Clone + Send + Sync,
+    <DB as revm::Database>::Error: Clone + Send + Sync,
+{
     let local_artifacts = artifacts::build_local_artifact_set(
-        &compile_output,
+        compile_output,
         &compiled_entry.deployed_bytecode,
         compiled_entry.artifact.clone(),
         &project_ctx.root,

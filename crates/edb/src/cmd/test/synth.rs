@@ -3,8 +3,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 
 //! Build a synthetic ForkResult + TxEnv that drives the engine through a
-//! single test invocation. Fork-free variant only; the forked variant lands
-//! in Phase 8.
+//! single test invocation. Both fork-free and forked (ProviderDb) variants.
 
 use alloy_primitives::{Address, B256, Bytes, TxHash, U256, address, keccak256};
 use edb_common::{EdbContext, EdbDB, ForkInfo, ForkResult};
@@ -121,6 +120,134 @@ pub fn build_clean_fork_result(
 
     Ok(ForkResult {
         fork_info: ForkInfo { block_number, block_hash: B256::ZERO, timestamp, chain_id, spec_id },
+        context,
+        target_tx_env: tx_env,
+        target_tx_hash: synthetic_tx_hash(contract_name, test_fn),
+    })
+}
+
+/// Build a forked ForkResult backed by an upstream RPC via `ProviderDb`.
+///
+/// The DB nesting matches `fork_and_prepare` in `edb_common::forking`:
+///   `CacheDB<EdbDB<CacheDB<Arc<WrapDatabaseAsync<ProviderDb<..>>>>>>`.
+///
+/// Pre-stages the same accounts as `build_clean_fork_result` on top of the
+/// forked state (entrypoint, cheatcode sentinel, funded FORGE_CALLER).
+#[allow(dead_code)]
+pub async fn build_forked_fork_result(
+    entrypoint_bytecode: Bytes,
+    contract_name: &str,
+    test_fn: &str,
+    run_selector: [u8; 4],
+    upstream_rpc: &str,
+    fork_block_number: Option<u64>,
+) -> Result<
+    ForkResult<
+        impl revm::Database<Error = edb_common::EdbDBError>
+        + revm::DatabaseCommit
+        + revm::DatabaseRef<Error = edb_common::EdbDBError>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+    >,
+> {
+    use alloy_provider::{Provider, ProviderBuilder};
+    use alloy_rpc_types::BlockNumberOrTag;
+    use edb_common::{get_blob_base_fee_update_fraction_by_spec_id, get_mainnet_spec_id};
+    use revm::{
+        Database, context_interface::block::BlobExcessGasAndPrice,
+        database_interface::WrapDatabaseAsync,
+    };
+    use std::sync::Arc;
+
+    let provider = ProviderBuilder::new().connect(upstream_rpc).await?;
+    let chain_id = provider.get_chain_id().await?;
+
+    let block_tag = match fork_block_number {
+        Some(n) => BlockNumberOrTag::Number(n),
+        None => BlockNumberOrTag::Latest,
+    };
+    let block = provider
+        .get_block_by_number(block_tag)
+        .full()
+        .await?
+        .ok_or_else(|| eyre::eyre!("fork block not available from upstream RPC"))?;
+    let block_number = block.header.number;
+    let spec_id = get_mainnet_spec_id(block_number);
+
+    let alloy_db = edb_common::provider_db::ProviderDb::new(provider, block_number.into());
+    let state_db = WrapDatabaseAsync::new(alloy_db).ok_or_else(|| {
+        eyre::eyre!(
+            "Cannot create WrapDatabaseAsync: build_forked_fork_result must run \
+             inside a multi-threaded Tokio runtime."
+        )
+    })?;
+
+    // Mirror fork_and_prepare's nesting: EdbDB<CacheDB<Arc<WrapDatabaseAsync<...>>>>
+    let edb_db = EdbDB::new(CacheDB::new(Arc::new(state_db)));
+    let mut db: CacheDB<_> = CacheDB::new(edb_db);
+
+    // Pre-stage entrypoint
+    let entrypoint_code = Bytecode::new_raw(entrypoint_bytecode);
+    db.insert_account_info(
+        crate::cmd::test::entrypoint::ENTRYPOINT_ADDR,
+        AccountInfo::from_bytecode(entrypoint_code),
+    );
+
+    // Pre-stage cheatcode sentinel
+    let cheat_bytes = Bytes::copy_from_slice(CHEATCODE_SENTINEL_BYTECODE);
+    let cheat_code = Bytecode::new_raw(cheat_bytes);
+    db.insert_account_info(CHEATCODE_ADDRESS, AccountInfo::from_bytecode(cheat_code));
+
+    // Fund FORGE_CALLER — preserve live nonce/code but overwrite balance.
+    let mut caller_info = db.basic(FORGE_CALLER)?.unwrap_or_default();
+    caller_info.balance = U256::MAX;
+    db.insert_account_info(FORGE_CALLER, caller_info);
+
+    let ctx = Context::mainnet()
+        .with_db(db)
+        .modify_block_chained(|b| {
+            b.number = U256::from(block_number);
+            b.timestamp = U256::from(block.header.timestamp);
+            b.basefee = block.header.base_fee_per_gas.unwrap_or_default();
+            b.difficulty = block.header.difficulty;
+            b.gas_limit = block.header.gas_limit;
+            b.prevrandao = Some(block.header.mix_hash);
+            b.beneficiary = block.header.beneficiary;
+            b.blob_excess_gas_and_price = block.header.excess_blob_gas.map(|g| {
+                BlobExcessGasAndPrice::new(g, get_blob_base_fee_update_fraction_by_spec_id(spec_id))
+            });
+        })
+        .modify_cfg_chained(|c| {
+            c.chain_id = chain_id;
+            c.spec = spec_id;
+            c.disable_nonce_check = true;
+        });
+
+    let tx_env = TxEnv::builder()
+        .caller(FORGE_CALLER)
+        .kind(TxKind::Call(crate::cmd::test::entrypoint::ENTRYPOINT_ADDR))
+        .data(Bytes::copy_from_slice(&run_selector))
+        .gas_limit(1_000_000_000)
+        .chain_id(Some(chain_id))
+        .nonce(0)
+        .gas_price(0)
+        .build()
+        .map_err(|e| eyre::eyre!("TxEnv build failed: {e:?}"))?;
+
+    let mut evm = ctx.build_mainnet();
+    evm.finalize();
+    let context = evm.ctx;
+
+    Ok(ForkResult {
+        fork_info: ForkInfo {
+            block_number,
+            block_hash: block.header.hash,
+            timestamp: block.header.timestamp,
+            chain_id,
+            spec_id,
+        },
         context,
         target_tx_env: tx_env,
         target_tx_hash: synthetic_tx_hash(contract_name, test_fn),
