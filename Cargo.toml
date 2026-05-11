@@ -127,11 +127,13 @@ alloy-trie = "0.9"
 
 # foundry - aligned with Foundry's current workspace requirements
 foundry-block-explorers = { version = "0.23.1", default-features = false }
+foundry-cheatcodes = { git = "https://github.com/foundry-rs/foundry", tag = "v1.7.1", default-features = false }
 foundry-compilers = { version = "0.20.0", default-features = false, features = [
     "rustls",
     "svm-solc",
 ] }
 foundry-config = { git = "https://github.com/foundry-rs/foundry", tag = "v1.7.1", default-features = false }
+foundry-evm-core   = { git = "https://github.com/foundry-rs/foundry", tag = "v1.7.1", default-features = false }
 
 # revm - aligned with Foundry's current workspace requirements
 revm = { version = "38.0.0", default-features = false }
@@ -204,4 +206,32 @@ itertools = "0.14.0"
 # dev dependencies
 assert_cmd = "2.0"
 predicates = "3.0"
+
+[patch.crates-io]
+rexpect = { git = "https://github.com/rust-cli/rexpect", rev = "2ed0b1898d7edaf6a85bedbae71a01cc578958fc" }
+
+# reth-core
+reth-primitives-traits = { git = "https://github.com/paradigmxyz/reth-core", rev = "6b12498" }
+reth-codecs = { git = "https://github.com/paradigmxyz/reth-core", rev = "6b12498" }
+reth-codecs-derive = { git = "https://github.com/paradigmxyz/reth-core", rev = "6b12498" }
+reth-zstd-compressors = { git = "https://github.com/paradigmxyz/reth-core", rev = "6b12498" }
+
+# op-revm / op-alloy / alloy-op-evm — patched from optimism monorepo
+op-revm = { git = "https://github.com/ethereum-optimism/optimism", rev = "42f5117c2e7de0614cd3b96f274d0a3078f9701c" }
+op-alloy-consensus = { git = "https://github.com/ethereum-optimism/optimism", rev = "42f5117c2e7de0614cd3b96f274d0a3078f9701c" }
+op-alloy-network = { git = "https://github.com/ethereum-optimism/optimism", rev = "42f5117c2e7de0614cd3b96f274d0a3078f9701c" }
+op-alloy-rpc-types = { git = "https://github.com/ethereum-optimism/optimism", rev = "42f5117c2e7de0614cd3b96f274d0a3078f9701c" }
+alloy-op-evm = { git = "https://github.com/ethereum-optimism/optimism", rev = "42f5117c2e7de0614cd3b96f274d0a3078f9701c" }
+alloy-op-hardforks = { git = "https://github.com/ethereum-optimism/optimism", rev = "42f5117c2e7de0614cd3b96f274d0a3078f9701c" }
+
+# tempo — unify crates.io versions with the git rev
+tempo-primitives = { git = "https://github.com/tempoxyz/tempo", rev = "1e5a82dff207e2cbd6cecdcfb8ff3cd2e39baa69" }
+tempo-alloy = { git = "https://github.com/tempoxyz/tempo", rev = "1e5a82dff207e2cbd6cecdcfb8ff3cd2e39baa69" }
+tempo-contracts = { git = "https://github.com/tempoxyz/tempo", rev = "1e5a82dff207e2cbd6cecdcfb8ff3cd2e39baa69" }
+
+# solar
+solar = { package = "solar-compiler", git = "https://github.com/paradigmxyz/solar", rev = "530f129" }
+solar-interface = { package = "solar-interface", git = "https://github.com/paradigmxyz/solar", rev = "530f129" }
+solar-ast = { package = "solar-ast", git = "https://github.com/paradigmxyz/solar", rev = "530f129" }
+solar-sema = { package = "solar-sema", git = "https://github.com/paradigmxyz/solar", rev = "530f129" }
 
