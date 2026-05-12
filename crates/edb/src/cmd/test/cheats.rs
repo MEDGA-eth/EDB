@@ -77,6 +77,56 @@ const SEL_PAUSE_GAS_METERING: [u8; 4] = [0xd1, 0xa5, 0xb3, 0x6f]; // pauseGasMet
 const SEL_RESUME_GAS_METERING: [u8; 4] = [0x2b, 0xcd, 0x50, 0xe0]; // resumeGasMetering()
 const SEL_LAST_CALL_GAS: [u8; 4] = [0x2b, 0x58, 0x9b, 0x28]; // lastCallGas()
 
+// Assertion cheatcodes (forge-std StdAssertions → vm.assertEq / assertNe / etc.)
+// All selectors verified by keccak256 of the canonical ABI signature.
+const SEL_ASSERT_EQ_U256: [u8; 4] = [0x98, 0x29, 0x6c, 0x54]; // assertEq(uint256,uint256)
+const SEL_ASSERT_EQ_U256_MSG: [u8; 4] = [0x88, 0xb4, 0x4c, 0x85]; // assertEq(uint256,uint256,string)
+const SEL_ASSERT_EQ_I256: [u8; 4] = [0xfe, 0x74, 0xf0, 0x5b]; // assertEq(int256,int256)
+const SEL_ASSERT_EQ_I256_MSG: [u8; 4] = [0x71, 0x4a, 0x2f, 0x13]; // assertEq(int256,int256,string)
+const SEL_ASSERT_EQ_ADDR: [u8; 4] = [0x51, 0x53, 0x61, 0xf6]; // assertEq(address,address)
+const SEL_ASSERT_EQ_ADDR_MSG: [u8; 4] = [0x2f, 0x27, 0x69, 0xd1]; // assertEq(address,address,string)
+const SEL_ASSERT_EQ_BOOL: [u8; 4] = [0xf7, 0xfe, 0x34, 0x77]; // assertEq(bool,bool)
+const SEL_ASSERT_EQ_BOOL_MSG: [u8; 4] = [0x4d, 0xb1, 0x9e, 0x7e]; // assertEq(bool,bool,string)
+const SEL_ASSERT_EQ_B32: [u8; 4] = [0x7c, 0x84, 0xc6, 0x9b]; // assertEq(bytes32,bytes32)
+const SEL_ASSERT_EQ_B32_MSG: [u8; 4] = [0xc1, 0xfa, 0x1e, 0xd0]; // assertEq(bytes32,bytes32,string)
+const SEL_ASSERT_TRUE: [u8; 4] = [0x0c, 0x9f, 0xd5, 0x81]; // assertTrue(bool)
+const SEL_ASSERT_TRUE_MSG: [u8; 4] = [0xa3, 0x4e, 0xdc, 0x03]; // assertTrue(bool,string)
+const SEL_ASSERT_FALSE: [u8; 4] = [0xa5, 0x98, 0x28, 0x85]; // assertFalse(bool)
+const SEL_ASSERT_FALSE_MSG: [u8; 4] = [0x7b, 0xa0, 0x48, 0x09]; // assertFalse(bool,string)
+const SEL_ASSERT_GE_U256: [u8; 4] = [0xa8, 0xd4, 0xd1, 0xd9]; // assertGe(uint256,uint256)
+const SEL_ASSERT_GE_U256_MSG: [u8; 4] = [0xe2, 0x52, 0x42, 0xc0]; // assertGe(uint256,uint256,string)
+const SEL_ASSERT_GE_I256: [u8; 4] = [0x0a, 0x30, 0xb7, 0x71]; // assertGe(int256,int256)
+const SEL_ASSERT_GE_I256_MSG: [u8; 4] = [0xa8, 0x43, 0x28, 0xdd]; // assertGe(int256,int256,string)
+const SEL_ASSERT_GT_U256: [u8; 4] = [0xdb, 0x07, 0xfc, 0xd2]; // assertGt(uint256,uint256)
+const SEL_ASSERT_GT_U256_MSG: [u8; 4] = [0xd9, 0xa3, 0xc4, 0xd2]; // assertGt(uint256,uint256,string)
+const SEL_ASSERT_GT_I256: [u8; 4] = [0x5a, 0x36, 0x2d, 0x45]; // assertGt(int256,int256)
+const SEL_ASSERT_GT_I256_MSG: [u8; 4] = [0xf8, 0xd3, 0x3b, 0x9b]; // assertGt(int256,int256,string)
+const SEL_ASSERT_LE_U256: [u8; 4] = [0x84, 0x66, 0xf4, 0x15]; // assertLe(uint256,uint256)
+const SEL_ASSERT_LE_U256_MSG: [u8; 4] = [0xd1, 0x7d, 0x4b, 0x0d]; // assertLe(uint256,uint256,string)
+const SEL_ASSERT_LE_I256: [u8; 4] = [0x95, 0xfd, 0x15, 0x4e]; // assertLe(int256,int256)
+const SEL_ASSERT_LE_I256_MSG: [u8; 4] = [0x4d, 0xfe, 0x69, 0x2c]; // assertLe(int256,int256,string)
+const SEL_ASSERT_LT_U256: [u8; 4] = [0xb1, 0x2f, 0xc0, 0x05]; // assertLt(uint256,uint256)
+const SEL_ASSERT_LT_U256_MSG: [u8; 4] = [0x65, 0xd5, 0xc1, 0x35]; // assertLt(uint256,uint256,string)
+const SEL_ASSERT_LT_I256: [u8; 4] = [0x3e, 0x91, 0x40, 0x80]; // assertLt(int256,int256)
+const SEL_ASSERT_LT_I256_MSG: [u8; 4] = [0x9f, 0xf5, 0x31, 0xe3]; // assertLt(int256,int256,string)
+const SEL_ASSERT_NOT_EQ_U256: [u8; 4] = [0xb7, 0x90, 0x93, 0x20]; // assertNotEq(uint256,uint256)
+const SEL_ASSERT_NOT_EQ_U256_MSG: [u8; 4] = [0x98, 0xf9, 0xbd, 0xbd]; // assertNotEq(uint256,uint256,string)
+const SEL_ASSERT_NOT_EQ_I256: [u8; 4] = [0xf4, 0xc0, 0x04, 0xe3]; // assertNotEq(int256,int256)
+const SEL_ASSERT_NOT_EQ_I256_MSG: [u8; 4] = [0x47, 0x24, 0xc5, 0xb9]; // assertNotEq(int256,int256,string)
+const SEL_ASSERT_NOT_EQ_ADDR: [u8; 4] = [0xb1, 0x2e, 0x16, 0x94]; // assertNotEq(address,address)
+const SEL_ASSERT_NOT_EQ_ADDR_MSG: [u8; 4] = [0x87, 0x75, 0xa5, 0x91]; // assertNotEq(address,address,string)
+const SEL_ASSERT_NOT_EQ_BOOL: [u8; 4] = [0x23, 0x6e, 0x4d, 0x66]; // assertNotEq(bool,bool)
+const SEL_ASSERT_NOT_EQ_BOOL_MSG: [u8; 4] = [0x10, 0x91, 0xa2, 0x61]; // assertNotEq(bool,bool,string)
+const SEL_ASSERT_NOT_EQ_B32: [u8; 4] = [0x89, 0x8e, 0x83, 0xfc]; // assertNotEq(bytes32,bytes32)
+const SEL_ASSERT_NOT_EQ_B32_MSG: [u8; 4] = [0xb2, 0x33, 0x2f, 0x51]; // assertNotEq(bytes32,bytes32,string)
+// Gas snapshot stubs (no-ops — EDB doesn't do gas profiling)
+const SEL_START_SNAPSHOT_GAS_STR: [u8; 4] = [0x3c, 0xad, 0x9d, 0x7b]; // startSnapshotGas(string)
+const SEL_STOP_SNAPSHOT_GAS: [u8; 4] = [0xf6, 0x40, 0x2e, 0xda]; // stopSnapshotGas()
+const SEL_STOP_SNAPSHOT_GAS_STR: [u8; 4] = [0x77, 0x3b, 0x28, 0x05]; // stopSnapshotGas(string)
+const SEL_STOP_SNAPSHOT_GAS_2STR: [u8; 4] = [0x0c, 0x9d, 0xb7, 0x07]; // stopSnapshotGas(string,string)
+const SEL_SNAPSHOT_GAS_LAST_CALL_STR: [u8; 4] = [0xdd, 0x9f, 0xca, 0x12]; // snapshotGasLastCall(string)
+const SEL_SNAPSHOT_GAS_LAST_CALL_2STR: [u8; 4] = [0x20, 0x0c, 0x67, 0x72]; // snapshotGasLastCall(string,string)
+
 // Explicitly rejected — multi-fork / state-snapshot / scripting / fs+ffi.
 const SEL_SNAPSHOT_STATE: [u8; 4] = [0x9c, 0xd2, 0x38, 0x35]; // snapshotState()
 const SEL_SNAPSHOT_LEGACY: [u8; 4] = [0x97, 0x11, 0x71, 0x5a]; // snapshot()
@@ -201,6 +251,54 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0xbe, 0x64, 0x6d, 0xa1], "transact"), // transact(bytes32)
     (&[0x4d, 0x8a, 0xbc, 0x4b], "transact"), // transact(uint256,bytes32)
     (&[0x89, 0x7e, 0x0a, 0x97], "writeFile"), // writeFile(string,string)
+    // --- Assertion cheatcodes (assertEq / assertNe / assertTrue / assertFalse / etc.) ---
+    (&[0x98, 0x29, 0x6c, 0x54], "assertEq"), // assertEq(uint256,uint256)
+    (&[0x88, 0xb4, 0x4c, 0x85], "assertEq"), // assertEq(uint256,uint256,string)
+    (&[0xfe, 0x74, 0xf0, 0x5b], "assertEq"), // assertEq(int256,int256)
+    (&[0x71, 0x4a, 0x2f, 0x13], "assertEq"), // assertEq(int256,int256,string)
+    (&[0x51, 0x53, 0x61, 0xf6], "assertEq"), // assertEq(address,address)
+    (&[0x2f, 0x27, 0x69, 0xd1], "assertEq"), // assertEq(address,address,string)
+    (&[0xf7, 0xfe, 0x34, 0x77], "assertEq"), // assertEq(bool,bool)
+    (&[0x4d, 0xb1, 0x9e, 0x7e], "assertEq"), // assertEq(bool,bool,string)
+    (&[0x7c, 0x84, 0xc6, 0x9b], "assertEq"), // assertEq(bytes32,bytes32)
+    (&[0xc1, 0xfa, 0x1e, 0xd0], "assertEq"), // assertEq(bytes32,bytes32,string)
+    (&[0x0c, 0x9f, 0xd5, 0x81], "assertTrue"), // assertTrue(bool)
+    (&[0xa3, 0x4e, 0xdc, 0x03], "assertTrue"), // assertTrue(bool,string)
+    (&[0xa5, 0x98, 0x28, 0x85], "assertFalse"), // assertFalse(bool)
+    (&[0x7b, 0xa0, 0x48, 0x09], "assertFalse"), // assertFalse(bool,string)
+    (&[0xa8, 0xd4, 0xd1, 0xd9], "assertGe"), // assertGe(uint256,uint256)
+    (&[0xe2, 0x52, 0x42, 0xc0], "assertGe"), // assertGe(uint256,uint256,string)
+    (&[0x0a, 0x30, 0xb7, 0x71], "assertGe"), // assertGe(int256,int256)
+    (&[0xa8, 0x43, 0x28, 0xdd], "assertGe"), // assertGe(int256,int256,string)
+    (&[0xdb, 0x07, 0xfc, 0xd2], "assertGt"), // assertGt(uint256,uint256)
+    (&[0xd9, 0xa3, 0xc4, 0xd2], "assertGt"), // assertGt(uint256,uint256,string)
+    (&[0x5a, 0x36, 0x2d, 0x45], "assertGt"), // assertGt(int256,int256)
+    (&[0xf8, 0xd3, 0x3b, 0x9b], "assertGt"), // assertGt(int256,int256,string)
+    (&[0x84, 0x66, 0xf4, 0x15], "assertLe"), // assertLe(uint256,uint256)
+    (&[0xd1, 0x7d, 0x4b, 0x0d], "assertLe"), // assertLe(uint256,uint256,string)
+    (&[0x95, 0xfd, 0x15, 0x4e], "assertLe"), // assertLe(int256,int256)
+    (&[0x4d, 0xfe, 0x69, 0x2c], "assertLe"), // assertLe(int256,int256,string)
+    (&[0xb1, 0x2f, 0xc0, 0x05], "assertLt"), // assertLt(uint256,uint256)
+    (&[0x65, 0xd5, 0xc1, 0x35], "assertLt"), // assertLt(uint256,uint256,string)
+    (&[0x3e, 0x91, 0x40, 0x80], "assertLt"), // assertLt(int256,int256)
+    (&[0x9f, 0xf5, 0x31, 0xe3], "assertLt"), // assertLt(int256,int256,string)
+    (&[0xb7, 0x90, 0x93, 0x20], "assertNotEq"), // assertNotEq(uint256,uint256)
+    (&[0x98, 0xf9, 0xbd, 0xbd], "assertNotEq"), // assertNotEq(uint256,uint256,string)
+    (&[0xf4, 0xc0, 0x04, 0xe3], "assertNotEq"), // assertNotEq(int256,int256)
+    (&[0x47, 0x24, 0xc5, 0xb9], "assertNotEq"), // assertNotEq(int256,int256,string)
+    (&[0xb1, 0x2e, 0x16, 0x94], "assertNotEq"), // assertNotEq(address,address)
+    (&[0x87, 0x75, 0xa5, 0x91], "assertNotEq"), // assertNotEq(address,address,string)
+    (&[0x23, 0x6e, 0x4d, 0x66], "assertNotEq"), // assertNotEq(bool,bool)
+    (&[0x10, 0x91, 0xa2, 0x61], "assertNotEq"), // assertNotEq(bool,bool,string)
+    (&[0x89, 0x8e, 0x83, 0xfc], "assertNotEq"), // assertNotEq(bytes32,bytes32)
+    (&[0xb2, 0x33, 0x2f, 0x51], "assertNotEq"), // assertNotEq(bytes32,bytes32,string)
+    // Gas snapshot stubs
+    (&[0x3c, 0xad, 0x9d, 0x7b], "startSnapshotGas"), // startSnapshotGas(string)
+    (&[0xf6, 0x40, 0x2e, 0xda], "stopSnapshotGas"),  // stopSnapshotGas()
+    (&[0x77, 0x3b, 0x28, 0x05], "stopSnapshotGas"),  // stopSnapshotGas(string)
+    (&[0x0c, 0x9d, 0xb7, 0x07], "stopSnapshotGas"),  // stopSnapshotGas(string,string)
+    (&[0xdd, 0x9f, 0xca, 0x12], "snapshotGasLastCall"), // snapshotGasLastCall(string)
+    (&[0x20, 0x0c, 0x67, 0x72], "snapshotGasLastCall"), // snapshotGasLastCall(string,string)
     // --- Not yet implemented ---
     (&[0x65, 0xbc, 0x94, 0x81], "accesses"), // accesses(address)
     (&[0xff, 0xa1, 0x86, 0x49], "addr"),     // addr(uint256)
@@ -1012,6 +1110,69 @@ where
                      script-only — not applicable to forge test. See docs/cheatcodes.md"
                 );
                 self.record_and_revert(inputs, name, selector, UnsupportedCategory::Rejected, &msg)
+            }
+
+            // Assertion cheatcodes — assertEq, assertNe, assertTrue, assertFalse,
+            // assertGe, assertGt, assertLe, assertLt and their string-message overloads.
+            // These are the vm-level assertions delegated to by forge-std's StdAssertions.
+            SEL_ASSERT_EQ_U256
+            | SEL_ASSERT_EQ_U256_MSG
+            | SEL_ASSERT_EQ_I256
+            | SEL_ASSERT_EQ_I256_MSG
+            | SEL_ASSERT_EQ_ADDR
+            | SEL_ASSERT_EQ_ADDR_MSG
+            | SEL_ASSERT_EQ_BOOL
+            | SEL_ASSERT_EQ_BOOL_MSG
+            | SEL_ASSERT_EQ_B32
+            | SEL_ASSERT_EQ_B32_MSG
+            | SEL_ASSERT_TRUE
+            | SEL_ASSERT_TRUE_MSG
+            | SEL_ASSERT_FALSE
+            | SEL_ASSERT_FALSE_MSG
+            | SEL_ASSERT_GE_U256
+            | SEL_ASSERT_GE_U256_MSG
+            | SEL_ASSERT_GE_I256
+            | SEL_ASSERT_GE_I256_MSG
+            | SEL_ASSERT_GT_U256
+            | SEL_ASSERT_GT_U256_MSG
+            | SEL_ASSERT_GT_I256
+            | SEL_ASSERT_GT_I256_MSG
+            | SEL_ASSERT_LE_U256
+            | SEL_ASSERT_LE_U256_MSG
+            | SEL_ASSERT_LE_I256
+            | SEL_ASSERT_LE_I256_MSG
+            | SEL_ASSERT_LT_U256
+            | SEL_ASSERT_LT_U256_MSG
+            | SEL_ASSERT_LT_I256
+            | SEL_ASSERT_LT_I256_MSG
+            | SEL_ASSERT_NOT_EQ_U256
+            | SEL_ASSERT_NOT_EQ_U256_MSG
+            | SEL_ASSERT_NOT_EQ_I256
+            | SEL_ASSERT_NOT_EQ_I256_MSG
+            | SEL_ASSERT_NOT_EQ_ADDR
+            | SEL_ASSERT_NOT_EQ_ADDR_MSG
+            | SEL_ASSERT_NOT_EQ_BOOL
+            | SEL_ASSERT_NOT_EQ_BOOL_MSG
+            | SEL_ASSERT_NOT_EQ_B32
+            | SEL_ASSERT_NOT_EQ_B32_MSG => self.cheat_assert(inputs, selector, args),
+
+            // Gas snapshot stubs — EDB doesn't do gas profiling; these are no-ops
+            // that emit a one-time warning so tests using vm.startSnapshotGas /
+            // vm.stopSnapshotGas / vm.snapshotGasLastCall don't hard-abort.
+            SEL_START_SNAPSHOT_GAS_STR
+            | SEL_STOP_SNAPSHOT_GAS
+            | SEL_STOP_SNAPSHOT_GAS_STR
+            | SEL_STOP_SNAPSHOT_GAS_2STR
+            | SEL_SNAPSHOT_GAS_LAST_CALL_STR
+            | SEL_SNAPSHOT_GAS_LAST_CALL_2STR => {
+                let name = match selector {
+                    SEL_START_SNAPSHOT_GAS_STR => "startSnapshotGas",
+                    SEL_SNAPSHOT_GAS_LAST_CALL_STR | SEL_SNAPSHOT_GAS_LAST_CALL_2STR => {
+                        "snapshotGasLastCall"
+                    }
+                    _ => "stopSnapshotGas",
+                };
+                self.cheat_gas_snapshot_stub(inputs, name)
             }
 
             _ => {
@@ -1914,6 +2075,143 @@ where
         // All fields are zero for v1 stub determinism (see doc comment above).
         let out = vec![0u8; 5 * 32];
         ok_return(inputs, Bytes::from(out))
+    }
+
+    // -----------------------------------------------------------------------
+    // Assertion cheatcodes
+    // -----------------------------------------------------------------------
+
+    /// Dispatch handler for all `vm.assert*` cheatcodes delegated by
+    /// forge-std's `StdAssertions`. The selectors in the match statement
+    /// cover the fixed-width primitive overloads (uint256, int256, address,
+    /// bool, bytes32) plus their optional `string error` variants.
+    ///
+    /// Each assertion compares two 32-byte ABI words. The optional third word
+    /// is the dynamic-type offset for the error string; we decode the string
+    /// on failure.
+    ///
+    /// On success:  returns empty data (void return).
+    /// On failure:  reverts with `Error(string)` carrying a descriptive message.
+    fn cheat_assert(&mut self, inputs: &CallInputs, selector: [u8; 4], args: &[u8]) -> CallOutcome {
+        // All handled overloads start with two 32-byte ABI words (left, right).
+        if args.len() < 64 {
+            return revert_with(
+                inputs,
+                encode_error_string("EDB: vm.assert* called with insufficient calldata"),
+            );
+        }
+        let left = &args[0..32];
+        let right = &args[32..64];
+
+        // Decode an optional error string from ABI-encoded `(uint256, uint256, string)`
+        // or similar. The third word (args[64..96]) is the ABI offset (always 0x60 for
+        // inline string encoding). The actual string starts at args[96]: 32-byte length
+        // followed by data.
+        let custom_msg: Option<String> = if args.len() >= 96 + 32 {
+            let str_len_bytes: [u8; 8] = args[96 + 24..96 + 32].try_into().unwrap_or([0u8; 8]);
+            let str_len = u64::from_be_bytes(str_len_bytes) as usize;
+            if args.len() >= 96 + 32 + str_len {
+                String::from_utf8(args[96 + 32..96 + 32 + str_len].to_vec()).ok()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Determine the assertion kind and check it.
+        let passed = match selector {
+            // assertEq — left == right (bitwise comparison for all 32-byte types)
+            SEL_ASSERT_EQ_U256
+            | SEL_ASSERT_EQ_U256_MSG
+            | SEL_ASSERT_EQ_I256
+            | SEL_ASSERT_EQ_I256_MSG
+            | SEL_ASSERT_EQ_ADDR
+            | SEL_ASSERT_EQ_ADDR_MSG
+            | SEL_ASSERT_EQ_BOOL
+            | SEL_ASSERT_EQ_BOOL_MSG
+            | SEL_ASSERT_EQ_B32
+            | SEL_ASSERT_EQ_B32_MSG => left == right,
+
+            // assertNotEq — left != right
+            SEL_ASSERT_NOT_EQ_U256
+            | SEL_ASSERT_NOT_EQ_U256_MSG
+            | SEL_ASSERT_NOT_EQ_I256
+            | SEL_ASSERT_NOT_EQ_I256_MSG
+            | SEL_ASSERT_NOT_EQ_ADDR
+            | SEL_ASSERT_NOT_EQ_ADDR_MSG
+            | SEL_ASSERT_NOT_EQ_BOOL
+            | SEL_ASSERT_NOT_EQ_BOOL_MSG
+            | SEL_ASSERT_NOT_EQ_B32
+            | SEL_ASSERT_NOT_EQ_B32_MSG => left != right,
+
+            // assertTrue / assertFalse — use only the `left` (condition) word
+            SEL_ASSERT_TRUE | SEL_ASSERT_TRUE_MSG => left[31] != 0,
+            SEL_ASSERT_FALSE | SEL_ASSERT_FALSE_MSG => left[31] == 0,
+
+            // Unsigned comparisons (uint256): treat the 32 bytes as a big-endian integer.
+            SEL_ASSERT_GE_U256 | SEL_ASSERT_GE_U256_MSG => left >= right,
+            SEL_ASSERT_GT_U256 | SEL_ASSERT_GT_U256_MSG => left > right,
+            SEL_ASSERT_LE_U256 | SEL_ASSERT_LE_U256_MSG => left <= right,
+            SEL_ASSERT_LT_U256 | SEL_ASSERT_LT_U256_MSG => left < right,
+
+            // Signed comparisons (int256): the high bit is the sign. We compare the
+            // raw big-endian bytes; two's-complement means the byte order exactly
+            // matches signed comparison for 256-bit values (sign bit in byte 0).
+            SEL_ASSERT_GE_I256 | SEL_ASSERT_GE_I256_MSG => {
+                let (l_neg, r_neg) = (left[0] & 0x80 != 0, right[0] & 0x80 != 0);
+                if l_neg != r_neg { !l_neg } else { left >= right }
+            }
+            SEL_ASSERT_GT_I256 | SEL_ASSERT_GT_I256_MSG => {
+                let (l_neg, r_neg) = (left[0] & 0x80 != 0, right[0] & 0x80 != 0);
+                if l_neg != r_neg { !l_neg } else { left > right }
+            }
+            SEL_ASSERT_LE_I256 | SEL_ASSERT_LE_I256_MSG => {
+                let (l_neg, r_neg) = (left[0] & 0x80 != 0, right[0] & 0x80 != 0);
+                if l_neg != r_neg { l_neg } else { left <= right }
+            }
+            SEL_ASSERT_LT_I256 | SEL_ASSERT_LT_I256_MSG => {
+                let (l_neg, r_neg) = (left[0] & 0x80 != 0, right[0] & 0x80 != 0);
+                if l_neg != r_neg { l_neg } else { left < right }
+            }
+
+            _ => {
+                // Unreachable: all selectors in the dispatch arm are listed above.
+                return revert_with(
+                    inputs,
+                    encode_error_string("EDB: internal error in cheat_assert dispatch"),
+                );
+            }
+        };
+
+        if passed {
+            ok_return(inputs, Bytes::new())
+        } else {
+            let hex_encode = |b: &[u8]| alloy_primitives::hex::encode(b);
+            let base_msg = format!(
+                "Assertion failed: left=0x{} right=0x{}",
+                hex_encode(left),
+                hex_encode(right)
+            );
+            let msg = if let Some(custom) = custom_msg {
+                format!("{base_msg} ({custom})")
+            } else {
+                base_msg
+            };
+            revert_with(inputs, encode_error_string(&msg))
+        }
+    }
+
+    /// Gas snapshot stubs: `vm.startSnapshotGas`, `vm.stopSnapshotGas`,
+    /// `vm.snapshotGasLastCall`. EDB is not a gas profiler; these calls are
+    /// accepted as no-ops so tests that call them don't hard-abort.
+    fn cheat_gas_snapshot_stub(&mut self, inputs: &CallInputs, name: &str) -> CallOutcome {
+        self.warn_once(
+            name,
+            "EDB stubs this gas-snapshot cheatcode — gas profiling is not available \
+             in EDB v1. The call is accepted as a no-op.",
+        );
+        ok_return(inputs, Bytes::new())
     }
 }
 

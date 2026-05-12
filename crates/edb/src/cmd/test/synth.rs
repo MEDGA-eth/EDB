@@ -113,6 +113,17 @@ pub fn build_clean_fork_result(
             c.chain_id = chain_id;
             c.spec = spec_id;
             c.disable_nonce_check = true;
+            // Relax EVM size constraints so test contracts larger than the
+            // mainnet EIP-170 (24 kB deployed) or EIP-3860 (49 kB initcode)
+            // limits deploy cleanly in the initial replay pass, matching
+            // forge's own behaviour and the snapshot-pass relaxation applied
+            // by `relax_evm_context_constraints`.
+            c.limit_contract_code_size = Some(usize::MAX);
+            c.limit_contract_initcode_size = Some(usize::MAX);
+            c.disable_base_fee = true;
+            c.disable_block_gas_limit = true;
+            c.disable_balance_check = true;
+            c.tx_gas_limit_cap = Some(u64::MAX);
         });
 
     let tx_env = TxEnv::builder()
@@ -236,6 +247,15 @@ pub async fn build_forked_fork_result(
             c.chain_id = chain_id;
             c.spec = spec_id;
             c.disable_nonce_check = true;
+            // Same size-limit relaxation as the non-fork path (see
+            // build_clean_fork_result) — test contracts can be larger than
+            // the mainnet EIP-170/EIP-3860 thresholds.
+            c.limit_contract_code_size = Some(usize::MAX);
+            c.limit_contract_initcode_size = Some(usize::MAX);
+            c.disable_base_fee = true;
+            c.disable_block_gas_limit = true;
+            c.disable_balance_check = true;
+            c.tx_gas_limit_cap = Some(u64::MAX);
         });
 
     let tx_env = TxEnv::builder()

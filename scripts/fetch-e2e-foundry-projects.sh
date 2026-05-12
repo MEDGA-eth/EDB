@@ -35,5 +35,8 @@ clone_at() {
 
 clone_at "https://github.com/foundry-rs/forge-template" "master" "forge-template"
 clone_at "https://github.com/Vectorized/solady"           "main"   "solady"
+clone_at "https://github.com/Uniswap/v4-core"             "main"   "uniswap-v4-core"
+clone_at "https://github.com/transmissions11/solmate"      "main"   "solmate"
+clone_at "https://github.com/PaulRBerg/prb-math"           "main"   "prb-math"
 
 echo "Done. Projects in: $DEST"
