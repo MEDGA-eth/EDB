@@ -36,6 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-snapshot `BlockEnv` + `CfgEnv` capture so cheatcode-driven mid-tx
   env mutation (`vm.warp` / `vm.roll` / `vm.chainId`) shows up correctly
   in snapshots.
+- **Snapshot family cheatcodes**: `vm.snapshotState` / `vm.snapshot`,
+  `vm.revertToState` / `vm.revertTo` / `vm.revertToStateAndDelete`,
+  `vm.deleteStateSnapshot` / `vm.deleteStateSnapshots`. Snapshots capture
+  the journaled state + CacheDB and are restored on revert
+  (foundry-faithful one-shot semantics).
+- **`vm.rollFork(uint256)` (partial v1)**: updates `block.number` only.
+  Does not touch `block.timestamp` (pair with `vm.warp`) or invalidate
+  the CacheDB. See `docs/cheatcode-coverage.md` for the limitation.
+  Cross-fork roll variants (`rollFork(uint,uint)`, `rollFork(bytes32)`)
+  remain rejected.
 
 ### Changed
 
