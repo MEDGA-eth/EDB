@@ -343,6 +343,12 @@ impl Default for CheatsConfig {
 ///
 /// Stored on [`EdbCheatcodes::snapshots`] keyed by a monotonic `u64` id
 /// (starting at 1; id 0 is reserved as a sentinel).
+///
+/// Only the journal is stored: `ctx.journaled_state` is a
+/// `Journal<CacheDB<DB>>` whose `database` field *is* the CacheDB, so
+/// cloning the journal already carries the entire DB state. A separate
+/// `db` field would be dead weight — and a potentially large clone on
+/// forked-state tests.
 #[derive(Debug)]
 pub(crate) struct Snapshot<DB>
 where
@@ -350,12 +356,10 @@ where
     <CacheDB<DB> as Database>::Error: Clone,
     <DB as Database>::Error: Clone,
 {
-    /// The journal at snapshot time (storage writes, balance changes, code, logs).
-    #[allow(dead_code)] // read by snapshot-revert handlers in Tasks 4+
+    /// The journal at snapshot time (storage writes, balance changes, code,
+    /// logs, and the underlying CacheDB). Restored whole by
+    /// `cheat_revert_to_state`.
     pub journal: revm::context::Journal<CacheDB<DB>>,
-    /// The CacheDB at snapshot time (warm slots, account info, code-by-hash).
-    #[allow(dead_code)] // read by snapshot-revert handlers in Tasks 4+
-    pub db: CacheDB<DB>,
 }
 
 /// Hand-rolled cheatcode inspector over `EdbContext<DB>`.
@@ -1059,14 +1063,13 @@ where
         let id = self.next_snapshot_id;
         self.next_snapshot_id += 1;
 
-        // Clone the EVM's journal + DB into a Snapshot.
-        // ctx.journaled_state is a revm::context::Journal<CacheDB<DB>>; the
-        // CacheDB lives at journaled_state.database.
+        // Clone the EVM's journal (which carries the CacheDB at
+        // journaled_state.database) into a Snapshot. No separate db clone is
+        // needed: restoring the journal restores the DB along with it.
         self.snapshots.insert(
             id,
             Snapshot {
                 journal: ctx.journaled_state.clone(),
-                db: ctx.journaled_state.database.clone(),
             },
         );
 
@@ -1094,8 +1097,8 @@ where
         // Take ownership of the snapshot (foundry semantics: revert is one-shot).
         let restored = match self.snapshots.remove(&id) {
             Some(snap) => {
-                // Restore journal + DB. The DB lives INSIDE the journal as
-                // ctx.journaled_state.database (see Task 3's findings).
+                // Restore the journal wholesale. The CacheDB lives at
+                // journaled_state.database, so this also restores the DB.
                 ctx.journaled_state = snap.journal;
                 true
             }
