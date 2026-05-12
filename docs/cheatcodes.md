@@ -50,7 +50,8 @@ cheatcode) before retrying.
 | `vm.setNonce(address, uint64)` | Sets the account's nonce. |
 | `vm.prank(address)` | The next out-of-test call uses the given `msg.sender`. |
 | `vm.startPrank(address)` | All subsequent calls at this depth use the given `msg.sender` until `stopPrank`. |
-| `vm.stopPrank()` | Clears the active prank at the current depth. |
+| `vm.startPrank(address, address)` | Like the 1-arg form, but also overrides `tx.origin` for the prank scope. The original `tx.origin` is restored on `stopPrank`. |
+| `vm.stopPrank()` | Clears the active prank at the current depth (and restores any `tx.origin` overridden by `startPrank(msgSender, txOrigin)`). |
 | `vm.mockCall(address, bytes, bytes)` | When the target is called with matching calldata, return the given bytes instead of executing the call. |
 | `vm.mockCallRevert(address, bytes, bytes)` | Same as `mockCall` but the synthetic call reverts with the given bytes. |
 | `vm.clearMockedCalls()` | Clears all mocks. |
@@ -151,16 +152,46 @@ template matching is tracked for v2.
 EDB **aborts the test before launching the UI** if any unsupported
 cheatcode is called during prepare.
 
+If you hit one and want to find it fast, ⌘-F / Ctrl-F the selector
+listed in the abort message (`selector 0x...`) against this page —
+every catalog entry below lists its 4-byte selector explicitly.
+
 ### Rejected (need infrastructure EDB doesn't ship in v1)
 
-| Cheatcode | Why |
-|---|---|
-| `vm.createFork`, `vm.createSelectFork`, `vm.selectFork`, `vm.activeFork`, `vm.makePersistent` | No multi-fork backend in v1. |
-| `vm.rollFork(bytes32)`, `vm.rollFork(uint256,uint256)`, `vm.rollFork(uint256,bytes32)` | Cross-fork variants require the multi-fork backend. (Single-arg `vm.rollFork(uint256)` is partially supported — see above.) |
-| `vm.transact(bytes32)` | Requires the multi-fork backend and a separate-tx execution model. |
-| `vm.broadcast`, `vm.startBroadcast`, `vm.stopBroadcast` | Script-only; not applicable to `forge test`. |
-| `vm.ffi`, `vm.readFile`, `vm.writeFile`, `vm.removeFile` | External-process and filesystem access disabled in v1 for safety. |
-| `vm.expectCallMinGas(address,uint256,uint64,bytes)` | Gas accounting under EDB's instrumented bytecode needs separate design work; deferred to v2. |
+These are explicitly catalogued — EDB recognises the call and aborts
+with a "rejected" category. The full set lives in `KNOWN_CHEATCODES`
+in `crates/edb/src/cmd/test/cheats.rs` under
+`--- Explicitly rejected in EDB v1 ---`; the table below is sorted by
+selector and reproduced verbatim from that catalog.
+
+| Selector | Cheatcode | Why |
+|---|---|---|
+| `0x0f29772b` | `vm.rollFork(bytes32)` | Cross-fork variant. (Single-arg `vm.rollFork(uint256)` is partial — see Partial support above.) |
+| `0x08e4e116` | `vm.expectCallMinGas(address,uint256,uint64,bytes)` | Gas accounting under EDB's instrumented bytecode needs separate design. |
+| `0x1d9e269e` | `vm.makePersistent(address[])` | No multi-fork backend in v1. |
+| `0x2f103f22` | `vm.activeFork()` | Same. |
+| `0x31ba3498` | `vm.createFork(string)` | Same. |
+| `0x4074e0a8` | `vm.makePersistent(address,address)` | Same. |
+| `0x4d8abc4b` | `vm.transact(uint256,bytes32)` | Multi-fork + separate-tx execution. |
+| `0x57e22dde` | `vm.makePersistent(address)` | No multi-fork backend in v1. |
+| `0x60f9bb11` | `vm.readFile(string)` | Filesystem access; disabled for safety. |
+| `0x6ba3ba2b` | `vm.createFork(string,uint256)` | No multi-fork backend in v1. |
+| `0x71ee464d` | `vm.createSelectFork(string,uint256)` | Same. |
+| `0x76eadd36` | `vm.stopBroadcast()` | Script-only; not applicable to `forge test`. |
+| `0x7ca29682` | `vm.createFork(string,bytes32)` | No multi-fork backend in v1. |
+| `0x7fb5297f` | `vm.startBroadcast()` | Script-only. |
+| `0x7fec2a8d` | `vm.startBroadcast(address)` | Script-only. |
+| `0x84d52b7a` | `vm.createSelectFork(string,bytes32)` | No multi-fork backend in v1. |
+| `0x89160467` | `vm.ffi(string[])` | External-process; disabled for safety. |
+| `0x897e0a97` | `vm.writeFile(string,string)` | Filesystem access; disabled. |
+| `0x98680034` | `vm.createSelectFork(string)` | No multi-fork backend in v1. |
+| `0x9ebf6827` | `vm.selectFork(uint256)` | Same. |
+| `0xafc98040` | `vm.broadcast()` | Script-only. |
+| `0xbe646da1` | `vm.transact(bytes32)` | Multi-fork + separate-tx execution. |
+| `0xd74c83a4` | `vm.rollFork(uint256,uint256)` | Cross-fork variant. |
+| `0xefb77a75` | `vm.makePersistent(address,address,address)` | No multi-fork backend in v1. |
+| `0xf1afe04d` | `vm.removeFile(string)` | Filesystem access; disabled. |
+| `0xf2830f7b` | `vm.rollFork(uint256,bytes32)` | Cross-fork variant. |
 
 ### Not yet implemented
 
@@ -202,6 +233,50 @@ calls produce
 
 The full not-yet-implemented set is enumerated in `KNOWN_CHEATCODES` in
 `crates/edb/src/cmd/test/cheats.rs`.
+
+## Known caveats (not cheatcode-specific)
+
+These aren't cheatcode-level limits but they affect what EDB can debug.
+
+### Contracts with `immutable` state — source may not resolve
+
+EDB indexes the local project's compiled contracts by
+`keccak256(deployed_bytecode_template)`. For contracts that use the
+`immutable` keyword, the solc-emitted **template** has zero placeholders
+at the immutable byte positions, which the constructor patches via
+`MSTORE` at deployment time. The actual on-chain runtime bytes therefore
+differ from the template by exactly those positions → different
+`keccak256` → EDB's `LocalArtifactSet` lookup misses for that
+contract's address.
+
+**Symptoms:** the contract executes correctly (state changes, calls,
+returns all work) but the snapshot inspector has no source to step
+through. In `--fork-url` mode EDB falls back to the verified source
+from Etherscan; in non-forked mode the contract becomes opaque in the
+debugger UI even though execution behaves correctly.
+
+**Workaround:** rewrite the immutables as `constant` if the test only
+needs source-level debugging and the value is known at compile time;
+otherwise the upcoming codehash-normalization fix (planned for v1.x —
+zeros out the byte ranges listed in `immutableReferences` before
+hashing both sides) will close this gap.
+
+### Linked libraries — same limitation
+
+External libraries get their address linked into the deployed bytecode
+at deploy time via the same MSTORE-patch mechanism solc uses for
+immutables. Same root cause, same workaround (planned fix is the same
+codehash-normalization patch).
+
+### Forked tests + unverified contracts
+
+In `--fork-url` mode, any address that misses the local artifact set
+falls back to the Etherscan API (`EdbCachePath::etherscan_chain_cache_dir`).
+If the contract is not verified on Etherscan, EDB has no source for it —
+the trace will show the call but its body cannot be stepped through in
+the debugger UI. The call/return semantics are still faithful (we
+execute the actual runtime bytecode); only the source-level view is
+missing.
 
 ## Error messages
 
