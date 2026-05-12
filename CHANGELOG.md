@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `edb test --no-ui` — runs the prepare pipeline and prints a one-line JSON
+  summary to stdout (`{"target":…,"status":…,"snapshots":…,"trace_entries":…,
+  "reverts":…,"edb_rejections":…}`), then exits without launching the UI.
+  Status values: `ok` / `edb-rejected` / `test-revert` / `unknown`. Useful
+  for batch coverage scripts and CI.
+- `scripts/edb-test-coverage.sh` — walks every test function in
+  `testdata/foundry-e2e/{forge-template,solady}` (populated by
+  `scripts/fetch-e2e-foundry-projects.sh`), runs `edb test --no-ui` on each,
+  and prints a per-test JSON line plus a final tally by status
+  (ok / edb-rejected / test-revert / engine-panic / timeout). Accepts
+  `--limit N` to cap the number of tests per project.
 - `edb test <Contract>::<testFn>` — Foundry test debugging command.
   Walks parent dirs for `foundry.toml`, compiles via `foundry-compilers`,
   synthesizes a single-tx entrypoint, embeds a hand-rolled cheatcode

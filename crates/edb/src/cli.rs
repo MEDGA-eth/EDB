@@ -92,6 +92,10 @@ pub enum Commands {
         /// Block number to fork at (defaults to `latest` when forking)
         #[arg(long)]
         fork_block_number: Option<u64>,
+        /// Exit after preparing snapshots; do not launch the UI. Prints a one-line
+        /// JSON summary to stdout. Useful for batch coverage scripts.
+        #[arg(long)]
+        no_ui: bool,
     },
     /// Start WebSocket server for remote debugging sessions
     Server {

@@ -29,7 +29,129 @@ pub mod harness;
 #[cfg(feature = "test-harness")]
 pub use harness::{TestSessionHandle, run_foundry_test_for_test};
 
+use std::time::Duration;
+
+use edb_common::types::{CallResult, Trace};
 use eyre::Result;
+
+/// EDB error prefix used in revert messages from unsupported cheatcodes.
+const EDB_REJECTION_PREFIX: &str = "EDB: cheatcode vm.";
+
+/// Classify a completed trace into a coverage status string.
+///
+/// Returns one of: `"ok"`, `"edb-rejected"`, `"test-revert"`, `"unknown"`.
+fn classify_trace(trace: &Trace) -> &'static str {
+    // Find the top-level frame (depth 0, no parent).
+    let top = trace.iter().find(|e| e.parent_id.is_none());
+    let Some(top) = top else {
+        return "unknown";
+    };
+
+    let is_success = matches!(top.result, Some(CallResult::Success { .. }));
+    if is_success {
+        return "ok";
+    }
+
+    // Check every revert in the trace for the EDB rejection prefix.
+    let has_edb_rejection = trace.iter().any(|entry| {
+        if let Some(CallResult::Revert { output, .. }) = &entry.result {
+            // Try to ABI-decode as Error(string) (4-byte selector 0x08c379a0 + offset + len + data)
+            if output.len() >= 4 + 32 + 32
+                && output[0] == 0x08
+                && output[1] == 0xc3
+                && output[2] == 0x79
+                && output[3] == 0xa0
+            {
+                // offset is always 32, skip to length word
+                let len_start = 4 + 32;
+                let len = u64::from_be_bytes(
+                    output[len_start + 24..len_start + 32].try_into().unwrap_or([0u8; 8]),
+                ) as usize;
+                let data_start = len_start + 32;
+                if output.len() >= data_start + len
+                    && let Ok(s) = std::str::from_utf8(&output[data_start..data_start + len])
+                    && s.starts_with(EDB_REJECTION_PREFIX)
+                {
+                    return true;
+                }
+            }
+            // Also check raw UTF-8 in case the revert reason is a bare string.
+            if let Ok(s) = std::str::from_utf8(output)
+                && s.contains(EDB_REJECTION_PREFIX)
+            {
+                return true;
+            }
+        }
+        false
+    });
+
+    if has_edb_rejection {
+        return "edb-rejected";
+    }
+
+    // Top frame reverted and no EDB prefix → real test failure.
+    if matches!(top.result, Some(CallResult::Revert { .. })) {
+        return "test-revert";
+    }
+
+    "unknown"
+}
+
+/// Fetch the execution trace from the engine's local RPC server and compute a
+/// one-line JSON summary. Used by `--no-ui` mode.
+async fn fetch_and_print_no_ui_summary(rpc_addr: std::net::SocketAddr, target: &str) -> Result<()> {
+    let url = format!("http://{rpc_addr}/");
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(30)).build()?;
+
+    // Fetch trace
+    let resp: serde_json::Value = client
+        .post(&url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "edb_getTrace",
+            "params": [],
+        }))
+        .send()
+        .await?
+        .json()
+        .await?;
+    let trace: Trace = serde_json::from_value(
+        resp.get("result").cloned().ok_or_else(|| eyre::eyre!("edb_getTrace missing result"))?,
+    )?;
+
+    // Fetch snapshot count
+    let resp2: serde_json::Value = client
+        .post(&url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "edb_getSnapshotCount",
+            "params": [],
+        }))
+        .send()
+        .await?
+        .json()
+        .await?;
+    let snapshot_count: usize =
+        resp2.get("result").and_then(|v| v.as_u64()).map(|n| n as usize).unwrap_or(0);
+
+    let status = classify_trace(&trace);
+    let revert_count =
+        trace.iter().filter(|e| matches!(e.result, Some(CallResult::Revert { .. }))).count();
+    let edb_rejection_count = if status == "edb-rejected" { 1usize } else { 0 };
+
+    let summary = serde_json::json!({
+        "target": target,
+        "status": status,
+        "snapshots": snapshot_count,
+        "trace_entries": trace.len(),
+        "reverts": revert_count,
+        "edb_rejections": edb_rejection_count,
+    });
+    println!("{summary}");
+    Ok(())
+}
 
 /// Run a single Foundry test function inside the EDB debugger.
 ///
@@ -41,6 +163,7 @@ pub async fn run_foundry_test(
     profile: Option<&str>,
     fork_url: Option<&str>,
     fork_block_number: Option<u64>,
+    no_ui: bool,
     cli: &crate::Cli,
 ) -> Result<()> {
     let project_ctx = project::resolve_project(root, profile)?;
@@ -107,6 +230,7 @@ pub async fn run_foundry_test(
                 &compile_output,
                 &compiled_entry,
                 &resolved,
+                no_ui,
                 cli,
             )
             .await
@@ -130,6 +254,7 @@ pub async fn run_foundry_test(
                 &compile_output,
                 &compiled_entry,
                 &resolved,
+                no_ui,
                 cli,
             )
             .await
@@ -141,12 +266,15 @@ pub async fn run_foundry_test(
 /// local artifact set, `prepare_with_router_and_cheats`, UI launch, shutdown.
 ///
 /// Shared by both the fork-free and forked paths in `run_foundry_test`.
+/// When `no_ui` is `true`, skips the UI and instead prints a one-line JSON
+/// summary to stdout, then shuts down immediately.
 async fn drive_engine_with_fork_result<DB>(
     fork_result: edb_common::ForkResult<DB>,
     project_ctx: &project::ResolvedProject,
     compile_output: &foundry_compilers::ProjectCompileOutput,
     compiled_entry: &entrypoint::CompiledEntrypoint,
     resolved: &discover::ResolvedTest,
+    no_ui: bool,
     cli: &crate::Cli,
 ) -> Result<()>
 where
@@ -178,9 +306,17 @@ where
         )
         .await?;
 
+    let target = format!("{}::{}", resolved.contract_name, resolved.test_function);
+    let tx_hash = synth::synthetic_tx_hash(&resolved.contract_name, &resolved.test_function);
+
+    if no_ui {
+        fetch_and_print_no_ui_summary(rpc_server_addr, &target).await?;
+        let _ = engine.shutdown_rpc_server(&tx_hash);
+        return Ok(());
+    }
+
     crate::utils::launch_ui_and_wait(cli, rpc_server_addr).await?;
 
-    let tx_hash = synth::synthetic_tx_hash(&resolved.contract_name, &resolved.test_function);
     let _ = engine.shutdown_rpc_server(&tx_hash);
     Ok(())
 }

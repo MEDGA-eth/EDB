@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
             let effective_rpc_url = format!("http://127.0.0.1:{proxy_port}");
             cmd::replay_transaction(tx_hash, &cli, &effective_rpc_url).await
         }
-        Commands::Test { target, root, profile, fork_url, fork_block_number } => {
+        Commands::Test { target, root, profile, fork_url, fork_block_number, no_ui } => {
             tracing::info!("Debugging test: {}", target);
             cmd::run_foundry_test(
                 target,
@@ -63,6 +63,7 @@ async fn main() -> Result<()> {
                 profile.as_deref(),
                 fork_url.as_deref(),
                 *fork_block_number,
+                *no_ui,
                 &cli,
             )
             .await
