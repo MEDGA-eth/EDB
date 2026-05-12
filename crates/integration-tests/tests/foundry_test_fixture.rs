@@ -1072,3 +1072,37 @@ async fn cheats_expect_revert_bytes4_matches_selector() -> Result<()> {
     let _ = session.shutdown();
     Ok(())
 }
+
+/// `vm.startPrank(address msgSender, address txOrigin)` — selector
+/// `0x45b56078`. The fixture's `Cheats::testStartPrankWithOrigin` verifies
+/// (via an external `PrankWitness.observe()` call) that both msg.sender and
+/// tx.origin are overridden under the prank and restored after stopPrank.
+/// EDB must run the test to a successful top-frame return.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_start_prank_with_origin_overrides_both() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testStartPrankWithOrigin",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    assert!(!trace.is_empty(), "trace was empty for Cheats::testStartPrankWithOrigin");
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry for Cheats::testStartPrankWithOrigin");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should succeed when startPrank(addr,addr) overrides both \
+         msg.sender and tx.origin; got: {:?}",
+        top.result,
+    );
+    let _ = session.shutdown();
+    Ok(())
+}

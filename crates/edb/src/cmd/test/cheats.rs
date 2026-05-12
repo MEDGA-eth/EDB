@@ -52,6 +52,7 @@ const SEL_LOAD: [u8; 4] = [0x66, 0x7f, 0x9d, 0x70]; // load(address,bytes32)
 const SEL_SET_NONCE: [u8; 4] = [0xf8, 0xe1, 0x8b, 0x57]; // setNonce(address,uint64)
 const SEL_PRANK: [u8; 4] = [0xca, 0x66, 0x9f, 0xa7]; // prank(address)
 const SEL_START_PRANK: [u8; 4] = [0x06, 0x44, 0x7d, 0x56]; // startPrank(address)
+const SEL_START_PRANK_2: [u8; 4] = [0x45, 0xb5, 0x60, 0x78]; // startPrank(address,address)
 const SEL_STOP_PRANK: [u8; 4] = [0x90, 0xc5, 0x01, 0x3b]; // stopPrank()
 const SEL_MOCK_CALL: [u8; 4] = [0xb9, 0x62, 0x13, 0xe4]; // mockCall(address,bytes,bytes)
 const SEL_MOCK_CALL_REVERT: [u8; 4] = [0xdb, 0xaa, 0xd1, 0x47]; // mockCallRevert(address,bytes,bytes)
@@ -231,6 +232,7 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0x97, 0x11, 0x71, 0x5a], "snapshot"), // snapshot()  — deprecated alias of snapshotState
     (&[0x9c, 0xd2, 0x38, 0x35], "snapshotState"), // snapshotState()
     (&[0x06, 0x44, 0x7d, 0x56], "startPrank"), // startPrank(address)
+    (&[0x45, 0xb5, 0x60, 0x78], "startPrank"), // startPrank(address,address)
     (&[0x90, 0xc5, 0x01, 0x3b], "stopPrank"), // stopPrank()
     (&[0x70, 0xca, 0x10, 0xbb], "store"),    // store(address,bytes32,bytes32)
     (&[0xe5, 0xd6, 0xbf, 0x02], "warp"),     // warp(uint256)
@@ -555,6 +557,12 @@ where
     config: CheatsConfig,
     /// Pranks keyed by call depth (the depth at which the prank was installed).
     pranks: HashMap<usize, Prank>,
+    /// Saved `ctx.tx.caller` set by the first `vm.startPrank(address,address)`
+    /// in scope. Restored on `vm.stopPrank`. `None` means no tx.origin override
+    /// is currently active. We only save the FIRST override so nested
+    /// `startPrank(addr, origin)` calls restore back to the original
+    /// transaction origin, not to an intermediate override.
+    saved_tx_origin: Option<Address>,
     /// Mock returns keyed by (target, calldata).
     mocks: HashMap<Address, BTreeMap<Bytes, MockReturn>>,
     /// Active expectRevert (consumed by the next call_end).
@@ -707,6 +715,7 @@ where
         Self {
             config,
             pranks: HashMap::new(),
+            saved_tx_origin: None,
             mocks: HashMap::new(),
             expected_revert: None,
             labels: HashMap::new(),
@@ -1094,6 +1103,7 @@ where
             SEL_SET_NONCE => self.cheat_set_nonce(ctx, inputs, args),
             SEL_PRANK => self.cheat_prank(ctx, inputs, args, true),
             SEL_START_PRANK => self.cheat_prank(ctx, inputs, args, false),
+            SEL_START_PRANK_2 => self.cheat_start_prank_2(ctx, inputs, args),
             SEL_STOP_PRANK => self.cheat_stop_prank(ctx, inputs),
             SEL_MOCK_CALL => self.cheat_mock_call(ctx, inputs, args, false),
             SEL_MOCK_CALL_REVERT => self.cheat_mock_call(ctx, inputs, args, true),
@@ -1650,6 +1660,48 @@ where
     ) -> CallOutcome {
         let depth = ctx.journaled_state.depth();
         self.pranks.remove(&depth);
+        // If an earlier `vm.startPrank(address,address)` overrode tx.origin,
+        // restore the original now.
+        if let Some(orig) = self.saved_tx_origin.take() {
+            ctx.tx.caller = orig;
+        }
+        ok_return(inputs, Bytes::new())
+    }
+
+    /// `vm.startPrank(address msgSender, address txOrigin)` — selector
+    /// `0x45b56078`. Sets msg.sender for subsequent calls via the existing
+    /// prank machinery AND overrides tx.origin for the rest of the prank
+    /// scope. The original tx.origin is restored on `vm.stopPrank`.
+    ///
+    /// Implementation note: we only save the FIRST tx.origin we observe
+    /// while a prank is active — successive 2-arg startPrank calls
+    /// (without intervening stopPrank) update the override but keep the
+    /// original tx.origin pinned for restoration. This matches forge's
+    /// behavior where the genuine pre-prank origin is the restore target.
+    fn cheat_start_prank_2(
+        &mut self,
+        ctx: &mut edb_common::EdbContext<DB>,
+        inputs: &CallInputs,
+        args: &[u8],
+    ) -> CallOutcome {
+        let Some(new_caller) = read_address(args, 0) else {
+            return revert_with(
+                inputs,
+                encode_error_string("vm.startPrank: bad msgSender address arg"),
+            );
+        };
+        let Some(new_origin) = read_address(args, 1) else {
+            return revert_with(
+                inputs,
+                encode_error_string("vm.startPrank: bad txOrigin address arg"),
+            );
+        };
+        let depth = ctx.journaled_state.depth();
+        self.pranks.insert(depth, Prank { new_caller, one_shot: false, fired: false });
+        if self.saved_tx_origin.is_none() {
+            self.saved_tx_origin = Some(ctx.tx.caller);
+        }
+        ctx.tx.caller = new_origin;
         ok_return(inputs, Bytes::new())
     }
 
@@ -2809,6 +2861,10 @@ mod tests {
     #[test]
     fn selector_start_prank() {
         assert_eq!(sel("startPrank(address)"), SEL_START_PRANK);
+    }
+    #[test]
+    fn selector_start_prank_2() {
+        assert_eq!(sel("startPrank(address,address)"), SEL_START_PRANK_2);
     }
     #[test]
     fn selector_stop_prank() {

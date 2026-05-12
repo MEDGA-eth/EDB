@@ -101,6 +101,26 @@ contract Cheats is Test {
     function revertingFn() internal pure {
         revert("boom");
     }
+
+    /// `vm.startPrank(msgSender, txOrigin)` — sets both msg.sender and
+    /// tx.origin for subsequent external calls. We verify both via an
+    /// external callee that captures them, then stopPrank and verify the
+    /// override is reverted.
+    function testStartPrankWithOrigin() public {
+        address payable callee = payable(address(new PrankWitness()));
+        address newSender = address(0xA11CE);
+        address newOrigin = address(0xBEEF);
+
+        vm.startPrank(newSender, newOrigin);
+        (address seenSender, address seenOrigin) = PrankWitness(callee).observe();
+        require(seenSender == newSender, "startPrank did not override msg.sender");
+        require(seenOrigin == newOrigin, "startPrank did not override tx.origin");
+        vm.stopPrank();
+
+        (address afterSender, address afterOrigin) = PrankWitness(callee).observe();
+        require(afterSender != newSender, "msg.sender stuck after stopPrank");
+        require(afterOrigin != newOrigin, "tx.origin stuck after stopPrank");
+    }
 }
 
 /// External callee used by `testExpectCall` so the `increment()` invocation
@@ -120,5 +140,14 @@ contract ExpectRevertSelectorTarget {
     error BadInput(uint256 got);
     function boom(uint256 x) external pure {
         revert BadInput(x);
+    }
+}
+
+/// External callee for `testStartPrankWithOrigin`. Returns the (msg.sender,
+/// tx.origin) it observes so the caller can compare against the prank
+/// override (and against the natural defaults after stopPrank).
+contract PrankWitness {
+    function observe() external view returns (address, address) {
+        return (msg.sender, tx.origin);
     }
 }
