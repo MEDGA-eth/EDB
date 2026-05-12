@@ -35,4 +35,22 @@ contract SnapshotTest is Test {
         bool ok = vm.revertToState(999);
         require(!ok, "unknown id returns false");
     }
+
+    function testDeleteThenRevert() public {
+        uint256 id = vm.snapshotState();
+        require(vm.deleteStateSnapshot(id), "delete known id returns true");
+        require(!vm.revertToState(id), "revert after delete returns false");
+    }
+
+    function testDeleteAllSnapshots() public {
+        uint256 a = vm.snapshotState();
+        uint256 b = vm.snapshotState();
+        vm.deleteStateSnapshots();
+        require(!vm.revertToState(a), "a deleted");
+        require(!vm.revertToState(b), "b deleted");
+    }
+
+    function testDeleteUnknownReturnsFalse() public {
+        require(!vm.deleteStateSnapshot(999), "unknown id returns false");
+    }
 }

@@ -848,6 +848,10 @@ where
             // delete-on-revert is already the default in our revertToState; the AndDelete
             // variant is just a different selector pointing at the same handler.
             SEL_REVERT_TO_STATE_AND_DELETE => self.cheat_revert_to_state(ctx, inputs, args),
+            // Delete a single snapshot by id (Task 6)
+            SEL_DELETE_STATE_SNAPSHOT => self.cheat_delete_state_snapshot(ctx, inputs, args),
+            // Delete all snapshots (Task 6)
+            SEL_DELETE_STATE_SNAPSHOTS => self.cheat_delete_state_snapshots(ctx, inputs, args),
             // Explicitly rejected — separate-tx model
             SEL_TRANSACT => revert_with(inputs.gas_limit, unsupported_revert("transact")),
             // Explicitly rejected — fs + ffi
@@ -962,6 +966,57 @@ where
             result: revm::interpreter::InterpreterResult {
                 result: revm::interpreter::InstructionResult::Return,
                 output: alloy_primitives::Bytes::copy_from_slice(&out),
+                gas: revm::interpreter::Gas::new(inputs.gas_limit),
+            },
+            memory_offset: inputs.return_memory_offset.clone(),
+            was_precompile_called: false,
+            precompile_call_logs: Vec::new(),
+        }
+    }
+
+    fn cheat_delete_state_snapshot(
+        &mut self,
+        _ctx: &mut edb_common::EdbContext<DB>,
+        inputs: &revm::interpreter::CallInputs,
+        args: &[u8],
+    ) -> revm::interpreter::CallOutcome {
+        if args.len() < 32 {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.deleteStateSnapshot: bad calldata"),
+            );
+        }
+        let id_bytes: [u8; 8] = args[24..32].try_into().unwrap_or([0; 8]);
+        let id = u64::from_be_bytes(id_bytes);
+        let existed = self.snapshots.remove(&id).is_some();
+
+        let mut out = [0u8; 32];
+        out[31] = if existed { 1 } else { 0 };
+
+        revm::interpreter::CallOutcome {
+            result: revm::interpreter::InterpreterResult {
+                result: revm::interpreter::InstructionResult::Return,
+                output: alloy_primitives::Bytes::copy_from_slice(&out),
+                gas: revm::interpreter::Gas::new(inputs.gas_limit),
+            },
+            memory_offset: inputs.return_memory_offset.clone(),
+            was_precompile_called: false,
+            precompile_call_logs: Vec::new(),
+        }
+    }
+
+    fn cheat_delete_state_snapshots(
+        &mut self,
+        _ctx: &mut edb_common::EdbContext<DB>,
+        inputs: &revm::interpreter::CallInputs,
+        _args: &[u8],
+    ) -> revm::interpreter::CallOutcome {
+        self.snapshots.clear();
+        // Void return — empty bytes.
+        revm::interpreter::CallOutcome {
+            result: revm::interpreter::InterpreterResult {
+                result: revm::interpreter::InstructionResult::Return,
+                output: alloy_primitives::Bytes::new(),
                 gas: revm::interpreter::Gas::new(inputs.gas_limit),
             },
             memory_offset: inputs.return_memory_offset.clone(),
