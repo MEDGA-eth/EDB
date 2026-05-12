@@ -79,12 +79,28 @@ const SEL_LAST_CALL_GAS: [u8; 4] = [0x2b, 0x58, 0x9b, 0x28]; // lastCallGas()
 // Explicitly rejected — multi-fork / state-snapshot / scripting / fs+ffi.
 const SEL_SNAPSHOT_STATE: [u8; 4] = [0x9c, 0xd2, 0x38, 0x35]; // snapshotState()
 const SEL_SNAPSHOT_LEGACY: [u8; 4] = [0x97, 0x11, 0x71, 0x5a]; // snapshot()
+/// Alias used by dispatch arms (Task 3+); same bytes as SEL_SNAPSHOT_LEGACY.
+#[allow(dead_code)] // consumed by dispatch arm in plan task 3+
+const SEL_SNAPSHOT: [u8; 4] = SEL_SNAPSHOT_LEGACY;
 const SEL_REVERT_TO_STATE: [u8; 4] = [0xc2, 0x52, 0x74, 0x05]; // revertToState(uint256)
 const SEL_REVERT_TO_LEGACY: [u8; 4] = [0x44, 0xd7, 0xf0, 0xa4]; // revertTo(uint256)
+/// Alias used by dispatch arms (Task 4+); same bytes as SEL_REVERT_TO_LEGACY.
+#[allow(dead_code)] // consumed by dispatch arm in plan task 4+
+const SEL_REVERT_TO: [u8; 4] = SEL_REVERT_TO_LEGACY;
+// Snapshot family — new in plan (revertToStateAndDelete / deleteStateSnapshot*)
+#[allow(dead_code)] // consumed by dispatch arm in plan task 5+
+const SEL_REVERT_TO_STATE_AND_DELETE: [u8; 4] = [0x3a, 0x19, 0x85, 0xdc]; // revertToStateAndDelete(uint256)
+#[allow(dead_code)] // consumed by dispatch arm in plan task 6+
+const SEL_DELETE_STATE_SNAPSHOT: [u8; 4] = [0x08, 0xd6, 0xb3, 0x7a]; // deleteStateSnapshot(uint256)
+#[allow(dead_code)] // consumed by dispatch arm in plan task 6+
+const SEL_DELETE_STATE_SNAPSHOTS: [u8; 4] = [0xe0, 0x93, 0x3c, 0x74]; // deleteStateSnapshots()
 const SEL_CREATE_FORK: [u8; 4] = [0x31, 0xba, 0x34, 0x98]; // createFork(string)
 const SEL_CREATE_SELECT_FORK: [u8; 4] = [0x98, 0x68, 0x00, 0x34]; // createSelectFork(string)
 const SEL_SELECT_FORK: [u8; 4] = [0x9e, 0xbf, 0x68, 0x27]; // selectFork(uint256)
 const SEL_ROLL_FORK: [u8; 4] = [0xd9, 0xbb, 0xf3, 0xa1]; // rollFork(uint256)
+/// Alias used by dispatch arms (Task 7+); same bytes as SEL_ROLL_FORK.
+#[allow(dead_code)] // consumed by dispatch arm in plan task 7+
+const SEL_ROLL_FORK_UINT: [u8; 4] = SEL_ROLL_FORK;
 const SEL_ACTIVE_FORK: [u8; 4] = [0x2f, 0x10, 0x3f, 0x22]; // activeFork()
 const SEL_MAKE_PERSISTENT: [u8; 4] = [0x57, 0xe2, 0x2d, 0xde]; // makePersistent(address)
 const SEL_TRANSACT: [u8; 4] = [0xbe, 0x64, 0x6d, 0xa1]; // transact(bytes32)
@@ -2076,6 +2092,41 @@ mod tests {
         assert_eq!(sel("ffi(string[])"), SEL_FFI);
         assert_eq!(sel("transact(bytes32)"), SEL_TRANSACT);
         assert_eq!(sel("broadcast()"), SEL_BROADCAST);
+    }
+
+    // --- Snapshot family selector verification (plan Task 1) ---------------
+
+    #[test]
+    fn snapshot_state_selector_matches_vm_sol() {
+        assert_eq!(sel("snapshotState()"), SEL_SNAPSHOT_STATE);
+    }
+    #[test]
+    fn snapshot_alias_selector_matches_vm_sol() {
+        assert_eq!(sel("snapshot()"), SEL_SNAPSHOT);
+    }
+    #[test]
+    fn revert_to_state_selector_matches_vm_sol() {
+        assert_eq!(sel("revertToState(uint256)"), SEL_REVERT_TO_STATE);
+    }
+    #[test]
+    fn revert_to_alias_selector_matches_vm_sol() {
+        assert_eq!(sel("revertTo(uint256)"), SEL_REVERT_TO);
+    }
+    #[test]
+    fn revert_to_state_and_delete_selector_matches_vm_sol() {
+        assert_eq!(sel("revertToStateAndDelete(uint256)"), SEL_REVERT_TO_STATE_AND_DELETE);
+    }
+    #[test]
+    fn delete_state_snapshot_selector_matches_vm_sol() {
+        assert_eq!(sel("deleteStateSnapshot(uint256)"), SEL_DELETE_STATE_SNAPSHOT);
+    }
+    #[test]
+    fn delete_state_snapshots_selector_matches_vm_sol() {
+        assert_eq!(sel("deleteStateSnapshots()"), SEL_DELETE_STATE_SNAPSHOTS);
+    }
+    #[test]
+    fn roll_fork_uint_selector_matches_vm_sol() {
+        assert_eq!(sel("rollFork(uint256)"), SEL_ROLL_FORK_UINT);
     }
 
     // --- KNOWN_CHEATCODES catalog tests ------------------------------------
