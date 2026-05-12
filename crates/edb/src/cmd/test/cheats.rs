@@ -282,9 +282,33 @@ pub struct CheatsConfig {
     pub project_root: std::path::PathBuf,
 }
 
+/// A captured EVM state snapshot, restorable via `vm.revertToState`.
+///
+/// Stored on [`EdbCheatcodes::snapshots`] keyed by a monotonic `u64` id
+/// (starting at 1; id 0 is reserved as a sentinel).
+#[derive(Debug)]
+pub(crate) struct Snapshot<DB>
+where
+    DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
+    <CacheDB<DB> as Database>::Error: Clone,
+    <DB as Database>::Error: Clone,
+{
+    /// The journal at snapshot time (storage writes, balance changes, code, logs).
+    #[allow(dead_code)] // read by snapshot-revert handlers in Tasks 4+
+    pub journal: revm::context::Journal<CacheDB<DB>>,
+    /// The CacheDB at snapshot time (warm slots, account info, code-by-hash).
+    #[allow(dead_code)] // read by snapshot-revert handlers in Tasks 4+
+    pub db: CacheDB<DB>,
+}
+
 /// Hand-rolled cheatcode inspector over `EdbContext<DB>`.
 #[derive(Debug)]
-pub struct EdbCheatcodes {
+pub struct EdbCheatcodes<DB>
+where
+    DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
+    <CacheDB<DB> as Database>::Error: Clone,
+    <DB as Database>::Error: Clone,
+{
     #[allow(dead_code)] // reserved for future fs-allowlist
     config: CheatsConfig,
     /// Pranks keyed by call depth (the depth at which the prank was installed).
@@ -328,6 +352,14 @@ pub struct EdbCheatcodes {
     /// Gas data from the most recent non-cheatcode call, populated in
     /// `call_end`. `None` until the first non-cheatcode call completes.
     last_call_gas: Option<LastCallGas>,
+    /// EVM state snapshots keyed by monotonic snapshot id. Created by
+    /// `vm.snapshotState`; consumed (and removed) by `vm.revertToState`.
+    /// id 0 is reserved as a sentinel and is never stored here.
+    #[allow(dead_code)] // written/read by snapshot handlers in Tasks 3+
+    pub(crate) snapshots: HashMap<u64, Snapshot<DB>>,
+    /// Next snapshot id to assign. Starts at 1 (id 0 reserved as sentinel).
+    #[allow(dead_code)] // written/read by snapshot handlers in Tasks 3+
+    pub(crate) next_snapshot_id: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -407,7 +439,12 @@ struct LastCallGas {
 // Construction + public accessors
 // ----------------------------------------------------------------------------
 
-impl EdbCheatcodes {
+impl<DB> EdbCheatcodes<DB>
+where
+    DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
+    <CacheDB<DB> as Database>::Error: Clone,
+    <DB as Database>::Error: Clone,
+{
     /// Build a fresh inspector with the given config.
     pub fn new(config: CheatsConfig) -> Self {
         Self {
@@ -423,6 +460,8 @@ impl EdbCheatcodes {
             call_depth: 0,
             gas_metering_paused: false,
             last_call_gas: None,
+            snapshots: HashMap::new(),
+            next_snapshot_id: 1,
         }
     }
 
@@ -444,9 +483,14 @@ impl EdbCheatcodes {
 /// `Engine::prepare_with_router_and_cheats` calls this once per orchestration
 /// pass (tracer / opcode / hook) so prank/mock/expectRevert state never bleeds
 /// between passes.
-pub fn build_cheats_factory(
+pub fn build_cheats_factory<DB>(
     config: CheatsConfig,
-) -> impl Fn() -> EdbCheatcodes + Send + Sync + 'static {
+) -> impl Fn() -> EdbCheatcodes<DB> + Send + Sync + 'static
+where
+    DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
+    <CacheDB<DB> as Database>::Error: Clone,
+    <DB as Database>::Error: Clone,
+{
     let config = std::sync::Arc::new(config);
     move || EdbCheatcodes::new((*config).clone())
 }
@@ -455,9 +499,9 @@ pub fn build_cheats_factory(
 // Inspector impl over EdbContext<DB>
 // ----------------------------------------------------------------------------
 
-impl<DB> Inspector<edb_common::EdbContext<DB>> for EdbCheatcodes
+impl<DB> Inspector<edb_common::EdbContext<DB>> for EdbCheatcodes<DB>
 where
-    DB: Database + DatabaseCommit + DatabaseRef + Clone,
+    DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
     <CacheDB<DB> as Database>::Error: Clone,
     <DB as Database>::Error: Clone,
 {
@@ -697,17 +741,17 @@ impl ExpectedEmit {
 // Dispatch + per-cheatcode handlers
 // ----------------------------------------------------------------------------
 
-impl EdbCheatcodes {
-    fn dispatch<DB>(
+impl<DB> EdbCheatcodes<DB>
+where
+    DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
+    <CacheDB<DB> as Database>::Error: Clone,
+    <DB as Database>::Error: Clone,
+{
+    fn dispatch(
         &mut self,
         ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         // Resolve calldata (handle SharedBuffer variant).
         let calldata_bytes = match &inputs.input {
             revm::interpreter::CallInput::Bytes(b) => b.clone(),
@@ -836,17 +880,12 @@ impl EdbCheatcodes {
 
     // --- Block / chain mutators ---------------------------------------------
 
-    fn cheat_warp<DB>(
+    fn cheat_warp(
         &mut self,
         ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
         args: &[u8],
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let Some(value) = read_u256(args, 0) else {
             return revert_with(inputs.gas_limit, encode_error_string("vm.warp: bad calldata"));
         };
@@ -854,17 +893,12 @@ impl EdbCheatcodes {
         ok_return(inputs.gas_limit, Bytes::new())
     }
 
-    fn cheat_roll<DB>(
+    fn cheat_roll(
         &mut self,
         ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
         args: &[u8],
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let Some(value) = read_u256(args, 0) else {
             return revert_with(inputs.gas_limit, encode_error_string("vm.roll: bad calldata"));
         };
@@ -872,17 +906,12 @@ impl EdbCheatcodes {
         ok_return(inputs.gas_limit, Bytes::new())
     }
 
-    fn cheat_chain_id<DB>(
+    fn cheat_chain_id(
         &mut self,
         ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
         args: &[u8],
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let Some(value) = read_u256(args, 0) else {
             return revert_with(inputs.gas_limit, encode_error_string("vm.chainId: bad calldata"));
         };
@@ -901,17 +930,12 @@ impl EdbCheatcodes {
 
     // --- Account state mutators ---------------------------------------------
 
-    fn cheat_deal<DB>(
+    fn cheat_deal(
         &mut self,
         ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
         args: &[u8],
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
             return revert_with(inputs.gas_limit, encode_error_string("vm.deal: bad address arg"));
         };
@@ -931,17 +955,12 @@ impl EdbCheatcodes {
         }
     }
 
-    fn cheat_etch<DB>(
+    fn cheat_etch(
         &mut self,
         ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
         args: &[u8],
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
             return revert_with(inputs.gas_limit, encode_error_string("vm.etch: bad address arg"));
         };
@@ -960,17 +979,12 @@ impl EdbCheatcodes {
         ok_return(inputs.gas_limit, Bytes::new())
     }
 
-    fn cheat_store<DB>(
+    fn cheat_store(
         &mut self,
         ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
         args: &[u8],
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
             return revert_with(inputs.gas_limit, encode_error_string("vm.store: bad address arg"));
         };
@@ -995,17 +1009,12 @@ impl EdbCheatcodes {
         ok_return(inputs.gas_limit, Bytes::new())
     }
 
-    fn cheat_load<DB>(
+    fn cheat_load(
         &mut self,
         ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
         args: &[u8],
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
             return revert_with(inputs.gas_limit, encode_error_string("vm.load: bad address arg"));
         };
@@ -1028,17 +1037,12 @@ impl EdbCheatcodes {
         }
     }
 
-    fn cheat_set_nonce<DB>(
+    fn cheat_set_nonce(
         &mut self,
         ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
         args: &[u8],
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
             return revert_with(
                 inputs.gas_limit,
@@ -1075,18 +1079,13 @@ impl EdbCheatcodes {
 
     // --- Pranks --------------------------------------------------------------
 
-    fn cheat_prank<DB>(
+    fn cheat_prank(
         &mut self,
         ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
         args: &[u8],
         one_shot: bool,
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let Some(new_caller) = read_address(args, 0) else {
             return revert_with(
                 inputs.gas_limit,
@@ -1102,16 +1101,11 @@ impl EdbCheatcodes {
         ok_return(inputs.gas_limit, Bytes::new())
     }
 
-    fn cheat_stop_prank<DB>(
+    fn cheat_stop_prank(
         &mut self,
         ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let depth = ctx.journaled_state.depth();
         self.pranks.remove(&depth);
         ok_return(inputs.gas_limit, Bytes::new())
@@ -1119,18 +1113,13 @@ impl EdbCheatcodes {
 
     // --- Mocks --------------------------------------------------------------
 
-    fn cheat_mock_call<DB>(
+    fn cheat_mock_call(
         &mut self,
         _ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
         args: &[u8],
         reverts: bool,
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
             return revert_with(
                 inputs.gas_limit,
@@ -1154,16 +1143,11 @@ impl EdbCheatcodes {
         ok_return(inputs.gas_limit, Bytes::new())
     }
 
-    fn cheat_clear_mocked_calls<DB>(
+    fn cheat_clear_mocked_calls(
         &mut self,
         _ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         self.mocks.clear();
         ok_return(inputs.gas_limit, Bytes::new())
     }
@@ -1189,17 +1173,12 @@ impl EdbCheatcodes {
 
     // --- Labels --------------------------------------------------------------
 
-    fn cheat_label<DB>(
+    fn cheat_label(
         &mut self,
         _ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
         args: &[u8],
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let Some(addr) = read_address(args, 0) else {
             return revert_with(inputs.gas_limit, encode_error_string("vm.label: bad address arg"));
         };
@@ -1231,18 +1210,13 @@ impl EdbCheatcodes {
 
     // --- expectEmit ---------------------------------------------------------
 
-    fn cheat_expect_emit<DB>(
+    fn cheat_expect_emit(
         &mut self,
         _ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
         args: &[u8],
         mode: ExpectEmitMode,
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let (check_topics, check_data, expected_emitter) = match mode {
             ExpectEmitMode::All => ([true; 4], true, None),
             ExpectEmitMode::Filter4 => {
@@ -1341,18 +1315,13 @@ impl EdbCheatcodes {
 
     // --- expectCall ---------------------------------------------------------
 
-    fn cheat_expect_call<DB>(
+    fn cheat_expect_call(
         &mut self,
         _ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
         args: &[u8],
         default_count: u64,
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
             return revert_with(
                 inputs.gas_limit,
@@ -1375,17 +1344,12 @@ impl EdbCheatcodes {
         ok_return(inputs.gas_limit, Bytes::new())
     }
 
-    fn cheat_expect_call_with_count<DB>(
+    fn cheat_expect_call_with_count(
         &mut self,
         _ctx: &mut edb_common::EdbContext<DB>,
         inputs: &CallInputs,
         args: &[u8],
-    ) -> CallOutcome
-    where
-        DB: Database + DatabaseCommit + DatabaseRef + Clone,
-        <CacheDB<DB> as Database>::Error: Clone,
-        <DB as Database>::Error: Clone,
-    {
+    ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
             return revert_with(
                 inputs.gas_limit,
@@ -1946,6 +1910,16 @@ mod tests {
     use super::*;
     use alloy_primitives::keccak256;
 
+    #[test]
+    fn cheatcodes_start_with_no_snapshots() {
+        use revm::database::{CacheDB, EmptyDB};
+        // EdbCheatcodes is now generic over DB — concrete-type the test storage.
+        type TestDB = CacheDB<EmptyDB>;
+        let cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        assert_eq!(cheats.snapshots.len(), 0);
+        assert_eq!(cheats.next_snapshot_id, 1);
+    }
+
     fn sel(sig: &str) -> [u8; 4] {
         let h = keccak256(sig.as_bytes());
         let mut out = [0u8; 4];
@@ -2221,7 +2195,9 @@ mod tests {
 
     #[test]
     fn factory_yields_fresh_instances() {
-        let factory = build_cheats_factory(CheatsConfig::default());
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let factory = build_cheats_factory::<TestDB>(CheatsConfig::default());
         let a = factory();
         let b = factory();
         // Fresh inspectors share no mutable state.
@@ -2240,7 +2216,9 @@ mod tests {
     /// provides the full end-to-end coverage.
     #[test]
     fn expected_revert_guard_skips_cheatcode_address() {
-        let mut cheats = EdbCheatcodes::new(CheatsConfig::default());
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
 
         // Simulate what `cheat_expect_revert` does: arm the slot.
         cheats.expected_revert = Some(ExpectedRevert { expected_data: None });

@@ -171,8 +171,6 @@ pub async fn run_foundry_test_for_test(
     let engine = Engine::new(engine_config);
 
     let cheats_config = cheats::CheatsConfig { project_root: project_ctx.root.clone() };
-    let cheats_factory: Box<dyn Fn() -> cheats::EdbCheatcodes + Send + Sync> =
-        Box::new(cheats::build_cheats_factory(cheats_config));
 
     let rpc_addr = match resolved_fork_url {
         Some(upstream) => {
@@ -185,8 +183,9 @@ pub async fn run_foundry_test_for_test(
                 fork_block_number,
             )
             .await?;
+            let cheats_factory = Box::new(cheats::build_cheats_factory(cheats_config));
             engine
-                .prepare_with_router_and_cheats::<_, cheats::EdbCheatcodes>(
+                .prepare_with_router_and_cheats::<_, cheats::EdbCheatcodes<_>>(
                     fork_result,
                     None,
                     None,
@@ -208,8 +207,9 @@ pub async fn run_foundry_test_for_test(
                 &resolved.test_function,
                 compiled_entry.run_selector,
             )?;
+            let cheats_factory = Box::new(cheats::build_cheats_factory(cheats_config));
             engine
-                .prepare_with_router_and_cheats::<_, cheats::EdbCheatcodes>(
+                .prepare_with_router_and_cheats::<_, cheats::EdbCheatcodes<_>>(
                     fork_result,
                     None,
                     None,
