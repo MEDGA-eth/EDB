@@ -309,17 +309,32 @@ where
 
         let mut new_stack = trace_state.stack.clone();
         for _ in 0..opcode_info.inputs() {
-            let (_popped, stack_after_pop) =
-                new_stack.pop().unwrap_or_else(|| panic!("Stack underflow ({opcode})"));
+            let Some((_popped, stack_after_pop)) = new_stack.pop() else {
+                // The persistent stack model can desync from the interpreter when
+                // a sub-frame's terminating opcode is interpreted in the parent's
+                // trace state (e.g. a failed CREATE2 whose REVERT we observe just
+                // before the parent's frame_end fires). Logging is enough: the
+                // next call_end / create_end will rebuild `trace_state.stack`
+                // from the live interpreter, so this snapshot's local stack is
+                // the only casualty.
+                tracing::debug!(
+                    target: "edb::opcode_snapshot",
+                    "stack underflow popping inputs for {opcode}; skipping persistent-stack update for this step"
+                );
+                return;
+            };
             new_stack = stack_after_pop;
         }
         if !opcode.is_message_call() {
             // For call opcodes, the stack will only be updated after the call returns
             for i in (0..opcode_info.outputs()).rev() {
-                let value = interp
-                    .stack
-                    .peek(i as usize)
-                    .unwrap_or_else(|e| panic!("Stack underflow ({opcode}): {e:?}"));
+                let Ok(value) = interp.stack.peek(i as usize) else {
+                    tracing::debug!(
+                        target: "edb::opcode_snapshot",
+                        "stack underflow peeking outputs for {opcode}; skipping persistent-stack update for this step"
+                    );
+                    return;
+                };
                 new_stack = new_stack.push(value);
             }
         }
