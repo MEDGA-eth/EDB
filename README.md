@@ -134,16 +134,25 @@ edb test MyTest::testForkedThing --fork-url $MAINNET_RPC --fork-block-number 180
 `--fork-url` is also picked up from `foundry.toml`'s `eth_rpc_url` field
 (with `${VAR}` env-var expansion, matching `forge test`).
 
-**Cheatcode coverage:** EDB ships ~19 hand-rolled cheatcodes covering the
-state-mutating set used by the vast majority of `forge test` suites
-(`vm.warp`, `vm.deal`, `vm.prank`/`startPrank`/`stopPrank`,
-`vm.mockCall`, `vm.expectRevert`, `vm.store`/`load`/`etch`,
-`vm.label`, `vm.recordLogs`, …). Boundary cheatcodes that need
-multi-fork backend or mid-tx state branching (`vm.selectFork`,
-`vm.snapshotState`, `vm.transact`, `vm.broadcast`, fs/ffi) revert with
-a clear EDB error so you know exactly what's blocking. See
-[`docs/cheatcodes.md`](docs/cheatcodes.md) for the
-full matrix.
+**Cheatcode coverage:** EDB ships ~52 hand-rolled cheatcodes covering
+the families used by the vast majority of `forge test` suites:
+- **State mutation**: `vm.warp`, `vm.roll`, `vm.chainId`, `vm.deal`,
+  `vm.etch`, `vm.store`/`load`, `vm.setNonce`
+- **Caller control**: `vm.prank`/`startPrank`/`stopPrank`
+- **Call mocking**: `vm.mockCall`, `vm.mockCallRevert`, `vm.clearMockedCalls`
+- **Assertions**: `vm.expectRevert`, `vm.expectEmit` (4 overloads, soft-match),
+  `vm.expectCall` (2 overloads), `vm.assume`
+- **Log inspection**: `vm.recordLogs`, `vm.getRecordedLogs`, `vm.label`
+- **State snapshots**: `vm.snapshotState`/`snapshot`,
+  `vm.revertToState`/`revertTo`/`revertToStateAndDelete`,
+  `vm.deleteStateSnapshot`/`deleteStateSnapshots`
+- **Env vars**: `vm.envBool`/`envBytes`/`envString` + `envOr` overloads
+- **Gas stubs**: `vm.pauseGasMetering`, `vm.resumeGasMetering`, `vm.lastCallGas`
+
+Boundary cheatcodes that need multi-fork backend or mid-tx state
+branching (`vm.selectFork`, `vm.transact`, `vm.broadcast`, fs/ffi)
+revert with a clear EDB error so you know exactly what's blocking. See
+[`docs/cheatcodes.md`](docs/cheatcodes.md) for the full matrix.
 
 
 ## Why EDB?

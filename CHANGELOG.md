@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `edb test <Contract>::<testFn>` — Foundry test debugging command.
   Walks parent dirs for `foundry.toml`, compiles via `foundry-compilers`,
   synthesizes a single-tx entrypoint, embeds a hand-rolled cheatcode
-  inspector (19 cheatcodes), and runs the whole thing through EDB's
+  inspector (~52 cheatcodes), and runs the whole thing through EDB's
   existing engine pipeline. See README's "Debug a Foundry Test" section
   and [`docs/cheatcodes.md`](docs/cheatcodes.md).
 - `edb test --fork-url <rpc>` — opt-in mainnet/L2 forking for tests.
@@ -39,8 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Snapshot family cheatcodes**: `vm.snapshotState` / `vm.snapshot`,
   `vm.revertToState` / `vm.revertTo` / `vm.revertToStateAndDelete`,
   `vm.deleteStateSnapshot` / `vm.deleteStateSnapshots`. Snapshots capture
-  the journaled state + CacheDB and are restored on revert
-  (foundry-faithful one-shot semantics).
+  the journaled state (which carries the CacheDB) and are restored on
+  revert (foundry-faithful one-shot semantics).
 - **`vm.rollFork(uint256)` (partial v1)**: updates `block.number` only.
   Does not touch `block.timestamp` (pair with `vm.warp`) or invalidate
   the CacheDB. See `docs/cheatcodes.md` for the limitation.
