@@ -501,12 +501,36 @@ where
         }
 
         // 6) mockCall match?
+        //    Use inputs.return_memory_offset so the mocked return data lands in
+        //    the parent frame's memory at the slot Solidity reserved for it.
+        //    Using 0..0 (the ok_return/revert_with default) causes the mocked
+        //    value to be silently lost for static return types (uint256, etc.)
+        //    because REVM copies 0 bytes into memory at offset 0.
         if let Some(mocks) = self.mocks.get(&inputs.target_address)
             && let Some(mock) = mocks.get(&calldata)
         {
+            let memory_offset = inputs.return_memory_offset.clone();
             return Some(match mock {
-                MockReturn::Return(data) => ok_return(inputs.gas_limit, data.clone()),
-                MockReturn::Revert(data) => revert_with(inputs.gas_limit, data.clone()),
+                MockReturn::Return(data) => CallOutcome {
+                    result: InterpreterResult {
+                        result: InstructionResult::Return,
+                        output: data.clone(),
+                        gas: Gas::new(inputs.gas_limit),
+                    },
+                    memory_offset,
+                    was_precompile_called: false,
+                    precompile_call_logs: Vec::new(),
+                },
+                MockReturn::Revert(data) => CallOutcome {
+                    result: InterpreterResult {
+                        result: InstructionResult::Revert,
+                        output: data.clone(),
+                        gas: Gas::new(inputs.gas_limit),
+                    },
+                    memory_offset,
+                    was_precompile_called: false,
+                    precompile_call_logs: Vec::new(),
+                },
             });
         }
 

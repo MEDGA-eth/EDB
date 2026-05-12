@@ -516,3 +516,150 @@ async fn boundary_select_fork_reverts_with_edb_message() -> Result<()> {
     let _ = session.shutdown();
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Combo interaction tests — each function combines 3+ cheatcodes in one test
+// ---------------------------------------------------------------------------
+
+/// Combo: vm.deal + vm.prank + vm.expectEmit
+///
+/// Verifies that prank state, deal state, and expectEmit accounting all coexist
+/// without bleeding into each other.  testPrankDealEmit funds alice via deal,
+/// pranks msg.sender to alice, and expects a Deposit log before calling
+/// bank.deposit.  The soft-match expectEmit must fire on the Deposit log that
+/// deposit() emits under alice's identity.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn combo_prank_deal_emit() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Combo::testPrankDealEmit",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(!trace.is_empty(), "trace was empty for Combo::testPrankDealEmit");
+
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry in trace for Combo::testPrankDealEmit");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success for testPrankDealEmit (deal+prank+expectEmit combo); \
+         got: {:?}",
+        top.result,
+    );
+    assert!(
+        !trace_revert_contains(&trace, "expectEmit did not match"),
+        "expectEmit mismatch in prank+deal+emit combo; trace = {trace:#?}",
+    );
+    assert!(
+        !trace_revert_contains(&trace, "balance wrong"),
+        "balance assertion failed after prank+deposit; trace = {trace:#?}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
+/// Combo: vm.warp + vm.mockCall + vm.expectCall
+///
+/// Verifies that warp, mockCall interception, and expectCall accounting all
+/// coexist.  testWarpMockExpectCall sets block.timestamp, mocks a balanceOf
+/// return, and asserts the call is counted by expectCall.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn combo_warp_mock_expect_call() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Combo::testWarpMockExpectCall",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(!trace.is_empty(), "trace was empty for Combo::testWarpMockExpectCall");
+
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry in trace for Combo::testWarpMockExpectCall");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success for testWarpMockExpectCall (warp+mock+expectCall combo); \
+         got: {:?}",
+        top.result,
+    );
+    assert!(
+        !trace_revert_contains(&trace, "warp did not apply"),
+        "vm.warp failed inside warp+mock+expectCall combo; trace = {trace:#?}",
+    );
+    assert!(
+        !trace_revert_contains(&trace, "mockCall did not intercept"),
+        "mockCall interception failed inside warp+mock+expectCall combo; trace = {trace:#?}",
+    );
+    assert!(
+        !trace_revert_contains(&trace, "expectCall did not match"),
+        "expectCall accounting failed inside warp+mock+expectCall combo; trace = {trace:#?}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
+/// Combo: vm.deal + vm.startPrank + vm.expectRevert + vm.stopPrank
+///
+/// Verifies that startPrank/stopPrank bracket works around expectRevert without
+/// leaking prank state past the stopPrank call.  testStartPrankExpectRevertStopPrank
+/// funds bob, starts a prank as bob, makes a valid deposit, then expects a revert
+/// from an over-limit withdraw, and finally stops the prank — verifying bob's
+/// balance is unchanged after the failed (but expected) withdraw.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn combo_start_prank_expect_revert_stop_prank() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Combo::testStartPrankExpectRevertStopPrank",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(!trace.is_empty(), "trace was empty for Combo::testStartPrankExpectRevertStopPrank");
+
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry in trace for Combo::testStartPrankExpectRevertStopPrank");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success for testStartPrankExpectRevertStopPrank \
+         (startPrank+expectRevert+stopPrank combo); got: {:?}",
+        top.result,
+    );
+    assert!(
+        !trace_revert_contains(&trace, "expectRevert did not match"),
+        "expectRevert mismatch in startPrank+expectRevert+stopPrank combo; trace = {trace:#?}",
+    );
+    assert!(
+        !trace_revert_contains(&trace, "bob balance wrong"),
+        "balance assertion failed after startPrank+expectRevert+stopPrank; trace = {trace:#?}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
