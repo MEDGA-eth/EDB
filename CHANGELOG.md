@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `edb test <Contract>::<testFn>` — Foundry test debugging command.
   Walks parent dirs for `foundry.toml`, compiles via `foundry-compilers`,
   synthesizes a single-tx entrypoint, embeds a hand-rolled cheatcode
-  inspector (~52 cheatcodes), and runs the whole thing through EDB's
+  inspector (~90 cheatcodes), and runs the whole thing through EDB's
   existing engine pipeline. See README's "Debug a Foundry Test" section
   and [`docs/cheatcodes.md`](docs/cheatcodes.md).
 - `edb test --fork-url <rpc>` — opt-in mainnet/L2 forking for tests.
@@ -41,6 +41,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `vm.deleteStateSnapshot` / `vm.deleteStateSnapshots`. Snapshots capture
   the journaled state (which carries the CacheDB) and are restored on
   revert (foundry-faithful one-shot semantics).
+- **Assertion family cheatcodes** (40 overloads): `vm.assertEq` /
+  `assertNotEq` / `assertGt` / `assertGe` / `assertLt` / `assertLe` /
+  `assertTrue` / `assertFalse` for the fixed-width primitive types
+  (`uint256`, `int256`, `address`, `bool`, `bytes32`), with and without
+  the optional `string err` argument. Signed comparisons handle the
+  cross-sign case explicitly. Dynamic / array / decimal / approxEq
+  overloads are cataloged as "not yet implemented" so users see an
+  actionable error instead of "unknown selector".
+- **Gas snapshot stub cheatcodes** (6 overloads): `vm.startSnapshotGas`,
+  `vm.stopSnapshotGas` (3 overloads), `vm.snapshotGasLastCall` (2
+  overloads). Accepted as no-ops — EDB is not a gas profiler in v1.
 - **`vm.rollFork(uint256)` (partial v1)**: updates `block.number` only.
   Does not touch `block.timestamp` (pair with `vm.warp`) or invalidate
   the CacheDB. See `docs/cheatcodes.md` for the limitation.

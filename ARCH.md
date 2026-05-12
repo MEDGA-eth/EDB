@@ -78,11 +78,13 @@ The main orchestrator that coordinates the entire debugging workflow:
 - `cmd/replay.rs`: Transaction replay command implementation
 - `cmd/test/`: Foundry test debugging — synthesizes a single
   transaction that wraps deploy + setUp + test, embeds a hand-rolled
-  cheatcode inspector (~52 cheatcodes, including state mutation, pranks,
-  mocks, `vm.expectRevert`, `vm.expectEmit` (soft-match), `vm.expectCall`,
-  `vm.assume`, snapshot family, env vars, and gas-metering stubs), and
-  drives the whole thing through the standard engine pipeline. See
-  `docs/cheatcodes.md` for the full support matrix and
+  cheatcode inspector (~90 cheatcodes — state mutation, pranks, mocks,
+  `vm.expectRevert`, `vm.expectEmit` (soft-match), `vm.expectCall`,
+  `vm.assume`, the 40-overload `vm.assertEq` / `assertGt` / `assertTrue`
+  family, snapshot family, env vars, gas-metering stubs, and 6
+  no-op gas-snapshot stubs), and drives the whole thing through the
+  standard engine pipeline. See `docs/cheatcodes.md` for the full
+  support matrix and
   `docs/superpowers/specs/2026-05-10-edb-test-design.md` for the design
   rationale (gitignored; local-only).
 

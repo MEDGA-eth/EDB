@@ -73,9 +73,42 @@ cheatcode) before retrying.
 | `vm.deleteStateSnapshot(uint256) returns (bool)` | Drop a snapshot without restoring. Returns `true` if id existed. |
 | `vm.deleteStateSnapshots()` | Drop all snapshots. |
 
+### Assertions
+
+40 assertion overloads forwarded by forge-std's `StdAssertions` for the
+fixed-width primitive types. Each compares two 32-byte ABI words and either
+returns successfully (passing assertion) or reverts with
+`Error(string)` carrying a descriptive message. The `_MSG` siblings
+embed the caller-supplied error string after `(...)`.
+
+| Family | Overloads |
+|---|---|
+| `vm.assertEq` | `(uint256, uint256)`, `(int256, int256)`, `(address, address)`, `(bool, bool)`, `(bytes32, bytes32)` (+ `_MSG` siblings) |
+| `vm.assertNotEq` | same type set as `assertEq` (+ `_MSG` siblings) |
+| `vm.assertGt` / `assertGe` / `assertLt` / `assertLe` | `(uint256, uint256)`, `(int256, int256)` (+ `_MSG` siblings). Signed comparisons handle the cross-sign case explicitly. |
+| `vm.assertTrue` / `assertFalse` | `(bool)` and `(bool, string)`. |
+
+Failure messages currently print the two operands as raw 32-byte hex
+(`left=0x...`, `right=0x...`) — `forge test` formats them type-aware
+(decimal for uints, `true`/`false` for bools). Tracked for v2.
+
+### Gas snapshot stubs
+
+Six selectors recorded as **no-op stubs** so tests that wrap calls in
+gas-profiling cheatcodes don't hard-abort. EDB is not a gas profiler
+in v1; these calls succeed silently and do NOT produce any
+gas-snapshot output. A first-time `tracing::warn!` fires per cheatcode
+name per `edb test` run.
+
+- `vm.startSnapshotGas(string)`
+- `vm.stopSnapshotGas()` / `vm.stopSnapshotGas(string)` / `vm.stopSnapshotGas(string, string)`
+- `vm.snapshotGasLastCall(string)` / `vm.snapshotGasLastCall(string, string)`
+
 All selectors are verified at test time against
 `keccak256(canonical_signature)[..4]`; see the unit tests in
-`crates/edb/src/cmd/test/cheats.rs`.
+`crates/edb/src/cmd/test/cheats.rs`
+(`all_assertion_selectors_match_canonical`,
+`all_gas_snapshot_selectors_match_canonical`).
 
 ## Partial support (warns at runtime)
 
@@ -142,6 +175,27 @@ Common v2 candidates:
   `vm.stopMappingRecording`
 - state-diff recording: `vm.startStateDiffRecording`,
   `vm.stopAndReturnStateDiff`
+
+#### Dynamic / array / decimal assertion overloads
+
+Modern forge-std's `StdAssertions` forwards `assertEq(string,string)`,
+`assertEq(bytes,bytes)`, the array variants, the `*Decimal` variants,
+and `assertApproxEqAbs` / `assertApproxEqRel` to dedicated cheatcode
+selectors. EDB v1 catalogs these but does not implement them yet —
+calls produce
+"`EDB: cheatcode vm.<name> not yet implemented in v1 (selector 0x...)`":
+
+- `vm.assertEq(string,string)` / `(bytes,bytes)` / `(bool[],bool[])` /
+  `(uint256[],uint256[])` / `(int256[],int256[])` /
+  `(address[],address[])` / `(bytes32[],bytes32[])` /
+  `(string[],string[])` / `(bytes[],bytes[])` (+ `_MSG` siblings)
+- `vm.assertNotEq` — same dynamic / array set (+ `_MSG` siblings)
+- `vm.assertEqDecimal` / `assertNotEqDecimal` /
+  `assertGtDecimal` / `assertGeDecimal` /
+  `assertLtDecimal` / `assertLeDecimal`
+  (uint and int variants, + `_MSG` siblings)
+- `vm.assertApproxEqAbs` / `assertApproxEqRel`
+  (uint and int variants, + `_MSG` siblings)
 
 The full not-yet-implemented set is enumerated in `KNOWN_CHEATCODES` in
 `crates/edb/src/cmd/test/cheats.rs`.

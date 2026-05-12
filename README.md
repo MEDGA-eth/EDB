@@ -134,20 +134,27 @@ edb test MyTest::testForkedThing --fork-url $MAINNET_RPC --fork-block-number 180
 `--fork-url` is also picked up from `foundry.toml`'s `eth_rpc_url` field
 (with `${VAR}` env-var expansion, matching `forge test`).
 
-**Cheatcode coverage:** EDB ships ~52 hand-rolled cheatcodes covering
+**Cheatcode coverage:** EDB ships ~90 hand-rolled cheatcodes covering
 the families used by the vast majority of `forge test` suites:
 - **State mutation**: `vm.warp`, `vm.roll`, `vm.chainId`, `vm.deal`,
   `vm.etch`, `vm.store`/`load`, `vm.setNonce`
 - **Caller control**: `vm.prank`/`startPrank`/`stopPrank`
 - **Call mocking**: `vm.mockCall`, `vm.mockCallRevert`, `vm.clearMockedCalls`
-- **Assertions**: `vm.expectRevert`, `vm.expectEmit` (4 overloads, soft-match),
+- **Expectations**: `vm.expectRevert`, `vm.expectEmit` (4 overloads, soft-match),
   `vm.expectCall` (2 overloads), `vm.assume`
+- **Assertions** (40 overloads): `vm.assertEq`, `vm.assertNotEq`,
+  `vm.assertGt`/`Ge`/`Lt`/`Le`, `vm.assertTrue`, `vm.assertFalse` —
+  fixed-width primitives (`uint256`, `int256`, `address`, `bool`,
+  `bytes32`), with and without custom error message. Dynamic / array /
+  decimal / approxEq overloads are cataloged but not yet implemented.
 - **Log inspection**: `vm.recordLogs`, `vm.getRecordedLogs`, `vm.label`
 - **State snapshots**: `vm.snapshotState`/`snapshot`,
   `vm.revertToState`/`revertTo`/`revertToStateAndDelete`,
   `vm.deleteStateSnapshot`/`deleteStateSnapshots`
 - **Env vars**: `vm.envBool`/`envBytes`/`envString` + `envOr` overloads
-- **Gas stubs**: `vm.pauseGasMetering`, `vm.resumeGasMetering`, `vm.lastCallGas`
+- **Gas stubs**: `vm.pauseGasMetering`, `vm.resumeGasMetering`,
+  `vm.lastCallGas`, `vm.startSnapshotGas`/`stopSnapshotGas`/`snapshotGasLastCall`
+  (6 overloads, all no-op stubs — EDB is not a gas profiler in v1)
 
 Boundary cheatcodes that need multi-fork backend or mid-tx state
 branching (`vm.selectFork`, `vm.transact`, `vm.broadcast`, fs/ffi)
