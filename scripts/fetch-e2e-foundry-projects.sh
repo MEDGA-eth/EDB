@@ -1,42 +1,58 @@
 #!/usr/bin/env bash
 # Download external Foundry projects for edb's e2e integration tests.
-# Idempotent: skips repos already at the pinned ref.
+# Idempotent: skips repos already at the pinned commit.
+#
+# Each project is pinned to a specific commit hash so that the test suite is
+# reproducible and CI cache keys (hashFiles on this script) invalidate exactly
+# when a pinned commit is bumped.
 
 set -euo pipefail
 
 DEST="${EDB_E2E_FIXTURES_DIR:-testdata/foundry-e2e}"
 mkdir -p "$DEST"
 
-# Clone or update a repo to the tip of the given branch.
-# Uses the local remote-tracking ref for idempotency; no network call when up-to-date.
-clone_at() {
-    local url=$1 branch=$2 dir=$3
+# Clone or update a repo to a specific pinned commit.
+# ref_hint is the branch name used only for the initial shallow clone when the
+# commit is not yet available locally; the checkout always targets $commit.
+clone_at_commit() {
+    local url=$1 ref_hint=$2 commit=$3 dir=$4
     local target="$DEST/$dir"
     if [[ -d "$target/.git" ]]; then
-        # Fetch the branch to get the latest remote-tracking ref.
-        git -C "$target" fetch --depth 1 origin "$branch" 2>/dev/null
-        local current desired
+        local current
         current=$(git -C "$target" rev-parse HEAD 2>/dev/null || echo "")
-        desired=$(git -C "$target" rev-parse FETCH_HEAD 2>/dev/null || echo "")
-        if [[ -n "$current" && -n "$desired" && "$current" == "$desired" ]]; then
-            echo "[skip] $dir already at $branch ($current)"
+        if [[ "$current" == "$commit" ]]; then
+            echo "[skip] $dir already at $commit"
             return 0
         fi
-        echo "[update] $dir -> $branch"
-        git -C "$target" checkout --detach FETCH_HEAD
+        echo "[update] $dir -> $commit"
+        git -C "$target" fetch --depth 1 origin "$commit" 2>/dev/null \
+            || git -C "$target" fetch origin "$ref_hint"
+        git -C "$target" checkout --detach "$commit" 2>/dev/null \
+            || git -C "$target" checkout --detach FETCH_HEAD
     else
-        echo "[clone] $dir at $branch"
+        echo "[clone] $dir at $commit"
         rm -rf "$target"
-        git clone --depth 1 --branch "$branch" "$url" "$target"
+        git clone --depth 1 --branch "$ref_hint" "$url" "$target" 2>/dev/null \
+            || git clone --depth 1 "$url" "$target"
+        git -C "$target" fetch --depth 1 origin "$commit" 2>/dev/null || true
+        git -C "$target" checkout --detach "$commit" 2>/dev/null || true
     fi
-    # Init submodules shallowly (forge-template/solady each rely on forge-std):
     git -C "$target" submodule update --init --recursive --depth 1 2>/dev/null || true
 }
 
-clone_at "https://github.com/foundry-rs/forge-template" "master" "forge-template"
-clone_at "https://github.com/Vectorized/solady"           "main"   "solady"
-clone_at "https://github.com/Uniswap/v4-core"             "main"   "uniswap-v4-core"
-clone_at "https://github.com/transmissions11/solmate"      "main"   "solmate"
-clone_at "https://github.com/PaulRBerg/prb-math"           "main"   "prb-math"
+# Pinned commits — tested and known-good as of the commits in this repo.
+# To update a project: run `git -C testdata/foundry-e2e/<dir> rev-parse HEAD`
+# after fetching the desired version, then update the commit hash below and
+# commit this script (which also invalidates the CI cache automatically).
+clone_at_commit "https://github.com/foundry-rs/forge-template" "master" \
+    "f5db6aeeff588c8a789b6f7da83313950fd97178" "forge-template"
+clone_at_commit "https://github.com/Vectorized/solady" "main" \
+    "90db92ce173856605d24a554969f2c67cadbc7e9" "solady"
+clone_at_commit "https://github.com/Uniswap/v4-core" "main" \
+    "46c6834698c48bc4a463a86d8420f4eb1d7f3b75" "uniswap-v4-core"
+clone_at_commit "https://github.com/transmissions11/solmate" "main" \
+    "89365b880c4f3c786bdd453d4b8e8fe410344a69" "solmate"
+clone_at_commit "https://github.com/PaulRBerg/prb-math" "main" \
+    "82e5ed5561d0a1c43a3a59edbf4291c8de26479e" "prb-math"
 
 echo "Done. Projects in: $DEST"

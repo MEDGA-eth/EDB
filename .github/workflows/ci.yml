@@ -147,6 +147,7 @@ jobs:
 
   test:
     name: Test
+    timeout-minutes: 60
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -184,6 +185,26 @@ jobs:
           key: ${{ runner.os }}-svm-${{ hashFiles('~/.svm/**') }}
           restore-keys: |
             ${{ runner.os }}-svm-
+
+      - name: Cache e2e foundry projects
+        uses: actions/cache@v5
+        with:
+          path: testdata/foundry-e2e
+          key: ${{ runner.os }}-e2e-foundry-${{ hashFiles('scripts/fetch-e2e-foundry-projects.sh') }}
+
+      - name: Fetch e2e foundry projects
+        run: ./scripts/fetch-e2e-foundry-projects.sh
+
+      - name: Cache e2e foundry build artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            testdata/foundry-e2e/forge-template/out
+            testdata/foundry-e2e/solady/out
+            testdata/foundry-e2e/uniswap-v4-core/out
+            testdata/foundry-e2e/solmate/out
+            testdata/foundry-e2e/prb-math/out
+          key: ${{ runner.os }}-foundry-out-${{ hashFiles('scripts/fetch-e2e-foundry-projects.sh') }}
 
       - name: Run tests
         run: cargo test --workspace --all-features --verbose -- --nocapture

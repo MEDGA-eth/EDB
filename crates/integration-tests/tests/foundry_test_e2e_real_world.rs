@@ -5,14 +5,13 @@
 //! E2E integration tests against vendored real-world Foundry projects in
 //! `testdata/foundry-e2e/`.
 //!
-//! These projects are gitignored and fetched on-demand by
-//! `scripts/fetch-e2e-foundry-projects.sh`; the tests are therefore
-//! `#[ignore]`-gated by default. Run with:
+//! These projects are fetched on-demand by
+//! `scripts/fetch-e2e-foundry-projects.sh`. Run with:
 //!
 //! ```sh
 //! ./scripts/fetch-e2e-foundry-projects.sh
 //! cargo test --package edb-integration-tests \
-//!     --test foundry_test_e2e_real_world -- --ignored
+//!     --test foundry_test_e2e_real_world
 //! ```
 
 use eyre::Result;
@@ -56,7 +55,6 @@ fn top_frame_is_success(trace: &edb_common::types::Trace) -> bool {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_e2e_realworld)]
-#[ignore = "requires external fixtures; run with --ignored"]
 async fn forge_template_runs_a_test() -> Result<()> {
     init::init_test_environment(true);
     let root = require_fixture("forge-template");
@@ -84,7 +82,6 @@ async fn forge_template_runs_a_test() -> Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_e2e_realworld)]
-#[ignore = "requires external fixtures; run with --ignored"]
 async fn solady_runs_a_pure_lib_test() -> Result<()> {
     init::init_test_environment(true);
     let root = require_fixture("solady");
@@ -118,7 +115,6 @@ async fn solady_runs_a_pure_lib_test() -> Result<()> {
 /// relaxed constraints; we assert no test-logic revert occurs.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_e2e_realworld)]
-#[ignore = "requires external fixtures; run with --ignored"]
 async fn solady_lib_string_to_string_positive() -> Result<()> {
     init::init_test_environment(true);
     let root = require_fixture("solady");
@@ -152,7 +148,6 @@ async fn solady_lib_string_to_string_positive() -> Result<()> {
 /// TickTest init bytecode is ~26 kB (well under EIP-3860's 49 kB limit).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_e2e_realworld)]
-#[ignore = "requires external fixtures; run with --ignored"]
 async fn uniswap_v4_tick_max_liquidity_low_fee() -> Result<()> {
     init::init_test_environment(true);
     let root = require_fixture("uniswap-v4-core");
@@ -184,7 +179,6 @@ async fn uniswap_v4_tick_max_liquidity_low_fee() -> Result<()> {
 /// SSTORE/SLOAD across multiple sub-calls without any fork or cheatcode.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_e2e_realworld)]
-#[ignore = "requires external fixtures; run with --ignored"]
 async fn uniswap_v4_tick_fee_growth_inside() -> Result<()> {
     init::init_test_environment(true);
     let root = require_fixture("uniswap-v4-core");
@@ -217,7 +211,6 @@ async fn uniswap_v4_tick_fee_growth_inside() -> Result<()> {
 /// but from a different tick position.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_e2e_realworld)]
-#[ignore = "requires external fixtures; run with --ignored"]
 async fn uniswap_v4_tick_fee_growth_below() -> Result<()> {
     init::init_test_environment(true);
     let root = require_fixture("uniswap-v4-core");
@@ -252,7 +245,6 @@ async fn uniswap_v4_tick_fee_growth_below() -> Result<()> {
 /// ERC20Test init bytecode is ~31 kB (under EIP-3860 limit).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_e2e_realworld)]
-#[ignore = "requires external fixtures; run with --ignored"]
 async fn solmate_erc20_mint() -> Result<()> {
     init::init_test_environment(true);
     let root = require_fixture("solmate");
@@ -281,7 +273,6 @@ async fn solmate_erc20_mint() -> Result<()> {
 /// Exercises EDB's cross-contract call replay for a real-world ERC-20.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_e2e_realworld)]
-#[ignore = "requires external fixtures; run with --ignored"]
 async fn solmate_erc20_transfer() -> Result<()> {
     init::init_test_environment(true);
     let root = require_fixture("solmate");
@@ -310,7 +301,6 @@ async fn solmate_erc20_transfer() -> Result<()> {
 /// ~7 kB, making it ideal for a fast pure-math test.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_e2e_realworld)]
-#[ignore = "requires external fixtures; run with --ignored"]
 async fn solmate_fixed_point_math_mul_wad() -> Result<()> {
     init::init_test_environment(true);
     let root = require_fixture("solmate");
