@@ -193,6 +193,11 @@ jobs:
           key: ${{ runner.os }}-e2e-foundry-${{ hashFiles('scripts/fetch-e2e-foundry-projects.sh') }}
 
       - name: Fetch e2e foundry projects
+        # `shell: bash` forces Git Bash on windows-latest (default shell is pwsh,
+        # which can't execute #!/usr/bin/env bash scripts; without this line the
+        # step exits silently in ~2s and every e2e test then panics with
+        # "fixture missing"). Linux/macOS unaffected — bash is their default.
+        shell: bash
         run: ./scripts/fetch-e2e-foundry-projects.sh
 
       - name: Cache e2e foundry build artifacts

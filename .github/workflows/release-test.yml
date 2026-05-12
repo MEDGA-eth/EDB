@@ -58,6 +58,9 @@ jobs:
           key: ${{ runner.os }}-e2e-foundry-release-${{ hashFiles('scripts/fetch-e2e-foundry-projects.sh') }}
 
       - name: Fetch e2e foundry projects
+        # `shell: bash` forces Git Bash on windows-latest (default is pwsh,
+        # which silently fails on the script's #!/usr/bin/env bash shebang).
+        shell: bash
         run: ./scripts/fetch-e2e-foundry-projects.sh
 
       - name: Cache e2e foundry build artifacts
