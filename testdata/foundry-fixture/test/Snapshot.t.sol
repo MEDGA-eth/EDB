@@ -53,4 +53,10 @@ contract SnapshotTest is Test {
     function testDeleteUnknownReturnsFalse() public {
         require(!vm.deleteStateSnapshot(999), "unknown id returns false");
     }
+
+    function testRollForkSetsBlockNumber() public {
+        uint256 before = block.number;
+        vm.rollFork(before + 100);
+        require(block.number == before + 100, "rollFork updated block.number");
+    }
 }

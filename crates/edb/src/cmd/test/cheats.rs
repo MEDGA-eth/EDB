@@ -827,11 +827,12 @@ where
             SEL_RESUME_GAS_METERING => self.cheat_resume_gas_metering(inputs),
             SEL_LAST_CALL_GAS => self.cheat_last_call_gas(inputs),
 
+            // vm.rollFork(uint256) — single-arg: updates block.number only (Task 7)
+            sel if sel == SEL_ROLL_FORK_UINT => self.cheat_roll_fork_single(ctx, inputs, args),
             // Explicitly rejected — multi-fork
             SEL_CREATE_FORK
             | SEL_CREATE_SELECT_FORK
             | SEL_SELECT_FORK
-            | SEL_ROLL_FORK
             | SEL_ACTIVE_FORK
             | SEL_MAKE_PERSISTENT => {
                 revert_with(inputs.gas_limit, unsupported_revert("multi-fork (e.g. selectFork)"))
@@ -1050,6 +1051,34 @@ where
             return revert_with(inputs.gas_limit, encode_error_string("vm.roll: bad calldata"));
         };
         ctx.block.number = value;
+        ok_return(inputs.gas_limit, Bytes::new())
+    }
+
+    /// vm.rollFork(uint256) — v1: updates block.number only.
+    ///
+    /// **Limitations (documented in `docs/cheatcode-coverage.md`):**
+    /// - Does NOT update block.timestamp (pair with `vm.warp` for that).
+    /// - Does NOT update block.basefee / prevrandao / etc.
+    /// - Does NOT invalidate the CacheDB — reads continue to reflect state at the
+    ///   originally-forked block. Tests that need cross-block state should set
+    ///   `--fork-block-number` at the CLI to start at the target block.
+    ///
+    /// `vm.rollFork(uint256,uint256)` (cross-fork roll) and `vm.rollFork(bytes32)`
+    /// (tx-hash roll) remain rejected — they require multi-fork backend support.
+    fn cheat_roll_fork_single(
+        &mut self,
+        ctx: &mut edb_common::EdbContext<DB>,
+        inputs: &CallInputs,
+        args: &[u8],
+    ) -> CallOutcome {
+        if args.len() < 32 {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.rollFork(uint256): bad calldata"),
+            );
+        }
+        let n = alloy_primitives::U256::from_be_slice(&args[..32]);
+        ctx.block.number = n;
         ok_return(inputs.gas_limit, Bytes::new())
     }
 

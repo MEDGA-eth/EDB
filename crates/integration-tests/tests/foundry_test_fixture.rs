@@ -802,3 +802,27 @@ async fn snapshot_state_returns_monotonic_id() -> Result<()> {
     let _ = session.shutdown();
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn roll_fork_updates_block_number() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "SnapshotTest::testRollForkSetsBlockNumber",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    let top = trace.iter().find(|e| e.depth == 0).expect("top frame");
+    assert!(
+        matches!(top.result, Some(edb_common::types::CallResult::Success { .. })),
+        "top frame failed: {:?}",
+        top.result
+    );
+    let _ = session.shutdown();
+    Ok(())
+}
