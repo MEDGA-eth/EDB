@@ -654,36 +654,17 @@ where
         }
 
         // 6) mockCall match?
-        //    Use inputs.return_memory_offset so the mocked return data lands in
-        //    the parent frame's memory at the slot Solidity reserved for it.
-        //    Using 0..0 (the ok_return/revert_with default) causes the mocked
-        //    value to be silently lost for static return types (uint256, etc.)
-        //    because REVM copies 0 bytes into memory at offset 0.
+        //    Use inputs.return_memory_offset (threaded through ok_return /
+        //    revert_with) so the mocked return data lands in the parent frame's
+        //    memory at the slot Solidity reserved for it. Without this, REVM
+        //    would copy 0 bytes at offset 0 and Solidity would silently read
+        //    zeros for static return types (uint256, etc.).
         if let Some(mocks) = self.mocks.get(&inputs.target_address)
             && let Some(mock) = mocks.get(&calldata)
         {
-            let memory_offset = inputs.return_memory_offset.clone();
             return Some(match mock {
-                MockReturn::Return(data) => CallOutcome {
-                    result: InterpreterResult {
-                        result: InstructionResult::Return,
-                        output: data.clone(),
-                        gas: Gas::new(inputs.gas_limit),
-                    },
-                    memory_offset,
-                    was_precompile_called: false,
-                    precompile_call_logs: Vec::new(),
-                },
-                MockReturn::Revert(data) => CallOutcome {
-                    result: InterpreterResult {
-                        result: InstructionResult::Revert,
-                        output: data.clone(),
-                        gas: Gas::new(inputs.gas_limit),
-                    },
-                    memory_offset,
-                    was_precompile_called: false,
-                    precompile_call_logs: Vec::new(),
-                },
+                MockReturn::Return(data) => ok_return(inputs, data.clone()),
+                MockReturn::Revert(data) => revert_with(inputs, data.clone()),
             });
         }
 
@@ -849,7 +830,7 @@ where
     /// participates in the post-prepare abort check.
     fn record_and_revert(
         &self,
-        gas_limit: u64,
+        inputs: &CallInputs,
         name: &str,
         selector: [u8; 4],
         category: UnsupportedCategory,
@@ -858,7 +839,7 @@ where
         if let Ok(mut hits) = self.config.unsupported_hits.lock() {
             hits.push(UnsupportedHit { name: name.to_string(), selector, category });
         }
-        revert_with(gas_limit, encode_error_string(msg))
+        revert_with(inputs, encode_error_string(msg))
     }
 
     /// Emit a `tracing::warn!` + `eprintln!` once per cheatcode-name. Subsequent
@@ -891,10 +872,7 @@ where
         };
         let calldata = calldata_bytes.as_ref();
         if calldata.len() < 4 {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("EDB: cheatcode call has no selector"),
-            );
+            return revert_with(inputs, encode_error_string("EDB: cheatcode call has no selector"));
         }
         let selector: [u8; 4] = calldata[..4].try_into().expect("just sliced 4 bytes");
         let args = &calldata[4..];
@@ -932,7 +910,7 @@ where
             SEL_EXPECT_CALL => self.cheat_expect_call(ctx, inputs, args, 1),
             SEL_EXPECT_CALL_COUNT => self.cheat_expect_call_with_count(ctx, inputs, args),
             SEL_EXPECT_CALL_MIN_GAS => self.record_and_revert(
-                inputs.gas_limit,
+                inputs,
                 "expectCallMinGas",
                 selector,
                 UnsupportedCategory::Rejected,
@@ -974,13 +952,7 @@ where
                     "EDB: cheatcode vm.{name} not supported in v1: \
                      multi-fork backend unavailable. See docs/cheatcodes.md"
                 );
-                self.record_and_revert(
-                    inputs.gas_limit,
-                    name,
-                    selector,
-                    UnsupportedCategory::Rejected,
-                    &msg,
-                )
+                self.record_and_revert(inputs, name, selector, UnsupportedCategory::Rejected, &msg)
             }
             // Snapshot capture (Task 3)
             SEL_SNAPSHOT_STATE | SEL_SNAPSHOT_LEGACY => {
@@ -1000,7 +972,7 @@ where
             SEL_DELETE_STATE_SNAPSHOTS => self.cheat_delete_state_snapshots(ctx, inputs, args),
             // Explicitly rejected — separate-tx model
             SEL_TRANSACT => self.record_and_revert(
-                inputs.gas_limit,
+                inputs,
                 "transact",
                 selector,
                 UnsupportedCategory::Rejected,
@@ -1021,13 +993,7 @@ where
                     "EDB: cheatcode vm.{name} not supported in v1: \
                      external-process / fs access disabled. See docs/cheatcodes.md"
                 );
-                self.record_and_revert(
-                    inputs.gas_limit,
-                    name,
-                    selector,
-                    UnsupportedCategory::Rejected,
-                    &msg,
-                )
+                self.record_and_revert(inputs, name, selector, UnsupportedCategory::Rejected, &msg)
             }
             // Explicitly rejected — broadcasting
             SEL_BROADCAST | SEL_START_BROADCAST | SEL_STOP_BROADCAST => {
@@ -1041,13 +1007,7 @@ where
                     "EDB: cheatcode vm.{name} not supported in v1: \
                      script-only — not applicable to forge test. See docs/cheatcodes.md"
                 );
-                self.record_and_revert(
-                    inputs.gas_limit,
-                    name,
-                    selector,
-                    UnsupportedCategory::Rejected,
-                    &msg,
-                )
+                self.record_and_revert(inputs, name, selector, UnsupportedCategory::Rejected, &msg)
             }
 
             _ => {
@@ -1065,7 +1025,7 @@ where
                         "EDB: cheatcode vm.{name} not yet implemented in v1 \
                          (selector 0x{hex}). See docs/cheatcodes.md"
                     );
-                    self.record_and_revert(inputs.gas_limit, name, selector, category, &msg)
+                    self.record_and_revert(inputs, name, selector, category, &msg)
                 } else {
                     // Selector is not in our catalog at all — likely a non-vm call
                     // that accidentally hit the cheatcode address, or a very new
@@ -1077,7 +1037,7 @@ where
                          check spelling or open an issue)"
                     );
                     self.record_and_revert(
-                        inputs.gas_limit,
+                        inputs,
                         &display,
                         selector,
                         UnsupportedCategory::Unknown,
@@ -1110,23 +1070,12 @@ where
             },
         );
 
-        // Encode the u64 id as a uint256 return (32-byte big-endian).
+        // Encode the u64 id as a uint256 return (32-byte big-endian). The
+        // memory_offset propagation lives in ok_return: REVM copies these 32
+        // bytes back into the caller's memory at the slot Solidity reserved.
         let mut out = [0u8; 32];
         out[24..].copy_from_slice(&id.to_be_bytes());
-        // Use the CALL instruction's return-memory range so REVM writes the
-        // 32-byte result to the correct slot in the caller's memory. Without
-        // this, `memory_offset: 0..0` would mean no bytes are written and
-        // Solidity would read zeros instead of the encoded id.
-        revm::interpreter::CallOutcome {
-            result: revm::interpreter::InterpreterResult {
-                result: revm::interpreter::InstructionResult::Return,
-                output: alloy_primitives::Bytes::copy_from_slice(&out),
-                gas: revm::interpreter::Gas::new(inputs.gas_limit),
-            },
-            memory_offset: inputs.return_memory_offset.clone(),
-            was_precompile_called: false,
-            precompile_call_logs: Vec::new(),
-        }
+        ok_return(inputs, Bytes::copy_from_slice(&out))
     }
 
     fn cheat_revert_to_state(
@@ -1136,10 +1085,7 @@ where
         args: &[u8],
     ) -> revm::interpreter::CallOutcome {
         if args.len() < 32 {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.revertToState: bad calldata"),
-            );
+            return revert_with(inputs, encode_error_string("vm.revertToState: bad calldata"));
         }
         // Decode the uint256 arg as u64 (low 8 bytes of the 32-byte word).
         let id_bytes: [u8; 8] = args[24..32].try_into().unwrap_or([0; 8]);
@@ -1159,19 +1105,7 @@ where
         // Encode bool as uint256-padded.
         let mut out = [0u8; 32];
         out[31] = if restored { 1 } else { 0 };
-
-        // Same memory_offset trick as snapshotState — Solidity will copy 32 bytes
-        // from the call's return-data slot back into the caller's memory.
-        revm::interpreter::CallOutcome {
-            result: revm::interpreter::InterpreterResult {
-                result: revm::interpreter::InstructionResult::Return,
-                output: alloy_primitives::Bytes::copy_from_slice(&out),
-                gas: revm::interpreter::Gas::new(inputs.gas_limit),
-            },
-            memory_offset: inputs.return_memory_offset.clone(),
-            was_precompile_called: false,
-            precompile_call_logs: Vec::new(),
-        }
+        ok_return(inputs, Bytes::copy_from_slice(&out))
     }
 
     fn cheat_delete_state_snapshot(
@@ -1182,7 +1116,7 @@ where
     ) -> revm::interpreter::CallOutcome {
         if args.len() < 32 {
             return revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string("vm.deleteStateSnapshot: bad calldata"),
             );
         }
@@ -1192,17 +1126,7 @@ where
 
         let mut out = [0u8; 32];
         out[31] = if existed { 1 } else { 0 };
-
-        revm::interpreter::CallOutcome {
-            result: revm::interpreter::InterpreterResult {
-                result: revm::interpreter::InstructionResult::Return,
-                output: alloy_primitives::Bytes::copy_from_slice(&out),
-                gas: revm::interpreter::Gas::new(inputs.gas_limit),
-            },
-            memory_offset: inputs.return_memory_offset.clone(),
-            was_precompile_called: false,
-            precompile_call_logs: Vec::new(),
-        }
+        ok_return(inputs, Bytes::copy_from_slice(&out))
     }
 
     fn cheat_delete_state_snapshots(
@@ -1213,16 +1137,7 @@ where
     ) -> revm::interpreter::CallOutcome {
         self.snapshots.clear();
         // Void return — empty bytes.
-        revm::interpreter::CallOutcome {
-            result: revm::interpreter::InterpreterResult {
-                result: revm::interpreter::InstructionResult::Return,
-                output: alloy_primitives::Bytes::new(),
-                gas: revm::interpreter::Gas::new(inputs.gas_limit),
-            },
-            memory_offset: inputs.return_memory_offset.clone(),
-            was_precompile_called: false,
-            precompile_call_logs: Vec::new(),
-        }
+        ok_return(inputs, Bytes::new())
     }
 
     // --- Block / chain mutators ---------------------------------------------
@@ -1234,10 +1149,10 @@ where
         args: &[u8],
     ) -> CallOutcome {
         let Some(value) = read_u256(args, 0) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.warp: bad calldata"));
+            return revert_with(inputs, encode_error_string("vm.warp: bad calldata"));
         };
         ctx.block.timestamp = value;
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     fn cheat_roll(
@@ -1247,10 +1162,10 @@ where
         args: &[u8],
     ) -> CallOutcome {
         let Some(value) = read_u256(args, 0) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.roll: bad calldata"));
+            return revert_with(inputs, encode_error_string("vm.roll: bad calldata"));
         };
         ctx.block.number = value;
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     /// vm.rollFork(uint256) — v1: updates block.number only.
@@ -1277,14 +1192,11 @@ where
              See docs/cheatcodes.md for details.",
         );
         if args.len() < 32 {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.rollFork(uint256): bad calldata"),
-            );
+            return revert_with(inputs, encode_error_string("vm.rollFork(uint256): bad calldata"));
         }
         let n = alloy_primitives::U256::from_be_slice(&args[..32]);
         ctx.block.number = n;
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     fn cheat_chain_id(
@@ -1294,19 +1206,19 @@ where
         args: &[u8],
     ) -> CallOutcome {
         let Some(value) = read_u256(args, 0) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.chainId: bad calldata"));
+            return revert_with(inputs, encode_error_string("vm.chainId: bad calldata"));
         };
         let chain_id: u64 = match value.try_into() {
             Ok(v) => v,
             Err(_) => {
                 return revert_with(
-                    inputs.gas_limit,
+                    inputs,
                     encode_error_string("vm.chainId: value does not fit in u64"),
                 );
             }
         };
         ctx.cfg.chain_id = chain_id;
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     // --- Account state mutators ---------------------------------------------
@@ -1318,21 +1230,18 @@ where
         args: &[u8],
     ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.deal: bad address arg"));
+            return revert_with(inputs, encode_error_string("vm.deal: bad address arg"));
         };
         let Some(value) = read_u256(args, 1) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.deal: bad value arg"));
+            return revert_with(inputs, encode_error_string("vm.deal: bad value arg"));
         };
         match ctx.journaled_state.load_account_mut(target) {
             Ok(mut acc) => {
                 acc.set_balance(value);
                 acc.touch();
-                ok_return(inputs.gas_limit, Bytes::new())
+                ok_return(inputs, Bytes::new())
             }
-            Err(_) => revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.deal: failed to load account"),
-            ),
+            Err(_) => revert_with(inputs, encode_error_string("vm.deal: failed to load account")),
         }
     }
 
@@ -1343,21 +1252,18 @@ where
         args: &[u8],
     ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.etch: bad address arg"));
+            return revert_with(inputs, encode_error_string("vm.etch: bad address arg"));
         };
         let Some(code) = read_bytes(args, 1) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.etch: bad bytes arg"));
+            return revert_with(inputs, encode_error_string("vm.etch: bad bytes arg"));
         };
         // Make sure the account is warm before set_code (per JournalTr contract).
         if ctx.journaled_state.load_account_with_code(target).is_err() {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.etch: failed to load account"),
-            );
+            return revert_with(inputs, encode_error_string("vm.etch: failed to load account"));
         }
         let bytecode = Bytecode::new_raw(code);
         ctx.journaled_state.set_code(target, bytecode);
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     fn cheat_store(
@@ -1367,27 +1273,24 @@ where
         args: &[u8],
     ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.store: bad address arg"));
+            return revert_with(inputs, encode_error_string("vm.store: bad address arg"));
         };
         let Some(slot) = read_b256(args, 1) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.store: bad slot arg"));
+            return revert_with(inputs, encode_error_string("vm.store: bad slot arg"));
         };
         let Some(value) = read_b256(args, 2) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.store: bad value arg"));
+            return revert_with(inputs, encode_error_string("vm.store: bad value arg"));
         };
         // Make sure the account is warm.
         if ctx.journaled_state.load_account(target).is_err() {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.store: failed to load account"),
-            );
+            return revert_with(inputs, encode_error_string("vm.store: failed to load account"));
         }
         let key = U256::from_be_bytes(slot.0);
         let val = U256::from_be_bytes(value.0);
         if ctx.journaled_state.sstore(target, key, val).is_err() {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.store: sstore failed"));
+            return revert_with(inputs, encode_error_string("vm.store: sstore failed"));
         }
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     fn cheat_load(
@@ -1397,24 +1300,21 @@ where
         args: &[u8],
     ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.load: bad address arg"));
+            return revert_with(inputs, encode_error_string("vm.load: bad address arg"));
         };
         let Some(slot) = read_b256(args, 1) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.load: bad slot arg"));
+            return revert_with(inputs, encode_error_string("vm.load: bad slot arg"));
         };
         if ctx.journaled_state.load_account(target).is_err() {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.load: failed to load account"),
-            );
+            return revert_with(inputs, encode_error_string("vm.load: failed to load account"));
         }
         let key = U256::from_be_bytes(slot.0);
         match ctx.journaled_state.sload(target, key) {
             Ok(loaded) => {
                 let bytes = Bytes::copy_from_slice(&loaded.data.to_be_bytes::<32>());
-                ok_return(inputs.gas_limit, bytes)
+                ok_return(inputs, bytes)
             }
-            Err(_) => revert_with(inputs.gas_limit, encode_error_string("vm.load: sload failed")),
+            Err(_) => revert_with(inputs, encode_error_string("vm.load: sload failed")),
         }
     }
 
@@ -1425,22 +1325,16 @@ where
         args: &[u8],
     ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.setNonce: bad address arg"),
-            );
+            return revert_with(inputs, encode_error_string("vm.setNonce: bad address arg"));
         };
         let Some(value) = read_u256(args, 1) else {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.setNonce: bad nonce arg"),
-            );
+            return revert_with(inputs, encode_error_string("vm.setNonce: bad nonce arg"));
         };
         let nonce: u64 = match value.try_into() {
             Ok(v) => v,
             Err(_) => {
                 return revert_with(
-                    inputs.gas_limit,
+                    inputs,
                     encode_error_string("vm.setNonce: nonce does not fit in u64"),
                 );
             }
@@ -1449,12 +1343,11 @@ where
             Ok(mut acc) => {
                 acc.set_nonce(nonce);
                 acc.touch();
-                ok_return(inputs.gas_limit, Bytes::new())
+                ok_return(inputs, Bytes::new())
             }
-            Err(_) => revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.setNonce: failed to load account"),
-            ),
+            Err(_) => {
+                revert_with(inputs, encode_error_string("vm.setNonce: failed to load account"))
+            }
         }
     }
 
@@ -1469,7 +1362,7 @@ where
     ) -> CallOutcome {
         let Some(new_caller) = read_address(args, 0) else {
             return revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string("vm.prank/startPrank: bad address arg"),
             );
         };
@@ -1479,7 +1372,7 @@ where
         // child journal checkpoint), so we key by `depth()` at install time.
         let depth = ctx.journaled_state.depth();
         self.pranks.insert(depth, Prank { new_caller, one_shot, fired: false });
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     fn cheat_stop_prank(
@@ -1489,7 +1382,7 @@ where
     ) -> CallOutcome {
         let depth = ctx.journaled_state.depth();
         self.pranks.remove(&depth);
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     // --- Mocks --------------------------------------------------------------
@@ -1502,26 +1395,17 @@ where
         reverts: bool,
     ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.mockCall: bad address arg"),
-            );
+            return revert_with(inputs, encode_error_string("vm.mockCall: bad address arg"));
         };
         let Some(calldata) = read_bytes(args, 1) else {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.mockCall: bad calldata arg"),
-            );
+            return revert_with(inputs, encode_error_string("vm.mockCall: bad calldata arg"));
         };
         let Some(retdata) = read_bytes(args, 2) else {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.mockCall: bad return-data arg"),
-            );
+            return revert_with(inputs, encode_error_string("vm.mockCall: bad return-data arg"));
         };
         let entry = if reverts { MockReturn::Revert(retdata) } else { MockReturn::Return(retdata) };
         self.mocks.entry(target).or_default().insert(calldata, entry);
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     fn cheat_clear_mocked_calls(
@@ -1530,7 +1414,7 @@ where
         inputs: &CallInputs,
     ) -> CallOutcome {
         self.mocks.clear();
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     // --- expectRevert --------------------------------------------------------
@@ -1542,14 +1426,14 @@ where
                 Some(b) => Some(b),
                 None => {
                     return revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string("vm.expectRevert(bytes): bad bytes arg"),
                     );
                 }
             },
         };
         self.expected_revert = Some(ExpectedRevert { expected_data });
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     // --- Labels --------------------------------------------------------------
@@ -1561,13 +1445,13 @@ where
         args: &[u8],
     ) -> CallOutcome {
         let Some(addr) = read_address(args, 0) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.label: bad address arg"));
+            return revert_with(inputs, encode_error_string("vm.label: bad address arg"));
         };
         let Some(label) = read_string(args, 1) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.label: bad string arg"));
+            return revert_with(inputs, encode_error_string("vm.label: bad string arg"));
         };
         self.labels.insert(addr, label);
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     // --- recordLogs / getRecordedLogs ----------------------------------------
@@ -1575,7 +1459,7 @@ where
     fn cheat_record_logs(&mut self, inputs: &CallInputs) -> CallOutcome {
         self.recording_logs = true;
         self.recorded_logs.clear();
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     /// ABI-encodes the captured logs as `Log[]` where
@@ -1586,7 +1470,7 @@ where
         // We stop recording after the read, matching foundry's reset semantic.
         self.recording_logs = false;
         let encoded = abi_encode_logs(&logs);
-        ok_return(inputs.gas_limit, encoded)
+        ok_return(inputs, encoded)
     }
 
     // --- expectEmit ---------------------------------------------------------
@@ -1608,25 +1492,25 @@ where
             ExpectEmitMode::Filter4 => {
                 let Some(t1) = read_bool(args, 0) else {
                     return revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string("vm.expectEmit(bool,bool,bool,bool): bad arg 0"),
                     );
                 };
                 let Some(t2) = read_bool(args, 1) else {
                     return revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string("vm.expectEmit(bool,bool,bool,bool): bad arg 1"),
                     );
                 };
                 let Some(t3) = read_bool(args, 2) else {
                     return revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string("vm.expectEmit(bool,bool,bool,bool): bad arg 2"),
                     );
                 };
                 let Some(t4) = read_bool(args, 3) else {
                     return revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string("vm.expectEmit(bool,bool,bool,bool): bad arg 3"),
                     );
                 };
@@ -1639,7 +1523,7 @@ where
             ExpectEmitMode::Filter5 => {
                 let Some(t1) = read_bool(args, 0) else {
                     return revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string(
                             "vm.expectEmit(bool,bool,bool,bool,address): bad arg 0",
                         ),
@@ -1647,7 +1531,7 @@ where
                 };
                 let Some(t2) = read_bool(args, 1) else {
                     return revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string(
                             "vm.expectEmit(bool,bool,bool,bool,address): bad arg 1",
                         ),
@@ -1655,7 +1539,7 @@ where
                 };
                 let Some(t3) = read_bool(args, 2) else {
                     return revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string(
                             "vm.expectEmit(bool,bool,bool,bool,address): bad arg 2",
                         ),
@@ -1663,7 +1547,7 @@ where
                 };
                 let Some(t4) = read_bool(args, 3) else {
                     return revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string(
                             "vm.expectEmit(bool,bool,bool,bool,address): bad arg 3",
                         ),
@@ -1671,7 +1555,7 @@ where
                 };
                 let Some(emitter) = read_address(args, 4) else {
                     return revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string(
                             "vm.expectEmit(bool,bool,bool,bool,address): bad emitter arg",
                         ),
@@ -1682,7 +1566,7 @@ where
             ExpectEmitMode::AnyTopicsFromEmitter => {
                 let Some(emitter) = read_address(args, 0) else {
                     return revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string("vm.expectEmit(address): bad emitter arg"),
                     );
                 };
@@ -1696,7 +1580,7 @@ where
             matched: false,
             registered_at_call_depth: self.call_depth,
         });
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     // --- expectCall ---------------------------------------------------------
@@ -1709,16 +1593,10 @@ where
         default_count: u64,
     ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.expectCall: bad address arg"),
-            );
+            return revert_with(inputs, encode_error_string("vm.expectCall: bad address arg"));
         };
         let Some(calldata) = read_bytes(args, 1) else {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.expectCall: bad calldata arg"),
-            );
+            return revert_with(inputs, encode_error_string("vm.expectCall: bad calldata arg"));
         };
         self.expected_calls.push(ExpectedCall {
             target,
@@ -1727,7 +1605,7 @@ where
             observed: 0,
             registered_at_call_depth: self.call_depth,
         });
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     fn cheat_expect_call_with_count(
@@ -1738,19 +1616,19 @@ where
     ) -> CallOutcome {
         let Some(target) = read_address(args, 0) else {
             return revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string("vm.expectCall(...,uint64): bad address arg"),
             );
         };
         let Some(calldata) = read_bytes(args, 1) else {
             return revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string("vm.expectCall(...,uint64): bad calldata arg"),
             );
         };
         let Some(count_word) = read_u256(args, 2) else {
             return revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string("vm.expectCall(...,uint64): bad count arg"),
             );
         };
@@ -1758,7 +1636,7 @@ where
             Ok(v) => v,
             Err(_) => {
                 return revert_with(
-                    inputs.gas_limit,
+                    inputs,
                     encode_error_string("vm.expectCall(...,uint64): count does not fit in u64"),
                 );
             }
@@ -1770,7 +1648,7 @@ where
             observed: 0,
             registered_at_call_depth: self.call_depth,
         });
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     // --- vm.assume -----------------------------------------------------------
@@ -1778,13 +1656,13 @@ where
     fn cheat_assume(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
         // ABI-decoded `bool` is a single 32-byte word; the bool is in the last byte.
         let Some(cond) = read_bool(args, 0) else {
-            return revert_with(inputs.gas_limit, encode_error_string("vm.assume: bad calldata"));
+            return revert_with(inputs, encode_error_string("vm.assume: bad calldata"));
         };
         if cond {
-            ok_return(inputs.gas_limit, Bytes::new())
+            ok_return(inputs, Bytes::new())
         } else {
             revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string(
                     "EDB: vm.assume(false) -- assumption violated \
                      (real foundry would skip this fuzz iter; EDB surfaces it as a revert)",
@@ -1797,10 +1675,7 @@ where
 
     fn cheat_env_bool(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
         let Some(name) = read_string(args, 0) else {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.envBool: malformed calldata"),
-            );
+            return revert_with(inputs, encode_error_string("vm.envBool: malformed calldata"));
         };
         match std::env::var(&name) {
             Ok(v) => {
@@ -1810,7 +1685,7 @@ where
                     "false" | "0" => false,
                     _ => {
                         return revert_with(
-                            inputs.gas_limit,
+                            inputs,
                             encode_error_string(&format!(
                                 "EDB: vm.envBool: {name}={v:?} not parseable as bool"
                             )),
@@ -1819,10 +1694,10 @@ where
                 };
                 let mut out = [0u8; 32];
                 out[31] = u8::from(b);
-                ok_return(inputs.gas_limit, Bytes::copy_from_slice(&out))
+                ok_return(inputs, Bytes::copy_from_slice(&out))
             }
             Err(_) => revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string(&format!("EDB: vm.envBool: {name} not set")),
             ),
         }
@@ -1830,10 +1705,7 @@ where
 
     fn cheat_env_bytes(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
         let Some(name) = read_string(args, 0) else {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.envBytes: malformed calldata"),
-            );
+            return revert_with(inputs, encode_error_string("vm.envBytes: malformed calldata"));
         };
         match std::env::var(&name) {
             Ok(v) => {
@@ -1842,16 +1714,16 @@ where
                     h
                 } else {
                     return revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string(&format!(
                             "EDB: vm.envBytes: {name}={v:?} must start with 0x for hex decoding"
                         )),
                     );
                 };
                 match alloy_primitives::hex::decode(hex_body) {
-                    Ok(decoded) => ok_return(inputs.gas_limit, encode_abi_bytes(&decoded)),
+                    Ok(decoded) => ok_return(inputs, encode_abi_bytes(&decoded)),
                     Err(_) => revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string(&format!(
                             "EDB: vm.envBytes: {name}={v:?} not valid hex"
                         )),
@@ -1859,7 +1731,7 @@ where
                 }
             }
             Err(_) => revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string(&format!("EDB: vm.envBytes: {name} not set")),
             ),
         }
@@ -1867,15 +1739,12 @@ where
 
     fn cheat_env_string(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
         let Some(name) = read_string(args, 0) else {
-            return revert_with(
-                inputs.gas_limit,
-                encode_error_string("vm.envString: malformed calldata"),
-            );
+            return revert_with(inputs, encode_error_string("vm.envString: malformed calldata"));
         };
         match std::env::var(&name) {
-            Ok(v) => ok_return(inputs.gas_limit, encode_abi_string(&v)),
+            Ok(v) => ok_return(inputs, encode_abi_string(&v)),
             Err(_) => revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string(&format!("EDB: vm.envString: {name} not set")),
             ),
         }
@@ -1889,13 +1758,13 @@ where
         // tail: the string at offset 0x40
         let Some(default_val) = read_bool(args, 1) else {
             return revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string("vm.envOr(string,bool): bad default arg"),
             );
         };
         let Some(name) = read_string(args, 0) else {
             return revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string("vm.envOr(string,bool): malformed calldata"),
             );
         };
@@ -1907,7 +1776,7 @@ where
                     "false" | "0" => false,
                     _ => {
                         return revert_with(
-                            inputs.gas_limit,
+                            inputs,
                             encode_error_string(&format!(
                                 "EDB: vm.envOr(string,bool): {name}={v:?} not parseable as bool"
                             )),
@@ -1916,13 +1785,13 @@ where
                 };
                 let mut out = [0u8; 32];
                 out[31] = u8::from(b);
-                ok_return(inputs.gas_limit, Bytes::copy_from_slice(&out))
+                ok_return(inputs, Bytes::copy_from_slice(&out))
             }
             Err(_) => {
                 // Return the default value.
                 let mut out = [0u8; 32];
                 out[31] = u8::from(default_val);
-                ok_return(inputs.gas_limit, Bytes::copy_from_slice(&out))
+                ok_return(inputs, Bytes::copy_from_slice(&out))
             }
         }
     }
@@ -1933,13 +1802,13 @@ where
         // The name is always at head_index 0 and the bytes at head_index 1.
         let Some(name) = read_string(args, 0) else {
             return revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string("vm.envOr(string,bytes): malformed calldata"),
             );
         };
         let Some(default_val) = read_bytes(args, 1) else {
             return revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string("vm.envOr(string,bytes): bad default arg"),
             );
         };
@@ -1950,23 +1819,23 @@ where
                     h
                 } else {
                     return revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string(&format!(
                             "EDB: vm.envOr(string,bytes): {name}={v:?} must start with 0x"
                         )),
                     );
                 };
                 match alloy_primitives::hex::decode(hex_body) {
-                    Ok(decoded) => ok_return(inputs.gas_limit, encode_abi_bytes(&decoded)),
+                    Ok(decoded) => ok_return(inputs, encode_abi_bytes(&decoded)),
                     Err(_) => revert_with(
-                        inputs.gas_limit,
+                        inputs,
                         encode_error_string(&format!(
                             "EDB: vm.envOr(string,bytes): {name}={v:?} not valid hex"
                         )),
                     ),
                 }
             }
-            Err(_) => ok_return(inputs.gas_limit, encode_abi_bytes(&default_val)),
+            Err(_) => ok_return(inputs, encode_abi_bytes(&default_val)),
         }
     }
 
@@ -1974,19 +1843,19 @@ where
         // ABI: (string name, string defaultValue) — both dynamic
         let Some(name) = read_string(args, 0) else {
             return revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string("vm.envOr(string,string): malformed calldata"),
             );
         };
         let Some(default_val) = read_string(args, 1) else {
             return revert_with(
-                inputs.gas_limit,
+                inputs,
                 encode_error_string("vm.envOr(string,string): bad default arg"),
             );
         };
         match std::env::var(&name) {
-            Ok(v) => ok_return(inputs.gas_limit, encode_abi_string(&v)),
-            Err(_) => ok_return(inputs.gas_limit, encode_abi_string(&default_val)),
+            Ok(v) => ok_return(inputs, encode_abi_string(&v)),
+            Err(_) => ok_return(inputs, encode_abi_string(&default_val)),
         }
     }
 
@@ -2002,7 +1871,7 @@ where
              Tests that ASSERT specific gas behavior may see unexpected values.",
         );
         self.gas_metering_paused = true;
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     /// `vm.resumeGasMetering()` — clears the paused state.
@@ -2013,7 +1882,7 @@ where
              Tests that ASSERT specific gas behavior may see unexpected values.",
         );
         self.gas_metering_paused = false;
-        ok_return(inputs.gas_limit, Bytes::new())
+        ok_return(inputs, Bytes::new())
     }
 
     /// `vm.lastCallGas() returns (Gas memory)` — returns a synthetic all-zero
@@ -2046,7 +1915,7 @@ where
         // ABI encoding of a struct of pure value types: each field is one 32-byte word.
         // All fields are zero for v1 stub determinism (see doc comment above).
         let out = vec![0u8; 5 * 32];
-        ok_return(inputs.gas_limit, Bytes::from(out))
+        ok_return(inputs, Bytes::from(out))
     }
 }
 
@@ -2067,27 +1936,44 @@ enum ExpectEmitMode {
 // CallOutcome helpers
 // ----------------------------------------------------------------------------
 
-fn ok_return(gas_limit: u64, output: Bytes) -> CallOutcome {
+/// Build a successful synthetic CallOutcome for an intercepted cheatcode call.
+///
+/// `memory_offset` is taken from the CALL instruction's `return_memory_offset`,
+/// NOT the default `0..0`. REVM uses `memory_offset` as the range in the
+/// caller frame's memory where the inline return bytes are written before
+/// control returns. For VOID-returning cheatcodes this distinction is
+/// invisible (no bytes to copy). For VALUE-returning ones with a STATIC
+/// return type — `bool`, `bytes32`, `uint256`, fixed-size structs — Solidity
+/// reads the return value directly from `mem[memory_offset..]`. Using
+/// `0..0` silently yields all-zero return values (e.g. `vm.load` returned 0
+/// instead of the stored slot value). For DYNAMIC return types Solidity goes
+/// through RETURNDATACOPY so the bug isn't user-observable, but threading
+/// the correct offset is still the right thing.
+fn ok_return(inputs: &CallInputs, output: Bytes) -> CallOutcome {
     CallOutcome {
         result: InterpreterResult {
             result: InstructionResult::Return,
             output,
-            gas: Gas::new(gas_limit),
+            gas: Gas::new(inputs.gas_limit),
         },
-        memory_offset: 0..0,
+        memory_offset: inputs.return_memory_offset.clone(),
         was_precompile_called: false,
         precompile_call_logs: Vec::new(),
     }
 }
 
-fn revert_with(gas_limit: u64, output: Bytes) -> CallOutcome {
+/// Build a reverting synthetic CallOutcome. Revert outputs are read via
+/// `RETURNDATACOPY`, so `memory_offset` doesn't directly leak to the caller's
+/// memory — but we still pass through `inputs.return_memory_offset` for
+/// consistency with `ok_return`.
+fn revert_with(inputs: &CallInputs, output: Bytes) -> CallOutcome {
     CallOutcome {
         result: InterpreterResult {
             result: InstructionResult::Revert,
             output,
-            gas: Gas::new(gas_limit),
+            gas: Gas::new(inputs.gas_limit),
         },
-        memory_offset: 0..0,
+        memory_offset: inputs.return_memory_offset.clone(),
         was_precompile_called: false,
         precompile_call_logs: Vec::new(),
     }
@@ -2793,19 +2679,64 @@ mod tests {
 
     // --- Synthetic CallOutcome shape ----------------------------------------
 
+    /// Build a minimal `CallInputs` for testing the synthetic-outcome helpers.
+    /// `return_memory_offset` is the load-bearing field for the C-1 bug fix:
+    /// callers can pass `64..96` to assert it's threaded through ok_return /
+    /// revert_with into `CallOutcome.memory_offset`.
+    fn mock_call_inputs(
+        gas_limit: u64,
+        return_memory_offset: std::ops::Range<usize>,
+    ) -> CallInputs {
+        use revm::interpreter::{CallInput, CallScheme, CallValue};
+        CallInputs {
+            input: CallInput::Bytes(Bytes::new()),
+            return_memory_offset,
+            gas_limit,
+            reservoir: 0,
+            bytecode_address: Address::ZERO,
+            known_bytecode: (B256::ZERO, Bytecode::new()),
+            target_address: Address::ZERO,
+            caller: Address::ZERO,
+            value: CallValue::Transfer(U256::ZERO),
+            scheme: CallScheme::Call,
+            is_static: false,
+        }
+    }
+
     #[test]
     fn ok_return_has_return_status() {
-        let out = ok_return(123_000, Bytes::from_static(b"x"));
+        let inputs = mock_call_inputs(123_000, 0..0);
+        let out = ok_return(&inputs, Bytes::from_static(b"x"));
         assert!(matches!(out.result.result, InstructionResult::Return));
         assert_eq!(out.result.output.as_ref(), b"x");
         assert_eq!(out.memory_offset, 0..0);
     }
 
+    /// Regression for C-1: `memory_offset` MUST be propagated from
+    /// `inputs.return_memory_offset` into `CallOutcome.memory_offset`.
+    /// Hardcoding `0..0` here caused REVM to copy zero bytes into the caller's
+    /// memory for static-return cheatcodes (vm.load, vm.envBool, etc.), so
+    /// Solidity read zeros where the actual return value should have been.
+    #[test]
+    fn ok_return_propagates_memory_offset() {
+        let inputs = mock_call_inputs(123_000, 64..96);
+        let out = ok_return(&inputs, Bytes::from_static(b"x"));
+        assert_eq!(out.memory_offset, 64..96);
+    }
+
     #[test]
     fn revert_with_has_revert_status() {
-        let out = revert_with(50_000, Bytes::from_static(b"r"));
+        let inputs = mock_call_inputs(50_000, 0..0);
+        let out = revert_with(&inputs, Bytes::from_static(b"r"));
         assert!(matches!(out.result.result, InstructionResult::Revert));
         assert_eq!(out.result.output.as_ref(), b"r");
+    }
+
+    #[test]
+    fn revert_with_propagates_memory_offset() {
+        let inputs = mock_call_inputs(50_000, 128..160);
+        let out = revert_with(&inputs, Bytes::from_static(b"r"));
+        assert_eq!(out.memory_offset, 128..160);
     }
 
     // --- abi_encode_logs sanity --------------------------------------------
@@ -2914,8 +2845,9 @@ mod tests {
         let config = CheatsConfig::default();
         let cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(config.clone());
 
+        let inputs = mock_call_inputs(123_000, 0..0);
         let out = cheats.record_and_revert(
-            123_000,
+            &inputs,
             "selectFork",
             SEL_SELECT_FORK,
             UnsupportedCategory::Rejected,
@@ -2944,15 +2876,16 @@ mod tests {
         let a = factory();
         let b = factory();
 
+        let inputs = mock_call_inputs(10_000, 0..0);
         a.record_and_revert(
-            10_000,
+            &inputs,
             "selectFork",
             SEL_SELECT_FORK,
             UnsupportedCategory::Rejected,
             "msg-a",
         );
         b.record_and_revert(
-            10_000,
+            &inputs,
             "transact",
             SEL_TRANSACT,
             UnsupportedCategory::Rejected,

@@ -18,9 +18,20 @@ use revm::{
 
 use crate::cmd::test::entrypoint::ENTRYPOINT_ADDR;
 
-/// Foundry's CALLER constant — the EOA used for setUp / test calls in `forge test`.
+/// Foundry's `DEFAULT_SENDER` — the EOA used as `msg.sender` for setUp/test calls
+/// when no `vm.prank` is active. Derived as
+/// `address(uint160(uint256(keccak256("foundry default caller"))))`, matching
+/// forge-std's `StdConstants.sol::DEFAULT_SENDER`.
+///
+/// Previously this constant was set to `0x1F1B3d8F17b59EE4e3fadf2BA936CDA90D9d6A92`,
+/// which is the deterministic-deploy address of the test contract INSTANCE under
+/// `forge test` — not the test caller. That divergence broke any test reading
+/// `tx.origin` / `msg.sender` (access-control checks, CREATE2 derivations,
+/// EIP-712 signature flows). The unit test
+/// `forge_caller_matches_foundry_default_sender` re-derives the constant at
+/// test time so silent drift is caught immediately.
 #[allow(dead_code)] // consumed by downstream tasks (4.3+)
-pub const FORGE_CALLER: Address = address!("1F1B3d8F17b59EE4e3fadf2BA936CDA90D9d6A92");
+pub const FORGE_CALLER: Address = address!("1804c8AB1F12E6bbf3894d4083f33e07309d1f38");
 
 /// Foundry's cheatcode precompile address.
 #[allow(dead_code)] // consumed by downstream tasks (5.2+)
@@ -273,9 +284,28 @@ mod tests {
 
     #[test]
     fn forge_caller_constant_matches_spec() {
+        // Pinned to the forge-std DEFAULT_SENDER literal so the byte sequence
+        // is explicit at the test site (any silent drift in the const flips
+        // this assertion immediately).
         assert_eq!(
             FORGE_CALLER,
-            alloy_primitives::address!("1F1B3d8F17b59EE4e3fadf2BA936CDA90D9d6A92")
+            alloy_primitives::address!("1804c8AB1F12E6bbf3894d4083f33e07309d1f38")
+        );
+    }
+
+    /// Re-derive `FORGE_CALLER` from its definition at test time so a future
+    /// edit that flips the byte literal away from the keccak("foundry default
+    /// caller") derivation can't silently sneak past review.
+    ///
+    /// forge-std/src/StdConstants.sol:
+    ///   `address(uint160(uint256(keccak256("foundry default caller"))))`
+    #[test]
+    fn forge_caller_matches_foundry_default_sender() {
+        let derived = Address::from_word(keccak256(b"foundry default caller"));
+        assert_eq!(
+            FORGE_CALLER, derived,
+            "FORGE_CALLER must equal address(uint160(uint256(keccak256(\"foundry default caller\")))) \
+             — i.e. forge-std's StdConstants.DEFAULT_SENDER. Got {FORGE_CALLER} vs derived {derived}",
         );
     }
 

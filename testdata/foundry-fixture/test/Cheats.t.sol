@@ -71,6 +71,24 @@ contract Cheats is Test {
         // real gas values to lastCallGas in v1 anyway).
     }
 
+    /// Regression for C-1 (memory_offset propagation).
+    ///
+    /// `vm.load(address,bytes32) returns (bytes32)` is a STATIC-return
+    /// cheatcode: Solidity reads the result directly from
+    /// `mem[memory_offset..memory_offset + 32]`. EDB previously built its
+    /// synthetic `CallOutcome` with `memory_offset: 0..0`, so REVM copied zero
+    /// bytes back into the caller's frame and Solidity observed `bytes32(0)`
+    /// no matter what the slot actually held. With the fix in place, vm.load
+    /// returns the value we just vm.stored — verified by the `require` below.
+    function testLoadReadsActualStorage() public {
+        address target = address(this);
+        bytes32 slot = bytes32(uint256(0xdead));
+        bytes32 expected = bytes32(uint256(0xc0ffee));
+        vm.store(target, slot, expected);
+        bytes32 read = vm.load(target, slot);
+        require(read == expected, "vm.load returned wrong value (memory_offset propagation bug)");
+    }
+
     function revertingFn() internal pure {
         revert("boom");
     }

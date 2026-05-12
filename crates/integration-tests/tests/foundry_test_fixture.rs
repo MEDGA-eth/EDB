@@ -368,6 +368,56 @@ async fn cheats_gas_metering_stubs_dont_revert() -> Result<()> {
     Ok(())
 }
 
+/// Regression for C-1 (memory_offset propagation).
+///
+/// `vm.load` returns a STATIC `bytes32` — Solidity reads it from
+/// `mem[memory_offset..memory_offset + 32]`. The previous
+/// `ok_return`/`revert_with` helpers hardcoded `memory_offset: 0..0`, so REVM
+/// copied zero bytes into the caller's memory and Solidity saw `bytes32(0)`
+/// regardless of what the storage slot actually held — silent corruption.
+///
+/// `Cheats::testLoadReadsActualStorage` stores a known value into a known slot
+/// then reads it back via `vm.load`; a `require` inside the test fails (and
+/// the top-level frame reverts) if the read returns anything other than the
+/// stored value. With the bug, the test reverts; with the fix, the top frame
+/// is `Success`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_load_returns_stored_value() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testLoadReadsActualStorage",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(!trace.is_empty(), "trace was empty for Cheats::testLoadReadsActualStorage");
+
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry for Cheats::testLoadReadsActualStorage");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success — if it reverted with 'vm.load returned wrong value', \
+         the C-1 memory_offset propagation regressed; got: {:?}",
+        top.result,
+    );
+
+    assert!(
+        !trace_revert_contains(&trace, "vm.load returned wrong value"),
+        "vm.load returned the wrong value (memory_offset propagation regressed); trace = {trace:#?}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
 /// Regression guard for Task 6.3 (nested CREATE): the synthetic entrypoint
 /// CREATEs `NestedDeploy` at depth 1; `NestedDeploy`'s `setUp()` then CREATEs
 /// `Inner` at depth 2. We confirm two things end-to-end:
