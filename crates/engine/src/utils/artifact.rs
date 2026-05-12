@@ -45,7 +45,10 @@ use foundry_compilers::{
     },
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 use tracing::{debug, error};
 
 /// Compiled contract artifact with comprehensive metadata and compilation data.
@@ -107,8 +110,16 @@ impl Artifact {
     /// with sensible defaults; callers may overwrite them later if needed.
     pub fn from_foundry(id: &ArtifactId, art: &ConfigurableContractArtifact) -> eyre::Result<Self> {
         let meta = build_meta_from_foundry(id, art)?;
-        let input = build_input_from_foundry(id, art)?;
-        let output = build_output_from_foundry(id, art)?;
+        let mut input = build_input_from_foundry(id, art)?;
+        let mut output = build_output_from_foundry(id, art)?;
+        // `id.source` may be absolute (when `with_stripped_file_prefixes` couldn't
+        // resolve a matching prefix — e.g. macOS `/private/tmp` canonicalization),
+        // while `meta.sources.inner` keys (used to populate `input.sources`) are
+        // the relative paths solc actually saw. The analyzer joins them by key
+        // equality, so a mismatch makes `analyze` bail with `MissingSource`.
+        // Rewrite `output.sources` / `output.contracts` keys to whichever
+        // `input.sources` key is the path-suffix sibling of `id.source`.
+        align_output_source_key(&mut output, &mut input, &id.source);
         Ok(Self { meta, input, output })
     }
 
@@ -347,6 +358,55 @@ fn build_output_from_foundry(
     Ok(CompilerOutput { errors: Vec::new(), sources, contracts })
 }
 
+/// Pick the canonical source-file key for this artifact.
+///
+/// `output.sources` is built with `id.source` as its sole key. `input.sources`
+/// is built from solc metadata (`meta.sources.inner`), which uses whatever
+/// path solc was given at compile time — usually project-relative
+/// (`src/Foo.sol`). When `with_stripped_file_prefixes` can't strip `id.source`
+/// (the artifact survived from a cached on-disk path that doesn't share a
+/// prefix with the project root, or canonicalization differs — e.g.
+/// `/private/tmp` vs `/tmp` on macOS), `id.source` stays absolute and the
+/// analyzer's `sources.get(path)` lookup misses.
+///
+/// This helper rewrites `output.sources` / `output.contracts` to use whatever
+/// `input.sources` key is the path-suffix sibling of `id.source`, so the two
+/// halves of the artifact agree. As a defensive fallback, if no input key
+/// matches, the original `id.source` is left in place and a synthetic
+/// (empty-content) `input.sources` entry is added so downstream analysis sees
+/// at least a structurally-valid lookup target.
+fn align_output_source_key(output: &mut CompilerOutput, input: &mut SolcInput, id_source: &Path) {
+    let id_norm = id_source.to_string_lossy().replace('\\', "/");
+
+    let aligned_key: Option<PathBuf> = input.sources.0.keys().find_map(|k| {
+        let k_norm = k.to_string_lossy().replace('\\', "/");
+        if k_norm == id_norm
+            || id_norm.ends_with(&format!("/{k_norm}"))
+            || k_norm.ends_with(&format!("/{id_norm}"))
+        {
+            Some(k.clone())
+        } else {
+            None
+        }
+    });
+
+    let canonical = aligned_key.unwrap_or_else(|| id_source.to_path_buf());
+
+    if !output.sources.contains_key(&canonical)
+        && let Some(src_file) = output.sources.values().next().cloned()
+    {
+        output.sources.clear();
+        output.sources.insert(canonical.clone(), src_file);
+    }
+    if !output.contracts.contains_key(&canonical)
+        && let Some(contracts) = output.contracts.values().next().cloned()
+    {
+        output.contracts.clear();
+        output.contracts.insert(canonical.clone(), contracts);
+    }
+    input.sources.0.entry(canonical).or_insert_with(|| Source::new(String::new()));
+}
+
 #[cfg(test)]
 mod from_foundry_tests {
     use super::*;
@@ -465,15 +525,123 @@ mod from_foundry_tests {
             lifted.input.sources.keys().collect::<Vec<_>>()
         );
 
-        // CompilerOutput.contracts[id.source][id.name] should exist with evm.bytecode populated.
-        let by_file =
-            lifted.output.contracts.get(&id.source).expect("output.contracts keyed by id.source");
+        // After alignment, output.contracts / output.sources use the suffix-matched
+        // meta key ("Foo.sol"), not the raw `id.source` ("src/Foo.sol"). The
+        // contract entry under `id.name` should carry evm.bytecode through.
+        let canonical: PathBuf = "Foo.sol".into();
+        let by_file = lifted
+            .output
+            .contracts
+            .get(&canonical)
+            .expect("output.contracts keyed by suffix-matched canonical key");
         let contract = by_file.get(&id.name).expect("contract under id.name");
         let evm = contract.evm.as_ref().expect("evm should be Some");
         assert!(evm.bytecode.is_some(), "creation bytecode should be lifted");
         assert!(evm.deployed_bytecode.is_some(), "deployed bytecode should be lifted");
 
-        // output.sources should have the SourceFile under id.source.
-        assert!(lifted.output.sources.contains_key(&id.source));
+        // output.sources should share the same key.
+        assert!(lifted.output.sources.contains_key(&canonical));
+        // Keys agree across input + output (the invariant analyze depends on).
+        assert!(lifted.input.sources.contains_key(&canonical));
+    }
+
+    /// Regression for the `solady` ERC1155 bug: when foundry-compilers couldn't
+    /// strip the project-root prefix from `id.source` (cached on-disk artifact
+    /// with an absolute path that no longer matches `project.root()` after
+    /// canonicalization — e.g. macOS `/private/tmp` vs `/tmp`), the engine's
+    /// `analyze_source_code` bailed with `MissingSource` because
+    /// `output.sources` was keyed by the unstripped absolute path while
+    /// `input.sources` was keyed by the relative path solc had actually used.
+    ///
+    /// After `align_output_source_key`, the lifted artifact's output sources
+    /// MUST live under the same key that `input.sources` uses, so the analyzer
+    /// can find the source by path equality.
+    #[test]
+    fn aligns_absolute_id_source_with_relative_meta_key() {
+        let art = sample_foundry_artifact();
+        // Force an absolute id.source whose path-suffix matches the meta source key
+        // ("Foo.sol"). Mirrors what foundry-compilers leaves behind when its strip
+        // step couldn't reduce the prefix.
+        let id = ArtifactId {
+            path: PathBuf::from("out/Foo.sol/Foo.json"),
+            name: "Foo".to_string(),
+            source: PathBuf::from("/Users/somebody/work/project/src/Foo.sol"),
+            version: Version::new(0, 8, 20),
+            build_id: "stub".to_string(),
+            profile: "default".to_string(),
+        };
+        let lifted = Artifact::from_foundry(&id, &art).unwrap();
+
+        // input.sources has "Foo.sol" (relative) — that's the canonical key.
+        let foo: PathBuf = "Foo.sol".into();
+        assert!(
+            lifted.input.sources.contains_key(&foo),
+            "input.sources should keep its relative key; got {:?}",
+            lifted.input.sources.keys().collect::<Vec<_>>()
+        );
+
+        // output.sources / output.contracts must agree with input.sources.
+        // The absolute id.source must NOT remain as the output key, otherwise
+        // analysis fails with MissingSource at runtime.
+        assert!(
+            lifted.output.sources.contains_key(&foo),
+            "output.sources should be re-keyed to {foo:?}, got {:?}",
+            lifted.output.sources.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            lifted.output.contracts.contains_key(&foo),
+            "output.contracts should be re-keyed to {foo:?}, got {:?}",
+            lifted.output.contracts.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            !lifted.output.sources.contains_key(&id.source),
+            "the absolute id.source should NOT survive into output.sources"
+        );
+    }
+
+    /// Regression for the synthetic-entrypoint case: foundry-compilers may
+    /// double the prefix when joining a CWD-relative source path with the
+    /// stripped project root, producing
+    /// `<project>/<project_suffix>/.edb-entrypoint-.../_EdbTestEntrypoint.sol`.
+    /// The meta key is the original CWD-relative path; the alignment still
+    /// has to match by suffix.
+    #[test]
+    fn aligns_doubled_prefix_id_source_with_relative_meta_key() {
+        let mut art = sample_foundry_artifact();
+        // Replace metadata sources with a path that mirrors what solc actually saw.
+        let mut sources = BTreeMap::new();
+        let relative = "testdata/project/.edb-entrypoint-1234/_EdbTestEntrypoint.sol";
+        sources.insert(
+            relative.to_string(),
+            MetadataSource {
+                keccak256: String::new(),
+                urls: vec![],
+                content: Some("contract _EdbTestEntrypoint {}".to_string()),
+                license: None,
+            },
+        );
+        if let Some(meta) = art.metadata.as_mut() {
+            meta.sources = MetadataSources { inner: sources };
+        }
+
+        let id = ArtifactId {
+            path: PathBuf::from("out/_EdbTestEntrypoint.sol/_EdbTestEntrypoint.json"),
+            name: "_EdbTestEntrypoint".to_string(),
+            // Doubled: absolute prefix `/Users/me/testdata/project/` then the
+            // original CWD-relative suffix again.
+            source: PathBuf::from(format!("/Users/me/testdata/project/{relative}")),
+            version: Version::new(0, 8, 20),
+            build_id: "stub".to_string(),
+            profile: "default".to_string(),
+        };
+        let lifted = Artifact::from_foundry(&id, &art).unwrap();
+
+        let canonical: PathBuf = relative.into();
+        assert!(
+            lifted.output.sources.contains_key(&canonical),
+            "output.sources should be re-keyed to {canonical:?} via suffix match, got {:?}",
+            lifted.output.sources.keys().collect::<Vec<_>>()
+        );
+        assert!(lifted.output.contracts.contains_key(&canonical));
     }
 }
