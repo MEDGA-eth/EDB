@@ -44,7 +44,21 @@ foundry-config.workspace = true
 foundry-compilers.workspace = true
 
 # revm
-revm = { workspace = true, features = ["std", "serde"] }
+# `optional_eip3607` gates the `disable_eip3607` cfg field; we set it in
+# `cmd/test/synth.rs` so `edb test` matches foundry's `configure_env`
+# behaviour for senders with deployed code (forked tests / vm.etch on the
+# caller). `optional_block_gas_limit` / `optional_no_base_fee` /
+# `optional_balance_check` likewise gate `disable_*` fields used in the same
+# cfg block — feature unification with other workspace crates already pulls
+# them in, but listing them here makes the cfg-flag dependency explicit.
+revm = { workspace = true, features = [
+    "std",
+    "serde",
+    "optional_eip3607",
+    "optional_block_gas_limit",
+    "optional_no_base_fee",
+    "optional_balance_check",
+] }
 
 # async
 tokio = { workspace = true, features = ["full"] }

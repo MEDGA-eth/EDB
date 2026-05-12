@@ -122,6 +122,16 @@ pub fn build_clean_fork_result(
             c.limit_contract_initcode_size = Some(usize::MAX);
             c.disable_base_fee = true;
             c.disable_block_gas_limit = true;
+            // EIP-3607 rejects txs from senders with deployed code. Foundry's
+            // `configure_env` disables it for the same reason — tests routinely
+            // `vm.etch(caller, ...)` to install helpers at FORGE_CALLER, and on
+            // forked state the caller's mainnet account may already carry code.
+            c.disable_eip3607 = true;
+            // EDB diverges from foundry by also disabling the balance check:
+            // multi-pass instrumentation can inflate gas usage past what the
+            // test setUp's balance funds, and we want passes to be balance-
+            // invariant. Tests intentionally exercising "insufficient balance"
+            // semantics will silently succeed here but fail under `forge test`.
             c.disable_balance_check = true;
             c.tx_gas_limit_cap = Some(u64::MAX);
         });
@@ -254,6 +264,8 @@ pub async fn build_forked_fork_result(
             c.limit_contract_initcode_size = Some(usize::MAX);
             c.disable_base_fee = true;
             c.disable_block_gas_limit = true;
+            // See build_clean_fork_result for the rationale on these flags.
+            c.disable_eip3607 = true;
             c.disable_balance_check = true;
             c.tx_gas_limit_cap = Some(u64::MAX);
         });
@@ -335,5 +347,26 @@ mod tests {
             CHEATCODE_ADDRESS,
             alloy_primitives::address!("7109709ECfa91a80626fF3989D68f67F5b1DD12D")
         );
+    }
+
+    /// Regression for C2-5 (Round 2 audit): the clean-fork cfg must set
+    /// `disable_eip3607 = true` so foundry-style tests where the caller has
+    /// deployed code (via `vm.etch(caller, ...)` or, on forks, a contract
+    /// already deployed at the address) don't get rejected with
+    /// `EIP3607Rejected` by REVM. Mirrors foundry's `configure_env`.
+    #[test]
+    fn clean_fork_disables_eip3607_balance_and_block_gas() {
+        let fork = build_clean_fork_result(
+            Bytes::from_static(&[0x60, 0x00, 0x60, 0x00, 0xf3]), // tiny PUSH1 0 PUSH1 0 RETURN
+            "Foo",
+            "testBar",
+            [0x12, 0x34, 0x56, 0x78],
+        )
+        .expect("build_clean_fork_result");
+        let cfg = &fork.context.cfg;
+        assert!(cfg.disable_eip3607, "EIP-3607 must be disabled (matches forge's configure_env)");
+        assert!(cfg.disable_balance_check, "balance check disabled (multi-pass instrumentation)");
+        assert!(cfg.disable_block_gas_limit, "block gas limit disabled");
+        assert!(cfg.disable_nonce_check, "nonce check disabled");
     }
 }
