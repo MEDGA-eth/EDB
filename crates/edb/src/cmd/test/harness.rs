@@ -170,7 +170,13 @@ pub async fn run_foundry_test_for_test(
     let engine_config = EngineConfig::default();
     let engine = Engine::new(engine_config);
 
-    let cheats_config = cheats::CheatsConfig { project_root: project_ctx.root.clone() };
+    // Same Arc-share pattern as `run_foundry_test`: keep a binding to
+    // `cheats_config` alive so we can inspect the shared hit tracker post-
+    // prepare. Each `.clone()` here shares the inner Arcs, NOT a deep copy.
+    let cheats_config = cheats::CheatsConfig {
+        project_root: project_ctx.root.clone(),
+        ..cheats::CheatsConfig::default()
+    };
 
     let rpc_addr = match resolved_fork_url {
         Some(upstream) => {
@@ -183,7 +189,7 @@ pub async fn run_foundry_test_for_test(
                 fork_block_number,
             )
             .await?;
-            let cheats_factory = Box::new(cheats::build_cheats_factory(cheats_config));
+            let cheats_factory = Box::new(cheats::build_cheats_factory(cheats_config.clone()));
             engine
                 .prepare_with_router_and_cheats::<_, cheats::EdbCheatcodes<_>>(
                     fork_result,
@@ -207,7 +213,7 @@ pub async fn run_foundry_test_for_test(
                 &resolved.test_function,
                 compiled_entry.run_selector,
             )?;
-            let cheats_factory = Box::new(cheats::build_cheats_factory(cheats_config));
+            let cheats_factory = Box::new(cheats::build_cheats_factory(cheats_config.clone()));
             engine
                 .prepare_with_router_and_cheats::<_, cheats::EdbCheatcodes<_>>(
                     fork_result,
@@ -221,6 +227,14 @@ pub async fn run_foundry_test_for_test(
     };
 
     let tx_hash = synth::synthetic_tx_hash(&resolved.contract_name, &resolved.test_function);
+
+    // Mirror the abort behavior of `run_foundry_test`: if any unsupported
+    // cheatcode was called during prepare, tear down and bail with a clear
+    // error so integration tests see the same surface the binary does.
+    if let Some(err_msg) = super::check_unsupported_hits(&cheats_config) {
+        let _ = engine.shutdown_rpc_server(&tx_hash);
+        eyre::bail!("{err_msg}");
+    }
 
     Ok(TestSessionHandle { engine, rpc_addr, tx_hash })
 }

@@ -142,7 +142,7 @@ state-mutating set used by the vast majority of `forge test` suites
 multi-fork backend or mid-tx state branching (`vm.selectFork`,
 `vm.snapshotState`, `vm.transact`, `vm.broadcast`, fs/ffi) revert with
 a clear EDB error so you know exactly what's blocking. See
-[`docs/cheatcode-coverage.md`](docs/cheatcode-coverage.md) for the
+[`docs/cheatcodes.md`](docs/cheatcodes.md) for the
 full matrix.
 
 

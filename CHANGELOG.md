@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   synthesizes a single-tx entrypoint, embeds a hand-rolled cheatcode
   inspector (19 cheatcodes), and runs the whole thing through EDB's
   existing engine pipeline. See README's "Debug a Foundry Test" section
-  and [`docs/cheatcode-coverage.md`](docs/cheatcode-coverage.md).
+  and [`docs/cheatcodes.md`](docs/cheatcodes.md).
 - `edb test --fork-url <rpc>` — opt-in mainnet/L2 forking for tests.
   Falls back to `foundry.toml`'s `eth_rpc_url` (with `${VAR}` env-var
   expansion).
@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (foundry-faithful one-shot semantics).
 - **`vm.rollFork(uint256)` (partial v1)**: updates `block.number` only.
   Does not touch `block.timestamp` (pair with `vm.warp`) or invalidate
-  the CacheDB. See `docs/cheatcode-coverage.md` for the limitation.
+  the CacheDB. See `docs/cheatcodes.md` for the limitation.
   Cross-fork roll variants (`rollFork(uint,uint)`, `rollFork(bytes32)`)
   remain rejected.
 

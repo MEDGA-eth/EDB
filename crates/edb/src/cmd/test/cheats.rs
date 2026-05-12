@@ -9,7 +9,7 @@
 //! 4-byte selector. Unsupported cheatcodes return a revert with a clear EDB
 //! error string.
 //!
-//! Coverage matrix: see `docs/cheatcode-coverage.md` (linked from README).
+//! Coverage matrix: see `docs/cheatcodes.md` (linked from README).
 //!
 //! Design notes:
 //! - The inspector is generic over `EdbContext<DB>` so it composes natively
@@ -28,7 +28,8 @@ use revm::{
     interpreter::{CallInputs, CallOutcome, Gas, InstructionResult, InterpreterResult},
     state::Bytecode,
 };
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 
 /// Cheatcode precompile address (matches foundry's).
 pub const CHEATCODE_ADDRESS: Address = address!("7109709ECfa91a80626fF3989D68f67F5b1DD12D");
@@ -278,12 +279,64 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
 // Config + state types
 // ----------------------------------------------------------------------------
 
+/// Why a cheatcode is unsupported — affects the error message that
+/// [`run_foundry_test`](super::run_foundry_test) surfaces post-prepare.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnsupportedCategory {
+    /// Boundary cheatcode — needs multi-fork backend, snapshot rewind, etc.
+    Rejected,
+    /// Known foundry cheatcode but not in EDB's v1 implementation set.
+    NotYetImplemented,
+    /// Selector not in EDB's catalog — could be a typo or a very new cheatcode.
+    Unknown,
+}
+
+/// A single unsupported-cheatcode invocation observed during prepare.
+///
+/// Recorded into [`CheatsConfig::unsupported_hits`] from the dispatch
+/// fall-through and from explicit-reject arms; drained post-prepare to
+/// produce a human-readable abort message.
+#[derive(Clone, Debug)]
+pub struct UnsupportedHit {
+    /// Cheatcode name (without `vm.` prefix). For unknown selectors this
+    /// carries `<unknown selector 0x...>` for display purposes.
+    pub name: String,
+    /// 4-byte selector observed at the cheatcode address.
+    pub selector: [u8; 4],
+    /// Classification driving the error message wording.
+    pub category: UnsupportedCategory,
+}
+
 /// Configuration for the cheatcodes inspector.
-#[derive(Clone, Debug, Default)]
+///
+/// `unsupported_hits` and `warnings_emitted` are `Arc<Mutex<...>>` so the
+/// SAME tracker is shared across every `EdbCheatcodes<DB>` instance the
+/// factory hands out — `Engine::prepare_with_router_and_cheats` calls the
+/// factory once per orchestration pass (tracer / opcode / hook) and we want
+/// hits/warnings deduplicated across passes.
+#[derive(Clone, Debug)]
 pub struct CheatsConfig {
     /// Project root (used for future fs-allowlist; currently unused).
     #[allow(dead_code)] // reserved for fs-allowlist in a future phase
     pub project_root: std::path::PathBuf,
+    /// Shared list of unsupported-cheatcode invocations observed across all
+    /// inspector instances created from this config. Drained post-prepare in
+    /// `run_foundry_test` to surface a clear error before UI launch.
+    pub unsupported_hits: Arc<Mutex<Vec<UnsupportedHit>>>,
+    /// One-time warning gate for partial cheatcodes (rollFork, gas stubs,
+    /// expectEmit soft-match). Keys are cheatcode names already warned about
+    /// during this prepare cycle — second + subsequent hits stay silent.
+    pub warnings_emitted: Arc<Mutex<HashSet<String>>>,
+}
+
+impl Default for CheatsConfig {
+    fn default() -> Self {
+        Self {
+            project_root: std::path::PathBuf::new(),
+            unsupported_hits: Arc::new(Mutex::new(Vec::new())),
+            warnings_emitted: Arc::new(Mutex::new(HashSet::new())),
+        }
+    }
 }
 
 /// A captured EVM state snapshot, restorable via `vm.revertToState`.
@@ -336,7 +389,7 @@ where
     /// v1 SOFT-MATCH semantics: we don't capture a "template log" from the
     /// next `emit Foo(...)` in the test contract (foundry's full semantics).
     /// Instead, an expectation matches the first log it sees that satisfies
-    /// emitter+topic-presence constraints. See `docs/cheatcode-coverage.md`.
+    /// emitter+topic-presence constraints. See `docs/cheatcodes.md`.
     expected_emits: Vec<ExpectedEmit>,
     /// Pending call expectations from `vm.expectCall`. Inspector::call
     /// increments `observed` for matching (target, calldata) pairs. Verified
@@ -751,6 +804,39 @@ where
     <CacheDB<DB> as Database>::Error: Clone,
     <DB as Database>::Error: Clone,
 {
+    /// Record an unsupported-cheatcode hit and produce the matching revert
+    /// `CallOutcome` in one step.
+    ///
+    /// Centralizes the "encode the EDB error string, append it to the shared
+    /// `unsupported_hits` tracker, and return a Revert outcome" pattern so
+    /// every place in `dispatch` that turns a cheatcode into a hard rejection
+    /// participates in the post-prepare abort check.
+    fn record_and_revert(
+        &self,
+        gas_limit: u64,
+        name: &str,
+        selector: [u8; 4],
+        category: UnsupportedCategory,
+        msg: &str,
+    ) -> CallOutcome {
+        if let Ok(mut hits) = self.config.unsupported_hits.lock() {
+            hits.push(UnsupportedHit { name: name.to_string(), selector, category });
+        }
+        revert_with(gas_limit, encode_error_string(msg))
+    }
+
+    /// Emit a `tracing::warn!` + `eprintln!` once per cheatcode-name. Subsequent
+    /// calls with the same `name` are no-ops, so a test that hammers
+    /// `vm.pauseGasMetering` in a loop only sees one warning line.
+    fn warn_once(&self, name: &str, message: &str) {
+        if let Ok(mut set) = self.config.warnings_emitted.lock()
+            && set.insert(name.to_string())
+        {
+            tracing::warn!(target: "edb::cheats", "vm.{name}: {message}");
+            eprintln!("[edb warning] vm.{name}: {message}");
+        }
+    }
+
     fn dispatch(
         &mut self,
         ctx: &mut edb_common::EdbContext<DB>,
@@ -809,12 +895,13 @@ where
             }
             SEL_EXPECT_CALL => self.cheat_expect_call(ctx, inputs, args, 1),
             SEL_EXPECT_CALL_COUNT => self.cheat_expect_call_with_count(ctx, inputs, args),
-            SEL_EXPECT_CALL_MIN_GAS => revert_with(
+            SEL_EXPECT_CALL_MIN_GAS => self.record_and_revert(
                 inputs.gas_limit,
-                encode_error_string(
-                    "EDB: cheatcode vm.expectCallMinGas not supported in v1: gas accounting under \
-                     EDB's instrumented bytecode needs separate design work",
-                ),
+                "expectCallMinGas",
+                selector,
+                UnsupportedCategory::Rejected,
+                "EDB: cheatcode vm.expectCallMinGas not supported in v1: gas accounting under \
+                 EDB's instrumented bytecode needs separate design work. See docs/cheatcodes.md",
             ),
 
             // assume + env family
@@ -839,7 +926,25 @@ where
             | SEL_SELECT_FORK
             | SEL_ACTIVE_FORK
             | SEL_MAKE_PERSISTENT => {
-                revert_with(inputs.gas_limit, unsupported_revert("multi-fork (e.g. selectFork)"))
+                let name = match selector {
+                    SEL_CREATE_FORK => "createFork",
+                    SEL_CREATE_SELECT_FORK => "createSelectFork",
+                    SEL_SELECT_FORK => "selectFork",
+                    SEL_ACTIVE_FORK => "activeFork",
+                    SEL_MAKE_PERSISTENT => "makePersistent",
+                    _ => unreachable!(),
+                };
+                let msg = format!(
+                    "EDB: cheatcode vm.{name} not supported in v1: \
+                     multi-fork backend unavailable. See docs/cheatcodes.md"
+                );
+                self.record_and_revert(
+                    inputs.gas_limit,
+                    name,
+                    selector,
+                    UnsupportedCategory::Rejected,
+                    &msg,
+                )
             }
             // Snapshot capture (Task 3)
             SEL_SNAPSHOT_STATE | SEL_SNAPSHOT_LEGACY => {
@@ -858,37 +963,91 @@ where
             // Delete all snapshots (Task 6)
             SEL_DELETE_STATE_SNAPSHOTS => self.cheat_delete_state_snapshots(ctx, inputs, args),
             // Explicitly rejected — separate-tx model
-            SEL_TRANSACT => revert_with(inputs.gas_limit, unsupported_revert("transact")),
-            // Explicitly rejected — fs + ffi
-            SEL_FFI | SEL_READ_FILE | SEL_WRITE_FILE | SEL_REMOVE_FILE => revert_with(
+            SEL_TRANSACT => self.record_and_revert(
                 inputs.gas_limit,
-                unsupported_revert("ffi/fs (ffi, readFile, writeFile, removeFile)"),
+                "transact",
+                selector,
+                UnsupportedCategory::Rejected,
+                "EDB: cheatcode vm.transact not supported in v1: \
+                 requires the multi-fork backend and a separate-tx execution model. \
+                 See docs/cheatcodes.md",
             ),
+            // Explicitly rejected — fs + ffi
+            SEL_FFI | SEL_READ_FILE | SEL_WRITE_FILE | SEL_REMOVE_FILE => {
+                let name = match selector {
+                    SEL_FFI => "ffi",
+                    SEL_READ_FILE => "readFile",
+                    SEL_WRITE_FILE => "writeFile",
+                    SEL_REMOVE_FILE => "removeFile",
+                    _ => unreachable!(),
+                };
+                let msg = format!(
+                    "EDB: cheatcode vm.{name} not supported in v1: \
+                     external-process / fs access disabled. See docs/cheatcodes.md"
+                );
+                self.record_and_revert(
+                    inputs.gas_limit,
+                    name,
+                    selector,
+                    UnsupportedCategory::Rejected,
+                    &msg,
+                )
+            }
             // Explicitly rejected — broadcasting
             SEL_BROADCAST | SEL_START_BROADCAST | SEL_STOP_BROADCAST => {
-                revert_with(inputs.gas_limit, unsupported_revert("broadcast (script-only)"))
+                let name = match selector {
+                    SEL_BROADCAST => "broadcast",
+                    SEL_START_BROADCAST => "startBroadcast",
+                    SEL_STOP_BROADCAST => "stopBroadcast",
+                    _ => unreachable!(),
+                };
+                let msg = format!(
+                    "EDB: cheatcode vm.{name} not supported in v1: \
+                     script-only — not applicable to forge test. See docs/cheatcodes.md"
+                );
+                self.record_and_revert(
+                    inputs.gas_limit,
+                    name,
+                    selector,
+                    UnsupportedCategory::Rejected,
+                    &msg,
+                )
             }
 
             _ => {
                 let hex = alloy_primitives::hex::encode(selector);
                 // Look up the selector in the known-cheatcode catalog.
                 let known = KNOWN_CHEATCODES.iter().find(|(sel, _)| **sel == selector);
-                let msg = if let Some((_, name)) = known {
-                    format!(
+                if let Some((_, name)) = known {
+                    // Distinguish rejected vs not-yet-implemented purely by name.
+                    let category = if is_explicitly_rejected_name(name) {
+                        UnsupportedCategory::Rejected
+                    } else {
+                        UnsupportedCategory::NotYetImplemented
+                    };
+                    let msg = format!(
                         "EDB: cheatcode vm.{name} not yet implemented in v1 \
-                         (selector 0x{hex}). See docs/cheatcode-coverage.md"
-                    )
+                         (selector 0x{hex}). See docs/cheatcodes.md"
+                    );
+                    self.record_and_revert(inputs.gas_limit, name, selector, category, &msg)
                 } else {
                     // Selector is not in our catalog at all — likely a non-vm call
                     // that accidentally hit the cheatcode address, or a very new
                     // foundry cheatcode we haven't cataloged yet.
-                    format!(
+                    let display = format!("<unknown selector 0x{hex}>");
+                    let msg = format!(
                         "EDB: unknown cheatcode selector 0x{hex} \
                          (not in foundry's known cheatcode catalog — \
                          check spelling or open an issue)"
+                    );
+                    self.record_and_revert(
+                        inputs.gas_limit,
+                        &display,
+                        selector,
+                        UnsupportedCategory::Unknown,
+                        &msg,
                     )
-                };
-                revert_with(inputs.gas_limit, encode_error_string(&msg))
+                }
             }
         }
     }
@@ -1060,7 +1219,7 @@ where
 
     /// vm.rollFork(uint256) — v1: updates block.number only.
     ///
-    /// **Limitations (documented in `docs/cheatcode-coverage.md`):**
+    /// **Limitations (documented in `docs/cheatcodes.md`):**
     /// - Does NOT update block.timestamp (pair with `vm.warp` for that).
     /// - Does NOT update block.basefee / prevrandao / etc.
     /// - Does NOT invalidate the CacheDB — reads continue to reflect state at the
@@ -1075,6 +1234,12 @@ where
         inputs: &CallInputs,
         args: &[u8],
     ) -> CallOutcome {
+        self.warn_once(
+            "rollFork(uint256)",
+            "EDB updates block.number only — block.timestamp / basefee unchanged. \
+             Pair with vm.warp() if you need timestamp. CacheDB not invalidated. \
+             See docs/cheatcodes.md for details.",
+        );
         if args.len() < 32 {
             return revert_with(
                 inputs.gas_limit,
@@ -1397,6 +1562,11 @@ where
         args: &[u8],
         mode: ExpectEmitMode,
     ) -> CallOutcome {
+        self.warn_once(
+            "expectEmit",
+            "EDB ships soft-match v1 — checks emitter + topic-count + non-empty data, \
+             NOT byte-equality. False positives possible. See docs/cheatcodes.md.",
+        );
         let (check_topics, check_data, expected_emitter) = match mode {
             ExpectEmitMode::All => ([true; 4], true, None),
             ExpectEmitMode::Filter4 => {
@@ -1790,12 +1960,22 @@ where
     /// pause REVM's gas accounting; this is a stub so tests that call this
     /// cheatcode don't crash.
     fn cheat_pause_gas_metering(&mut self, inputs: &CallInputs) -> CallOutcome {
+        self.warn_once(
+            "pauseGasMetering",
+            "EDB ships this as a stub — flag is tracked but REVM gas accounting is NOT paused. \
+             Tests that ASSERT specific gas behavior may see unexpected values.",
+        );
         self.gas_metering_paused = true;
         ok_return(inputs.gas_limit, Bytes::new())
     }
 
     /// `vm.resumeGasMetering()` — clears the paused state.
     fn cheat_resume_gas_metering(&mut self, inputs: &CallInputs) -> CallOutcome {
+        self.warn_once(
+            "resumeGasMetering",
+            "EDB ships this as a stub — flag is tracked but REVM gas accounting is NOT paused. \
+             Tests that ASSERT specific gas behavior may see unexpected values.",
+        );
         self.gas_metering_paused = false;
         ok_return(inputs.gas_limit, Bytes::new())
     }
@@ -1822,6 +2002,11 @@ where
     /// }
     /// ```
     fn cheat_last_call_gas(&mut self, inputs: &CallInputs) -> CallOutcome {
+        self.warn_once(
+            "lastCallGas",
+            "EDB ships this as a stub returning all-zero Gas{} for determinism across \
+             multi-pass instrumentation. Tests asserting specific gas values will fail.",
+        );
         // ABI encoding of a struct of pure value types: each field is one 32-byte word.
         // All fields are zero for v1 stub determinism (see doc comment above).
         let out = vec![0u8; 5 * 32];
@@ -1876,9 +2061,43 @@ fn revert_with(gas_limit: u64, output: Bytes) -> CallOutcome {
 // Revert payload helpers
 // ----------------------------------------------------------------------------
 
+#[allow(dead_code)] // retained for legacy callers / tests; new code uses record_and_revert
 fn unsupported_revert(name: &str) -> Bytes {
     let msg = format!("EDB: cheatcode vm.{name} not supported in v1");
     encode_error_string(&msg)
+}
+
+/// Names (without `vm.` prefix) of cheatcodes EDB deliberately rejects in v1
+/// because their semantics require infrastructure EDB doesn't ship (multi-fork
+/// backend, fs/ffi sandboxing, broadcasting, etc.) — as opposed to cheatcodes
+/// that are merely "not yet implemented" and could be added incrementally.
+///
+/// Drives the [`UnsupportedCategory`] tagging produced by the dispatch
+/// fall-through, which in turn drives the wording of the post-prepare abort
+/// message in `run_foundry_test`.
+fn is_explicitly_rejected_name(name: &str) -> bool {
+    matches!(
+        name,
+        "createFork"
+            | "createSelectFork"
+            | "selectFork"
+            | "activeFork"
+            | "makePersistent"
+            | "transact"
+            | "broadcast"
+            | "startBroadcast"
+            | "stopBroadcast"
+            | "ffi"
+            | "readFile"
+            | "writeFile"
+            | "removeFile"
+            | "expectCallMinGas"
+    ) || (
+        // Cross-fork rollFork overloads (bytes32 / uint256,uint256 / uint256,bytes32)
+        // are rejected; the single-arg uint256 overload is supported and dispatched
+        // by SEL_ROLL_FORK_UINT before reaching the catalog fall-through.
+        name == "rollFork"
+    )
 }
 
 /// Encode `Error(string)` as ABI: 4-byte selector `0x08c379a0` + (offset, length, padded data).
@@ -2625,5 +2844,116 @@ mod tests {
         assert_eq!(&encoded[320..352], data_padded, "data (right-padded)");
 
         assert_eq!(encoded.len(), 352, "total encoded size");
+    }
+
+    // --- Unsupported-hit tracker + warn_once gate ---------------------------
+
+    /// `warn_once` only emits on the first call per cheatcode name.
+    /// Subsequent calls with the same name MUST be no-ops at the gate level
+    /// (the set inserts return false).
+    #[test]
+    fn warn_once_emits_only_first_time() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let config = CheatsConfig::default();
+        let cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(config.clone());
+
+        cheats.warn_once("rollFork(uint256)", "test message");
+        cheats.warn_once("rollFork(uint256)", "test message — second call");
+        cheats.warn_once("pauseGasMetering", "different name, also fires once");
+
+        let emitted = config.warnings_emitted.lock().expect("warnings mutex poisoned");
+        assert_eq!(emitted.len(), 2, "two distinct names should yield two entries: {emitted:?}");
+        assert!(emitted.contains("rollFork(uint256)"));
+        assert!(emitted.contains("pauseGasMetering"));
+    }
+
+    /// `record_and_revert` writes a hit into the shared tracker AND returns
+    /// a Revert outcome with the supplied error message ABI-encoded as
+    /// `Error(string)`.
+    #[test]
+    fn record_and_revert_pushes_hit_and_returns_revert() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let config = CheatsConfig::default();
+        let cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(config.clone());
+
+        let out = cheats.record_and_revert(
+            123_000,
+            "selectFork",
+            SEL_SELECT_FORK,
+            UnsupportedCategory::Rejected,
+            "EDB: cheatcode vm.selectFork not supported in v1: testing",
+        );
+        assert!(matches!(out.result.result, InstructionResult::Revert));
+        // Error(string) selector
+        assert_eq!(&out.result.output[..4], &[0x08, 0xc3, 0x79, 0xa0]);
+
+        let hits = config.unsupported_hits.lock().expect("hits mutex poisoned");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].name, "selectFork");
+        assert_eq!(hits[0].selector, SEL_SELECT_FORK);
+        assert_eq!(hits[0].category, UnsupportedCategory::Rejected);
+    }
+
+    /// Multiple factory-built inspectors must share the SAME hit tracker
+    /// (the Arc is cloned, not the inner Vec). Otherwise the post-prepare
+    /// drain in `run_foundry_test` would only see hits from the last pass.
+    #[test]
+    fn factory_built_inspectors_share_hit_tracker() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let config = CheatsConfig::default();
+        let factory = build_cheats_factory::<TestDB>(config.clone());
+        let a = factory();
+        let b = factory();
+
+        a.record_and_revert(
+            10_000,
+            "selectFork",
+            SEL_SELECT_FORK,
+            UnsupportedCategory::Rejected,
+            "msg-a",
+        );
+        b.record_and_revert(
+            10_000,
+            "transact",
+            SEL_TRANSACT,
+            UnsupportedCategory::Rejected,
+            "msg-b",
+        );
+
+        let hits = config.unsupported_hits.lock().unwrap();
+        assert_eq!(hits.len(), 2, "factory clones must share the tracker: got {hits:?}");
+        let names: Vec<&str> = hits.iter().map(|h| h.name.as_str()).collect();
+        assert!(names.contains(&"selectFork"));
+        assert!(names.contains(&"transact"));
+    }
+
+    /// `is_explicitly_rejected_name` correctly classifies the canonical set.
+    #[test]
+    fn explicitly_rejected_name_classification() {
+        for name in [
+            "createFork",
+            "createSelectFork",
+            "selectFork",
+            "activeFork",
+            "makePersistent",
+            "transact",
+            "broadcast",
+            "startBroadcast",
+            "stopBroadcast",
+            "ffi",
+            "readFile",
+            "writeFile",
+            "removeFile",
+            "expectCallMinGas",
+            "rollFork",
+        ] {
+            assert!(is_explicitly_rejected_name(name), "{name} should be rejected");
+        }
+        for name in ["warp", "deal", "etch", "snapshotState", "envBool", "lastCallGas"] {
+            assert!(!is_explicitly_rejected_name(name), "{name} should NOT be rejected");
+        }
     }
 }

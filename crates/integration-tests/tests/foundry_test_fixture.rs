@@ -53,6 +53,7 @@ fn trace_revert_contains(trace: &edb_common::types::Trace, needle: &str) -> bool
 /// - `[68..68+len)` — UTF-8 string bytes
 ///
 /// Returns `None` if the bytes are not a well-formed `Error(string)`.
+#[allow(dead_code)] // retained for trace-inspection tests not yet ported
 fn decode_error_string(bytes: &[u8]) -> Option<String> {
     if bytes.len() < 68 || bytes[..4] != [0x08, 0xc3, 0x79, 0xa0] {
         return None;
@@ -469,51 +470,42 @@ async fn nested_deploy_hooks_fire_for_inner_contract() -> Result<()> {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_fixture)]
-async fn boundary_select_fork_reverts_with_edb_message() -> Result<()> {
+async fn boundary_select_fork_aborts_before_ui() -> Result<()> {
+    // Post-Item-17 behavior: when prepare observes any unsupported cheatcode
+    // call, run_foundry_test_for_test bails AFTER prepare completes instead
+    // of returning a session and burying the EDB error inside the trace.
     init::init_test_environment(true);
     let root = fixture_root();
-    let session = edb::cmd::test::run_foundry_test_for_test(
+    let result = edb::cmd::test::run_foundry_test_for_test(
         "Boundary::testSelectForkIsRejected",
         Some(root.to_str().unwrap()),
         None,
         None,
         None,
     )
-    .await?;
-    let trace = session.fetch_trace().await?;
+    .await;
 
-    // The hand-rolled cheatcode shim rejects multi-fork cheatcodes with an
-    // ABI-encoded Error(string) whose message contains "EDB: cheatcode vm."
-    // and "selectFork".  We collect all Revert outputs, ABI-decode them as
-    // Error(string), and assert that at least one decodes to the expected
-    // rejection message — verifying both the ABI encoding and the content.
-    let revert_outputs: Vec<Vec<u8>> = trace
-        .iter()
-        .filter_map(|entry| match &entry.result {
-            Some(CallResult::Revert { output, .. }) => Some(output.to_vec()),
-            _ => None,
-        })
-        .collect();
+    let err = match result {
+        Ok(session) => {
+            let _ = session.shutdown();
+            panic!("expected run_foundry_test_for_test to abort, but it returned Ok(session)")
+        }
+        Err(e) => e.to_string(),
+    };
+
     assert!(
-        !revert_outputs.is_empty(),
-        "expected at least one revert in trace for testSelectForkIsRejected; got: {trace:#?}",
+        err.contains("vm.selectFork"),
+        "expected abort message to mention vm.selectFork; got: {err}",
+    );
+    assert!(
+        err.contains("not supported"),
+        "expected abort message to say 'not supported in v1'; got: {err}",
+    );
+    assert!(
+        err.contains("rejected"),
+        "expected abort message to tag the cheatcode as rejected; got: {err}",
     );
 
-    let any_edb_error = revert_outputs.iter().any(|bytes| {
-        decode_error_string(bytes)
-            .is_some_and(|s| s.contains("EDB: cheatcode vm.") && s.contains("selectFork"))
-    });
-    assert!(
-        any_edb_error,
-        "expected ABI-decoded Error(string) containing EDB selectFork rejection; \
-         got revert outputs: {:?}",
-        revert_outputs
-            .iter()
-            .map(|b| decode_error_string(b).unwrap_or_else(|| format!("<raw {} bytes>", b.len())))
-            .collect::<Vec<_>>(),
-    );
-
-    let _ = session.shutdown();
     Ok(())
 }
 

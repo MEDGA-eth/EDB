@@ -358,7 +358,7 @@ Browser-based debugging interface, served by the same `edb` binary:
   initial fix; further hardening may be needed for nested CREATE/CREATE2).
 - **Cheatcode coverage expansion**: `vm.expectEmit`, `vm.expectCall`,
   `vm.assume`, `vm.pauseGasMetering`, `vm.lastCallGas` — see
-  `docs/cheatcode-coverage.md`'s "Not yet implemented" list.
+  `docs/cheatcodes.md`'s "Not yet implemented" list.
 - **Breakpoint Conditions**: Conditional breakpoints
 - **Watch Expressions**: Monitor specific variables
 
