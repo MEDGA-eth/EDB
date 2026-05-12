@@ -844,6 +844,10 @@ where
             SEL_REVERT_TO_STATE | SEL_REVERT_TO_LEGACY => {
                 self.cheat_revert_to_state(ctx, inputs, args)
             }
+            // State snapshot revert with delete (Task 5)
+            // delete-on-revert is already the default in our revertToState; the AndDelete
+            // variant is just a different selector pointing at the same handler.
+            SEL_REVERT_TO_STATE_AND_DELETE => self.cheat_revert_to_state(ctx, inputs, args),
             // Explicitly rejected — separate-tx model
             SEL_TRANSACT => revert_with(inputs.gas_limit, unsupported_revert("transact")),
             // Explicitly rejected — fs + ffi
@@ -2189,6 +2193,14 @@ mod tests {
     #[test]
     fn roll_fork_uint_selector_matches_vm_sol() {
         assert_eq!(sel("rollFork(uint256)"), SEL_ROLL_FORK_UINT);
+    }
+
+    #[test]
+    fn revert_to_state_and_delete_constant_is_distinct() {
+        // Pin that SEL_REVERT_TO_STATE_AND_DELETE differs from SEL_REVERT_TO_STATE and SEL_REVERT_TO.
+        // If they collide, our dispatch table loses a selector silently.
+        assert_ne!(SEL_REVERT_TO_STATE_AND_DELETE, SEL_REVERT_TO_STATE);
+        assert_ne!(SEL_REVERT_TO_STATE_AND_DELETE, SEL_REVERT_TO);
     }
 
     // --- KNOWN_CHEATCODES catalog tests ------------------------------------
