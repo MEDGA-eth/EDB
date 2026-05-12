@@ -224,6 +224,7 @@ impl Engine {
             extra_router,
             None,
             None,
+            None,
         )
         .await
     }
@@ -232,6 +233,11 @@ impl Engine {
     /// fresh `Cheats` inspector instances. Each orchestration pass (tracer / opcode /
     /// hook) gets its own freshly-built `Cheats` so prank/mocked-call state doesn't
     /// bleed between passes.
+    ///
+    /// The optional `between_passes_hook` is invoked after passes 1 (tracer) and 2
+    /// (opcode snapshots). If it returns `Err`, preparation is aborted immediately —
+    /// this lets callers short-circuit expensive later passes when an early pass has
+    /// already observed a fatal condition (e.g. an unsupported cheatcode hit).
     pub async fn prepare_with_router_and_cheats<DB, Cheats>(
         &self,
         fork_result: ForkResult<DB>,
@@ -239,6 +245,7 @@ impl Engine {
         extra_router: Option<Router>,
         cheats_factory: Option<Box<dyn Fn() -> Cheats + Send + Sync>>,
         local_artifacts: Option<crate::orchestration::LocalArtifactSet>,
+        between_passes_hook: Option<Box<dyn Fn() -> eyre::Result<()> + Send + Sync>>,
     ) -> Result<SocketAddr>
     where
         DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
@@ -302,6 +309,11 @@ impl Engine {
         let replay_result =
             orchestration::replay_and_collect_trace(ctx.clone(), tx.clone(), cheats1.as_mut())?;
 
+        // Between passes 1 and 2: run the hook (e.g. unsupported-cheatcode early exit).
+        if let Some(hook) = between_passes_hook.as_ref() {
+            hook()?;
+        }
+
         // Step 2: Resolve artifacts — prefer local (codehash-keyed), fall back to Etherscan.
         send_progress!(2, 8, "Downloading verified source code for each contract...");
 
@@ -361,6 +373,11 @@ impl Engine {
             &replay_result.execution_trace,
             cheats2.as_mut(),
         )?;
+
+        // Between passes 2 and 3: run the hook again (opcode pass may have added new hits).
+        if let Some(hook) = between_passes_hook.as_ref() {
+            hook()?;
+        }
 
         // Step 6: Replace original bytecode with instrumented versions
         send_progress!(6, 8, "Replacing original bytecode with instrumented versions...");

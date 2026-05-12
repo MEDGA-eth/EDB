@@ -190,6 +190,9 @@ pub async fn run_foundry_test_for_test(
             )
             .await?;
             let cheats_factory = Box::new(cheats::build_cheats_factory(cheats_config.clone()));
+            let hits_for_hook = cheats_config.unsupported_hits.clone();
+            let between_passes_hook: Box<dyn Fn() -> eyre::Result<()> + Send + Sync> =
+                Box::new(move || cheats::ensure_no_unsupported_hits(&hits_for_hook));
             engine
                 .prepare_with_router_and_cheats::<_, cheats::EdbCheatcodes<_>>(
                     fork_result,
@@ -197,6 +200,7 @@ pub async fn run_foundry_test_for_test(
                     None,
                     Some(cheats_factory),
                     Some(local_artifacts),
+                    Some(between_passes_hook),
                 )
                 .await?
         }
@@ -214,6 +218,9 @@ pub async fn run_foundry_test_for_test(
                 compiled_entry.run_selector,
             )?;
             let cheats_factory = Box::new(cheats::build_cheats_factory(cheats_config.clone()));
+            let hits_for_hook = cheats_config.unsupported_hits.clone();
+            let between_passes_hook: Box<dyn Fn() -> eyre::Result<()> + Send + Sync> =
+                Box::new(move || cheats::ensure_no_unsupported_hits(&hits_for_hook));
             engine
                 .prepare_with_router_and_cheats::<_, cheats::EdbCheatcodes<_>>(
                     fork_result,
@@ -221,6 +228,7 @@ pub async fn run_foundry_test_for_test(
                     None,
                     Some(cheats_factory),
                     Some(local_artifacts),
+                    Some(between_passes_hook),
                 )
                 .await?
         }

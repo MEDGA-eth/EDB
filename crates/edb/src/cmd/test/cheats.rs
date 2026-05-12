@@ -552,6 +552,42 @@ where
     move || EdbCheatcodes::new((*config).clone())
 }
 
+/// Pure check function: inspect `hits` and, if non-empty, return an `Err`
+/// with a human-readable abort message. Returns `Ok(())` when no unsupported
+/// cheatcodes were observed.
+///
+/// Takes `&Arc<Mutex<Vec<UnsupportedHit>>>` directly so it can be captured by
+/// a closure that serves as `between_passes_hook` in
+/// `Engine::prepare_with_router_and_cheats`.
+///
+/// Counts hits per cheatcode name so a tight loop calling the same rejected
+/// cheatcode produces one bullet with `called Nx`, not N bullets.
+pub fn ensure_no_unsupported_hits(hits: &Arc<Mutex<Vec<UnsupportedHit>>>) -> eyre::Result<()> {
+    let hits = hits.lock().expect("unsupported_hits mutex poisoned");
+    if hits.is_empty() {
+        return Ok(());
+    }
+    let mut by_name: std::collections::BTreeMap<String, (UnsupportedCategory, usize)> =
+        Default::default();
+    for hit in hits.iter() {
+        let entry = by_name.entry(hit.name.clone()).or_insert((hit.category, 0));
+        entry.1 += 1;
+    }
+    let mut msg = String::from(
+        "EDB: this test uses cheatcodes not supported in v1. Aborting before UI launch.\n\n",
+    );
+    for (name, (cat, count)) in &by_name {
+        let cat_str = match cat {
+            UnsupportedCategory::Rejected => "rejected",
+            UnsupportedCategory::NotYetImplemented => "not yet implemented",
+            UnsupportedCategory::Unknown => "unknown selector",
+        };
+        msg.push_str(&format!("  - vm.{name} ({cat_str}, called {count}x)\n"));
+    }
+    msg.push_str("\nSee docs/cheatcodes.md for the full support matrix and workarounds.\n");
+    Err(eyre::eyre!("{msg}"))
+}
+
 // ----------------------------------------------------------------------------
 // Inspector impl over EdbContext<DB>
 // ----------------------------------------------------------------------------
@@ -2955,5 +2991,30 @@ mod tests {
         for name in ["warp", "deal", "etch", "snapshotState", "envBool", "lastCallGas"] {
             assert!(!is_explicitly_rejected_name(name), "{name} should NOT be rejected");
         }
+    }
+
+    // --- ensure_no_unsupported_hits -------------------------------------------
+
+    /// When no hits have been recorded `ensure_no_unsupported_hits` returns Ok.
+    #[test]
+    fn ensure_no_unsupported_hits_ok_on_empty() {
+        let hits: Arc<Mutex<Vec<UnsupportedHit>>> = Arc::new(Mutex::new(Vec::new()));
+        assert!(ensure_no_unsupported_hits(&hits).is_ok());
+    }
+
+    /// When at least one hit has been recorded `ensure_no_unsupported_hits`
+    /// returns `Err` whose message mentions the cheatcode name and category.
+    #[test]
+    fn ensure_no_unsupported_hits_err_on_hit() {
+        let hits: Arc<Mutex<Vec<UnsupportedHit>>> = Arc::new(Mutex::new(vec![UnsupportedHit {
+            name: "selectFork".to_string(),
+            selector: SEL_SELECT_FORK,
+            category: UnsupportedCategory::Rejected,
+        }]));
+        let err = ensure_no_unsupported_hits(&hits).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("vm.selectFork"), "expected cheatcode name in error: {msg}");
+        assert!(msg.contains("rejected"), "expected category in error: {msg}");
+        assert!(msg.contains("called 1x"), "expected call count in error: {msg}");
     }
 }

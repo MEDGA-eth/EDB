@@ -304,6 +304,13 @@ where
     let cheats_factory: Box<dyn Fn() -> cheats::EdbCheatcodes<DB> + Send + Sync> =
         Box::new(cheats::build_cheats_factory::<DB>(cheats_config.clone()));
 
+    // Build a between-passes hook that short-circuits preparation the moment
+    // an unsupported cheatcode is observed. The closure captures only an Arc
+    // clone so there's no borrow across the await point.
+    let hits_for_hook = cheats_config.unsupported_hits.clone();
+    let between_passes_hook: Box<dyn Fn() -> eyre::Result<()> + Send + Sync> =
+        Box::new(move || cheats::ensure_no_unsupported_hits(&hits_for_hook));
+
     let rpc_server_addr = engine
         .prepare_with_router_and_cheats::<_, cheats::EdbCheatcodes<DB>>(
             fork_result,
@@ -311,15 +318,15 @@ where
             Some(edb_web::router()),
             Some(cheats_factory),
             Some(local_artifacts),
+            Some(between_passes_hook),
         )
         .await?;
 
     let target = format!("{}::{}", resolved.contract_name, resolved.test_function);
     let tx_hash = synth::synthetic_tx_hash(&resolved.contract_name, &resolved.test_function);
 
-    // Abort early if the test used unsupported cheatcodes. We do this AFTER
-    // prepare so the user gets a single consolidated error rather than seeing
-    // the EDB rejection buried inside (possibly expectRevert-wrapped) frames.
+    // Defensive sanity: if prepare somehow returned Ok despite unsupported hits
+    // (shouldn't happen after the between-passes hook fires), abort here too.
     if let Some(err_msg) = check_unsupported_hits(&cheats_config) {
         let _ = engine.shutdown_rpc_server(&tx_hash);
         eyre::bail!("{err_msg}");
@@ -337,34 +344,12 @@ where
     Ok(())
 }
 
-/// Drain the shared `unsupported_hits` tracker and, if non-empty, render a
+/// Check the shared `unsupported_hits` tracker and, if non-empty, return a
 /// human-readable abort message. Returns `None` when prepare succeeded
 /// without any unsupported-cheatcode invocation.
 ///
-/// Counts hits per (cheatcode name) so a tight loop calling the same rejected
-/// cheatcode produces one bullet with `called Nx`, not N bullets.
+/// Delegates to [`cheats::ensure_no_unsupported_hits`] so the formatting
+/// logic lives in one place.
 pub(crate) fn check_unsupported_hits(config: &cheats::CheatsConfig) -> Option<String> {
-    let hits = config.unsupported_hits.lock().expect("hits mutex poisoned");
-    if hits.is_empty() {
-        return None;
-    }
-    let mut by_name: std::collections::BTreeMap<String, (cheats::UnsupportedCategory, usize)> =
-        Default::default();
-    for hit in hits.iter() {
-        let entry = by_name.entry(hit.name.clone()).or_insert((hit.category, 0));
-        entry.1 += 1;
-    }
-    let mut msg = String::from(
-        "EDB: this test uses cheatcodes not supported in v1. Aborting before UI launch.\n\n",
-    );
-    for (name, (cat, count)) in &by_name {
-        let cat_str = match cat {
-            cheats::UnsupportedCategory::Rejected => "rejected",
-            cheats::UnsupportedCategory::NotYetImplemented => "not yet implemented",
-            cheats::UnsupportedCategory::Unknown => "unknown selector",
-        };
-        msg.push_str(&format!("  - vm.{name} ({cat_str}, called {count}x)\n"));
-    }
-    msg.push_str("\nSee docs/cheatcodes.md for the full support matrix and workarounds.\n");
-    Some(msg)
+    cheats::ensure_no_unsupported_hits(&config.unsupported_hits).err().map(|e| e.to_string())
 }
