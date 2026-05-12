@@ -836,11 +836,14 @@ where
             | SEL_MAKE_PERSISTENT => {
                 revert_with(inputs.gas_limit, unsupported_revert("multi-fork (e.g. selectFork)"))
             }
-            // Explicitly rejected — state snapshots
-            SEL_SNAPSHOT_STATE | SEL_SNAPSHOT_LEGACY | SEL_REVERT_TO_STATE
-            | SEL_REVERT_TO_LEGACY => revert_with(
+            // Snapshot capture (Task 3)
+            SEL_SNAPSHOT_STATE | SEL_SNAPSHOT_LEGACY => {
+                self.cheat_snapshot_state(ctx, inputs, args)
+            }
+            // Explicitly rejected — state snapshot revert (Task 4+)
+            SEL_REVERT_TO_STATE | SEL_REVERT_TO_LEGACY => revert_with(
                 inputs.gas_limit,
-                unsupported_revert("state snapshots (snapshotState/revertToState)"),
+                unsupported_revert("state snapshot revert (revertToState/revertTo — Task 4)"),
             ),
             // Explicitly rejected — separate-tx model
             SEL_TRANSACT => revert_with(inputs.gas_limit, unsupported_revert("transact")),
@@ -875,6 +878,47 @@ where
                 };
                 revert_with(inputs.gas_limit, encode_error_string(&msg))
             }
+        }
+    }
+
+    // --- State snapshots (Task 3+) ------------------------------------------
+
+    fn cheat_snapshot_state(
+        &mut self,
+        ctx: &mut edb_common::EdbContext<DB>,
+        inputs: &revm::interpreter::CallInputs,
+        _args: &[u8],
+    ) -> revm::interpreter::CallOutcome {
+        let id = self.next_snapshot_id;
+        self.next_snapshot_id += 1;
+
+        // Clone the EVM's journal + DB into a Snapshot.
+        // ctx.journaled_state is a revm::context::Journal<CacheDB<DB>>; the
+        // CacheDB lives at journaled_state.database.
+        self.snapshots.insert(
+            id,
+            Snapshot {
+                journal: ctx.journaled_state.clone(),
+                db: ctx.journaled_state.database.clone(),
+            },
+        );
+
+        // Encode the u64 id as a uint256 return (32-byte big-endian).
+        let mut out = [0u8; 32];
+        out[24..].copy_from_slice(&id.to_be_bytes());
+        // Use the CALL instruction's return-memory range so REVM writes the
+        // 32-byte result to the correct slot in the caller's memory. Without
+        // this, `memory_offset: 0..0` would mean no bytes are written and
+        // Solidity would read zeros instead of the encoded id.
+        revm::interpreter::CallOutcome {
+            result: revm::interpreter::InterpreterResult {
+                result: revm::interpreter::InstructionResult::Return,
+                output: alloy_primitives::Bytes::copy_from_slice(&out),
+                gas: revm::interpreter::Gas::new(inputs.gas_limit),
+            },
+            memory_offset: inputs.return_memory_offset.clone(),
+            was_precompile_called: false,
+            precompile_call_logs: Vec::new(),
         }
     }
 

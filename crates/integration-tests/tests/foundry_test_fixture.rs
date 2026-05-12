@@ -663,3 +663,34 @@ async fn combo_start_prank_expect_revert_stop_prank() -> Result<()> {
     let _ = session.shutdown();
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn snapshot_state_returns_monotonic_id() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "SnapshotTest::testSnapshotReturnsMonotonicId",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(!trace.is_empty(), "trace was empty for SnapshotTest::testSnapshotReturnsMonotonicId");
+
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry in trace for SnapshotTest::testSnapshotReturnsMonotonicId");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level (depth-0) frame should be Success for testSnapshotReturnsMonotonicId; got: {:?}",
+        top.result,
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
