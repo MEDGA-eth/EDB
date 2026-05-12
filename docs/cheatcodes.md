@@ -72,6 +72,8 @@ cheatcode) before retrying.
 | `vm.revertToStateAndDelete(uint256) returns (bool)` | Same behavior as `revertToState` — delete-on-revert is already the default. |
 | `vm.deleteStateSnapshot(uint256) returns (bool)` | Drop a snapshot without restoring. Returns `true` if id existed. |
 | `vm.deleteStateSnapshots()` | Drop all snapshots. |
+| `vm.addr(uint256) returns (address)` | Derive an Ethereum address from a secp256k1 secret key (k256-backed via `alloy-signer-local`). Reverts on a zero / out-of-range key. |
+| `vm.sign(uint256, bytes32) returns (uint8 v, bytes32 r, bytes32 s)` | ECDSA-sign the pre-hashed digest with the secret key (no EIP-191 prefix added). `v` is normalized to the legacy 27/28 encoding so the output is directly usable as `ecrecover` input. |
 
 ### Assertions
 

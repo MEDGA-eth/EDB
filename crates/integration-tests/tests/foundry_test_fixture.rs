@@ -957,3 +957,80 @@ async fn asserts_eq_with_custom_message_pass() -> Result<()> {
 async fn asserts_true_with_message_pass() -> Result<()> {
     run_asserts_test("Asserts::testAssertTrueWithMessagePass").await
 }
+
+// ---------------------------------------------------------------------------
+// Crypto family — `vm.addr` and `vm.sign`.
+// Lives in `testdata/foundry-fixture/test/Crypto.t.sol`.
+// ---------------------------------------------------------------------------
+
+/// `vm.addr(1)` returns the canonical sk=1 address — the fixture `require`s
+/// it equals `0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf`. If our handler
+/// regresses (zero key, wrong padding, wrong derivation), the require fires
+/// and the top frame reverts.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_addr_returns_canonical_sk1_address() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Crypto::testAddrFromKey",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    assert!(!trace.is_empty(), "trace was empty for Crypto::testAddrFromKey");
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry in trace for Crypto::testAddrFromKey");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success when vm.addr(1) returns the canonical address; got: {:?}",
+        top.result,
+    );
+    assert!(
+        !trace_revert_contains(&trace, "vm.addr(1) did not return"),
+        "vm.addr(1) returned the wrong address; trace = {trace:#?}",
+    );
+    let _ = session.shutdown();
+    Ok(())
+}
+
+/// `vm.sign(sk, digest)` produces a (v, r, s) triple that `ecrecover` recovers
+/// back to `vm.addr(sk)`. Exercises the full pipeline through the EVM
+/// `ecrecover` precompile, so a regression in v-parity normalization or
+/// r/s byte order would surface here.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_sign_roundtrips_via_ecrecover() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Crypto::testSignAndEcrecover",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    assert!(!trace.is_empty(), "trace was empty for Crypto::testSignAndEcrecover");
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry in trace for Crypto::testSignAndEcrecover");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success for vm.sign -> ecrecover roundtrip; got: {:?}",
+        top.result,
+    );
+    assert!(
+        !trace_revert_contains(&trace, "did not recover"),
+        "ecrecover did not recover vm.addr(sk); trace = {trace:#?}",
+    );
+    let _ = session.shutdown();
+    Ok(())
+}

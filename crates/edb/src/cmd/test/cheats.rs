@@ -20,6 +20,8 @@
 //!   `build_cheats_factory` for each orchestration pass.
 
 use alloy_primitives::{Address, B256, Bytes, Log, U256, address};
+use alloy_signer::SignerSync;
+use alloy_signer_local::PrivateKeySigner;
 use revm::{
     Database, DatabaseCommit, DatabaseRef, Inspector,
     context::JournalTr,
@@ -76,6 +78,10 @@ const SEL_ENV_OR_STRING: [u8; 4] = [0xd1, 0x45, 0x73, 0x6c]; // envOr(string,str
 const SEL_PAUSE_GAS_METERING: [u8; 4] = [0xd1, 0xa5, 0xb3, 0x6f]; // pauseGasMetering()
 const SEL_RESUME_GAS_METERING: [u8; 4] = [0x2b, 0xcd, 0x50, 0xe0]; // resumeGasMetering()
 const SEL_LAST_CALL_GAS: [u8; 4] = [0x2b, 0x58, 0x9b, 0x28]; // lastCallGas()
+
+// Crypto cheatcodes (secp256k1 — backed by k256 via alloy-signer-local).
+const SEL_ADDR: [u8; 4] = [0xff, 0xa1, 0x86, 0x49]; // addr(uint256)
+const SEL_SIGN: [u8; 4] = [0xe3, 0x41, 0xea, 0xa4]; // sign(uint256,bytes32)
 
 // Assertion cheatcodes (forge-std StdAssertions → vm.assertEq / assertNe / etc.)
 // All selectors verified by keccak256 of the canonical ABI signature.
@@ -179,35 +185,36 @@ const SEL_STOP_BROADCAST: [u8; 4] = [0x76, 0xea, 0xdd, 0x36]; // stopBroadcast()
 const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     // --- Supported in EDB v1 (should never reach the fall-through arm, but
     //     listed so the "did you mean?" lookup covers the full known name set) ---
+    (&[0xff, 0xa1, 0x86, 0x49], "addr"), // addr(uint256)
     (&[0xea, 0x06, 0x02, 0x91], "allowCheatcodes"), // allowCheatcodes(address)
-    (&[0x4c, 0x63, 0xe5, 0x62], "assume"),          // assume(bool)
-    (&[0x40, 0x49, 0xdd, 0xd2], "chainId"),         // chainId(uint256)
+    (&[0x4c, 0x63, 0xe5, 0x62], "assume"), // assume(bool)
+    (&[0x40, 0x49, 0xdd, 0xd2], "chainId"), // chainId(uint256)
     (&[0x3f, 0xdf, 0x4e, 0x15], "clearMockedCalls"), // clearMockedCalls()
-    (&[0xc8, 0x8a, 0x5e, 0x6d], "deal"),            // deal(address,uint256)
-    (&[0x7e, 0xd1, 0xec, 0x7d], "envBool"),         // envBool(string)
-    (&[0x4d, 0x7b, 0xaf, 0x06], "envBytes"),        // envBytes(string)
-    (&[0x47, 0x77, 0xf3, 0xcf], "envOr"),           // envOr(string,bool)
-    (&[0xb3, 0xe4, 0x77, 0x05], "envOr"),           // envOr(string,bytes)
-    (&[0xd1, 0x45, 0x73, 0x6c], "envOr"),           // envOr(string,string)
-    (&[0xf8, 0x77, 0xcb, 0x19], "envString"),       // envString(string)
-    (&[0xb4, 0xd6, 0xc7, 0x82], "etch"),            // etch(address,bytes)
-    (&[0x44, 0x0e, 0xd1, 0x0d], "expectEmit"),      // expectEmit()
-    (&[0x86, 0xb9, 0x62, 0x0d], "expectEmit"),      // expectEmit(address)
-    (&[0x49, 0x1c, 0xc7, 0xc2], "expectEmit"),      // expectEmit(bool,bool,bool,bool)
-    (&[0x81, 0xba, 0xd6, 0xf3], "expectEmit"),      // expectEmit(bool,bool,bool,bool,address)
-    (&[0xf4, 0x84, 0x48, 0x14], "expectRevert"),    // expectRevert()
-    (&[0xf2, 0x8d, 0xce, 0xb3], "expectRevert"),    // expectRevert(bytes)
-    (&[0xbd, 0x6a, 0xf4, 0x34], "expectCall"),      // expectCall(address,bytes)
-    (&[0xc1, 0xad, 0xbb, 0xff], "expectCall"),      // expectCall(address,bytes,uint64)
+    (&[0xc8, 0x8a, 0x5e, 0x6d], "deal"), // deal(address,uint256)
+    (&[0x7e, 0xd1, 0xec, 0x7d], "envBool"), // envBool(string)
+    (&[0x4d, 0x7b, 0xaf, 0x06], "envBytes"), // envBytes(string)
+    (&[0x47, 0x77, 0xf3, 0xcf], "envOr"), // envOr(string,bool)
+    (&[0xb3, 0xe4, 0x77, 0x05], "envOr"), // envOr(string,bytes)
+    (&[0xd1, 0x45, 0x73, 0x6c], "envOr"), // envOr(string,string)
+    (&[0xf8, 0x77, 0xcb, 0x19], "envString"), // envString(string)
+    (&[0xb4, 0xd6, 0xc7, 0x82], "etch"), // etch(address,bytes)
+    (&[0x44, 0x0e, 0xd1, 0x0d], "expectEmit"), // expectEmit()
+    (&[0x86, 0xb9, 0x62, 0x0d], "expectEmit"), // expectEmit(address)
+    (&[0x49, 0x1c, 0xc7, 0xc2], "expectEmit"), // expectEmit(bool,bool,bool,bool)
+    (&[0x81, 0xba, 0xd6, 0xf3], "expectEmit"), // expectEmit(bool,bool,bool,bool,address)
+    (&[0xf4, 0x84, 0x48, 0x14], "expectRevert"), // expectRevert()
+    (&[0xf2, 0x8d, 0xce, 0xb3], "expectRevert"), // expectRevert(bytes)
+    (&[0xbd, 0x6a, 0xf4, 0x34], "expectCall"), // expectCall(address,bytes)
+    (&[0xc1, 0xad, 0xbb, 0xff], "expectCall"), // expectCall(address,bytes,uint64)
     (&[0x19, 0x15, 0x53, 0xa4], "getRecordedLogs"), // getRecordedLogs()
-    (&[0xc6, 0x57, 0xc7, 0x18], "label"),           // label(address,string)
-    (&[0x2b, 0x58, 0x9b, 0x28], "lastCallGas"),     // lastCallGas()
-    (&[0x66, 0x7f, 0x9d, 0x70], "load"),            // load(address,bytes32)
-    (&[0xb9, 0x62, 0x13, 0xe4], "mockCall"),        // mockCall(address,bytes,bytes)
-    (&[0xdb, 0xaa, 0xd1, 0x47], "mockCallRevert"),  // mockCallRevert(address,bytes,bytes)
+    (&[0xc6, 0x57, 0xc7, 0x18], "label"), // label(address,string)
+    (&[0x2b, 0x58, 0x9b, 0x28], "lastCallGas"), // lastCallGas()
+    (&[0x66, 0x7f, 0x9d, 0x70], "load"), // load(address,bytes32)
+    (&[0xb9, 0x62, 0x13, 0xe4], "mockCall"), // mockCall(address,bytes,bytes)
+    (&[0xdb, 0xaa, 0xd1, 0x47], "mockCallRevert"), // mockCallRevert(address,bytes,bytes)
     (&[0xd1, 0xa5, 0xb3, 0x6f], "pauseGasMetering"), // pauseGasMetering()
-    (&[0xca, 0x66, 0x9f, 0xa7], "prank"),           // prank(address)
-    (&[0x41, 0xaf, 0x2f, 0x52], "recordLogs"),      // recordLogs()
+    (&[0xca, 0x66, 0x9f, 0xa7], "prank"), // prank(address)
+    (&[0x41, 0xaf, 0x2f, 0x52], "recordLogs"), // recordLogs()
     (&[0x2b, 0xcd, 0x50, 0xe0], "resumeGasMetering"), // resumeGasMetering()
     (&[0x08, 0xd6, 0xb3, 0x7a], "deleteStateSnapshot"), // deleteStateSnapshot(uint256)
     (&[0xe0, 0x93, 0x3c, 0x74], "deleteStateSnapshots"), // deleteStateSnapshots()
@@ -218,6 +225,7 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     // rollFork(uint256) single-arg supported in v1 (block.number only); cross-fork variants still rejected
     (&[0xd9, 0xbb, 0xf3, 0xa1], "rollFork"), // rollFork(uint256)
     (&[0xf8, 0xe1, 0x8b, 0x57], "setNonce"), // setNonce(address,uint64)
+    (&[0xe3, 0x41, 0xea, 0xa4], "sign"),     // sign(uint256,bytes32)
     (&[0x97, 0x11, 0x71, 0x5a], "snapshot"), // snapshot()  — deprecated alias of snapshotState
     (&[0x9c, 0xd2, 0x38, 0x35], "snapshotState"), // snapshotState()
     (&[0x06, 0x44, 0x7d, 0x56], "startPrank"), // startPrank(address)
@@ -376,7 +384,6 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0x20, 0x0c, 0x67, 0x72], "snapshotGasLastCall"), // snapshotGasLastCall(string,string)
     // --- Not yet implemented ---
     (&[0x65, 0xbc, 0x94, 0x81], "accesses"), // accesses(address)
-    (&[0xff, 0xa1, 0x86, 0x49], "addr"),     // addr(uint256)
     (&[0xf0, 0x25, 0x9e, 0x92], "breakpoint"), // breakpoint(string)
     (&[0xf7, 0xd3, 0x9a, 0x8d], "breakpoint"), // breakpoint(string,bool)
     (&[0x48, 0xc3, 0x24, 0x1f], "closeFile"), // closeFile(string)
@@ -429,7 +436,6 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0x3f, 0x33, 0xdb, 0x60], "serializeInt"), // serializeInt(string,string,int256)
     (&[0x88, 0xda, 0x6d, 0x35], "serializeString"), // serializeString(string,string,string)
     (&[0x12, 0x9e, 0x90, 0x02], "serializeUint"), // serializeUint(string,string,uint256)
-    (&[0xe3, 0x41, 0xea, 0xa4], "sign"),     // sign(uint256,bytes32)
     (&[0x3e, 0x97, 0x05, 0xc0], "startMappingRecording"), // startMappingRecording()
     (&[0xcf, 0x22, 0xe3, 0xc9], "startStateDiffRecording"), // startStateDiffRecording()
     (&[0xaa, 0x5c, 0xf9, 0x0e], "stopAndReturnStateDiff"), // stopAndReturnStateDiff()
@@ -1109,6 +1115,10 @@ where
             SEL_RESUME_GAS_METERING => self.cheat_resume_gas_metering(inputs),
             SEL_LAST_CALL_GAS => self.cheat_last_call_gas(inputs),
 
+            // Crypto cheatcodes
+            SEL_ADDR => self.cheat_addr(inputs, args),
+            SEL_SIGN => self.cheat_sign(inputs, args),
+
             // vm.rollFork(uint256) — single-arg: updates block.number only (Task 7)
             sel if sel == SEL_ROLL_FORK_UINT => self.cheat_roll_fork_single(ctx, inputs, args),
             // Explicitly rejected — multi-fork
@@ -1668,6 +1678,59 @@ where
         };
         self.expected_revert = Some(ExpectedRevert { expected_data });
         ok_return(inputs, Bytes::new())
+    }
+
+    // --- vm.addr / vm.sign (secp256k1 crypto) --------------------------------
+
+    /// `vm.addr(uint256 privateKey) returns (address)` — derive an Ethereum
+    /// address from a secp256k1 secret key. Reverts if the key is zero or
+    /// otherwise out of range for the secp256k1 scalar field.
+    fn cheat_addr(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(sk) = read_u256(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.addr: bad uint256 arg"));
+        };
+        let sk_bytes = B256::from(sk);
+        match PrivateKeySigner::from_bytes(&sk_bytes) {
+            Ok(signer) => {
+                // ABI-encode the address as a 32-byte word (left-padded with
+                // 12 zero bytes; the 20-byte address sits at offset 12..32).
+                let mut out = [0u8; 32];
+                out[12..].copy_from_slice(signer.address().as_slice());
+                ok_return(inputs, Bytes::copy_from_slice(&out))
+            }
+            Err(_) => revert_with(inputs, encode_error_string("vm.addr: invalid private key")),
+        }
+    }
+
+    /// `vm.sign(uint256 privateKey, bytes32 digest) returns (uint8 v, bytes32 r, bytes32 s)` —
+    /// ECDSA-sign the pre-hashed `digest` with the secret key. The digest is
+    /// signed AS-IS (no EIP-191 prefix is added). The returned `v` is
+    /// normalized to the legacy 27/28 convention.
+    fn cheat_sign(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(sk) = read_u256(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.sign: bad uint256 arg"));
+        };
+        let Some(digest) = read_b256(args, 1) else {
+            return revert_with(inputs, encode_error_string("vm.sign: bad bytes32 arg"));
+        };
+        let sk_bytes = B256::from(sk);
+        let Ok(signer) = PrivateKeySigner::from_bytes(&sk_bytes) else {
+            return revert_with(inputs, encode_error_string("vm.sign: invalid private key"));
+        };
+        match signer.sign_hash_sync(&digest) {
+            Ok(sig) => {
+                // ABI-encode (uint8 v, bytes32 r, bytes32 s) as three 32-byte slots.
+                // alloy_primitives::Signature::v() is a y-parity bool; foundry's
+                // Vm.sol returns the legacy 27/28 encoding for the v slot.
+                let v: u8 = if sig.v() { 28 } else { 27 };
+                let mut out = vec![0u8; 96];
+                out[31] = v;
+                out[32..64].copy_from_slice(&sig.r().to_be_bytes::<32>());
+                out[64..96].copy_from_slice(&sig.s().to_be_bytes::<32>());
+                ok_return(inputs, Bytes::from(out))
+            }
+            Err(_) => revert_with(inputs, encode_error_string("vm.sign: signing failed")),
+        }
     }
 
     // --- Labels --------------------------------------------------------------
@@ -2725,6 +2788,13 @@ mod tests {
         assert_eq!(sel("expectRevert(bytes)"), SEL_EXPECT_REVERT_BYTES);
     }
     #[test]
+    fn addr_and_sign_selectors_match_canonical() {
+        // Pin the secp256k1 cheatcode selectors against keccak256(sig)[..4].
+        // If one of these silently flips, the dispatch arm goes dead.
+        assert_eq!(sel("addr(uint256)"), SEL_ADDR);
+        assert_eq!(sel("sign(uint256,bytes32)"), SEL_SIGN);
+    }
+    #[test]
     fn selector_label() {
         assert_eq!(sel("label(address,string)"), SEL_LABEL);
     }
@@ -3441,6 +3511,134 @@ mod tests {
         calldata.extend_from_slice(&five);
         let out = cheats.cheat_assert(&inputs, SEL_ASSERT_GT_I256, &calldata);
         assert!(matches!(out.result.result, InstructionResult::Revert));
+    }
+
+    // --- vm.addr / vm.sign behavior -----------------------------------------
+
+    /// `vm.addr(1)` must produce the well-known Ethereum address derived from
+    /// the secp256k1 secret key `1` — the simplest non-zero key in foundry's
+    /// test vectors:
+    ///
+    /// ```text
+    /// address(sk=1) == 0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf
+    /// ```
+    ///
+    /// The output is ABI-encoded as a 32-byte word with the 20-byte address
+    /// right-aligned (left-padded with 12 zero bytes).
+    #[test]
+    fn cheat_addr_sk1_matches_canonical_address() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..32);
+
+        // ABI-encode `vm.addr(1)`'s only arg: 32-byte BE uint256 == 1.
+        let mut args = [0u8; 32];
+        args[31] = 1;
+        let out = cheats.cheat_addr(&inputs, &args);
+        assert!(
+            matches!(out.result.result, InstructionResult::Return),
+            "vm.addr(1) should return successfully, got {:?}",
+            out.result.result,
+        );
+        assert_eq!(out.result.output.len(), 32, "address must be ABI-encoded as a 32-byte word");
+
+        // Expected address: 0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf
+        let expected: Address = "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf".parse().unwrap();
+        let mut expected_word = [0u8; 32];
+        expected_word[12..].copy_from_slice(expected.as_slice());
+        assert_eq!(
+            out.result.output.as_ref(),
+            &expected_word,
+            "ABI-encoded address must equal canonical sk=1 address",
+        );
+    }
+
+    /// `vm.addr(0)` is invalid (zero is not a valid secp256k1 secret key) —
+    /// must revert with our specific error string.
+    #[test]
+    fn cheat_addr_zero_key_reverts() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..32);
+        let args = [0u8; 32];
+        let out = cheats.cheat_addr(&inputs, &args);
+        assert!(matches!(out.result.result, InstructionResult::Revert));
+        let msg = decode_error_payload(&out.result.output).expect("Error(string) payload");
+        assert!(
+            msg.contains("invalid private key"),
+            "expected 'invalid private key' message, got: {msg}",
+        );
+    }
+
+    /// `vm.sign(sk=1, keccak256("hello"))` must produce a deterministic
+    /// (v, r, s) tuple. We don't pin the exact (v, r, s) bytes (those would
+    /// duplicate the secp256k1 implementation) — instead we verify:
+    ///
+    /// 1. The output is exactly 96 bytes (3 × 32-byte ABI slots).
+    /// 2. `v` (the last byte of slot 0) is 27 or 28 (legacy parity encoding).
+    /// 3. `ecrecover(digest, v, r, s) == vm.addr(sk)` — the recovered address
+    ///    matches the secret key's canonical address, which is the operational
+    ///    property tests actually depend on.
+    #[test]
+    fn cheat_sign_roundtrips_via_ecrecover() {
+        use alloy_primitives::{Signature, keccak256};
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..96);
+
+        // ABI calldata: uint256 sk = 1, bytes32 digest = keccak256("hello").
+        let digest = keccak256(b"hello");
+        let mut args = Vec::with_capacity(64);
+        let mut sk_word = [0u8; 32];
+        sk_word[31] = 1;
+        args.extend_from_slice(&sk_word);
+        args.extend_from_slice(digest.as_slice());
+
+        let out = cheats.cheat_sign(&inputs, &args);
+        assert!(
+            matches!(out.result.result, InstructionResult::Return),
+            "vm.sign should succeed for sk=1, digest=keccak256(\"hello\"); got {:?}",
+            out.result.result,
+        );
+        assert_eq!(out.result.output.len(), 96, "(v,r,s) must be 96 bytes (3 × 32-byte slots)");
+
+        // Slot 0: uint8 v in last byte; rest must be zero (left-padded uint8).
+        let v_byte = out.result.output[31];
+        assert!(v_byte == 27 || v_byte == 28, "v must be 27 or 28, got {v_byte}");
+        for &b in &out.result.output[..31] {
+            assert_eq!(b, 0, "uint8 v must be left-padded with zeros");
+        }
+
+        // Slot 1: r (bytes32). Slot 2: s (bytes32).
+        let r = U256::from_be_slice(&out.result.output[32..64]);
+        let s = U256::from_be_slice(&out.result.output[64..96]);
+
+        // ecrecover: build a Signature and recover the address from the digest.
+        let parity = v_byte == 28;
+        let sig = Signature::new(r, s, parity);
+        let recovered = sig.recover_address_from_prehash(&digest).expect("ecrecover must succeed");
+        let expected: Address = "0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf".parse().unwrap();
+        assert_eq!(recovered, expected, "ecrecover(digest, v, r, s) must equal vm.addr(sk=1)",);
+    }
+
+    /// `vm.sign(0, ...)` rejects the zero secret key the same way `vm.addr(0)` does.
+    #[test]
+    fn cheat_sign_zero_key_reverts() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..96);
+        let args = [0u8; 64]; // sk = 0, digest = 0
+        let out = cheats.cheat_sign(&inputs, &args);
+        assert!(matches!(out.result.result, InstructionResult::Revert));
+        let msg = decode_error_payload(&out.result.output).expect("Error(string) payload");
+        assert!(
+            msg.contains("invalid private key"),
+            "expected 'invalid private key' message, got: {msg}",
+        );
     }
 
     // --- Synthetic CallOutcome shape ----------------------------------------
