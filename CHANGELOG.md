@@ -55,6 +55,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `cmd/debug.rs` stub (replaced by `cmd/test/`).
 - `TuiOptions::disable_mouse` flag (replaced by mouse-off default).
 
+### Internal
+
+- `.github/workflows/release-test.yml` — release-only `cargo test --release` matrix
+  across ubuntu/windows/macos. Triggered by published releases or manual
+  `workflow_dispatch`. Catches optimizer-induced regressions without burdening
+  per-PR CI.
+
 ## [0.0.3] - 2026-05-10
 
 ### Added

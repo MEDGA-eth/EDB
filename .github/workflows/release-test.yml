@@ -1,0 +1,60 @@
+name: Release Test
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release-test:
+    name: Release Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    timeout-minutes: 90
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
+
+      - name: Cache SVM
+        uses: actions/cache@v5
+        with:
+          path: ~/.svm
+          key: ${{ runner.os }}-svm-${{ hashFiles('~/.svm/**') }}
+          restore-keys: |
+            ${{ runner.os }}-svm-
+
+      - name: Run tests (release profile)
+        run: cargo test --workspace --all-features --release --verbose -- --nocapture
+        env:
+          EDB_TEST_PROXY_MODE: cache-only
+          EDB_TEST_ETHERSCAN_MODE: cache-only
+          EDB_ASSERT: all
+          RUST_LOG: info
