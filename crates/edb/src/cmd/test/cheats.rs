@@ -292,6 +292,81 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0x10, 0x91, 0xa2, 0x61], "assertNotEq"), // assertNotEq(bool,bool,string)
     (&[0x89, 0x8e, 0x83, 0xfc], "assertNotEq"), // assertNotEq(bytes32,bytes32)
     (&[0xb2, 0x33, 0x2f, 0x51], "assertNotEq"), // assertNotEq(bytes32,bytes32,string)
+    // --- Dynamic / array / decimal / approx assertion overloads ----------------
+    // Modern forge-std's StdAssertions calls these unconditionally; without the
+    // catalog entry the dispatch fall-through tags them as `Unknown`, which
+    // produces "unknown cheatcode selector 0x..." — confusing for users.
+    // Catalogued as `NotYetImplemented` (via the assertion-name classifier
+    // below) so the abort message reads "not yet implemented in v1 (selector
+    // ...)" instead. C2-3 (Round 2 audit).
+    (&[0xf3, 0x20, 0xd9, 0x63], "assertEq"), // assertEq(string,string)
+    (&[0x36, 0xf6, 0x56, 0xd8], "assertEq"), // assertEq(string,string,string)
+    (&[0x97, 0x62, 0x46, 0x31], "assertEq"), // assertEq(bytes,bytes)
+    (&[0xe2, 0x4f, 0xed, 0x00], "assertEq"), // assertEq(bytes,bytes,string)
+    (&[0x97, 0x5d, 0x5a, 0x12], "assertEq"), // assertEq(uint256[],uint256[])
+    (&[0x5d, 0x18, 0xc7, 0x3a], "assertEq"), // assertEq(uint256[],uint256[],string)
+    (&[0x71, 0x10, 0x43, 0xac], "assertEq"), // assertEq(int256[],int256[])
+    (&[0x19, 0x1f, 0x1b, 0x30], "assertEq"), // assertEq(int256[],int256[],string)
+    (&[0x38, 0x68, 0xac, 0x34], "assertEq"), // assertEq(address[],address[])
+    (&[0x3e, 0x91, 0x73, 0xc5], "assertEq"), // assertEq(address[],address[],string)
+    (&[0x70, 0x7d, 0xf7, 0x85], "assertEq"), // assertEq(bool[],bool[])
+    (&[0xe4, 0x8a, 0x8f, 0x8d], "assertEq"), // assertEq(bool[],bool[],string)
+    (&[0x0c, 0xc9, 0xee, 0x84], "assertEq"), // assertEq(bytes32[],bytes32[])
+    (&[0xe0, 0x3e, 0x91, 0x77], "assertEq"), // assertEq(bytes32[],bytes32[],string)
+    (&[0xcf, 0x1c, 0x04, 0x9c], "assertEq"), // assertEq(string[],string[])
+    (&[0xef, 0xf6, 0xb2, 0x7d], "assertEq"), // assertEq(string[],string[],string)
+    (&[0xe5, 0xfb, 0x9b, 0x4a], "assertEq"), // assertEq(bytes[],bytes[])
+    (&[0xf4, 0x13, 0xf0, 0xb6], "assertEq"), // assertEq(bytes[],bytes[],string)
+    (&[0x6a, 0x82, 0x37, 0xb3], "assertNotEq"), // assertNotEq(string,string)
+    (&[0x78, 0xbd, 0xce, 0xa7], "assertNotEq"), // assertNotEq(string,string,string)
+    (&[0x3c, 0xf7, 0x8e, 0x28], "assertNotEq"), // assertNotEq(bytes,bytes)
+    (&[0x95, 0x07, 0x54, 0x0e], "assertNotEq"), // assertNotEq(bytes,bytes,string)
+    (&[0x56, 0xf2, 0x9c, 0xba], "assertNotEq"), // assertNotEq(uint256[],uint256[])
+    (&[0x9a, 0x7f, 0xbd, 0x8f], "assertNotEq"), // assertNotEq(uint256[],uint256[],string)
+    (&[0x0b, 0x72, 0xf4, 0xef], "assertNotEq"), // assertNotEq(int256[],int256[])
+    (&[0xd3, 0x97, 0x73, 0x22], "assertNotEq"), // assertNotEq(int256[],int256[],string)
+    (&[0x46, 0xd0, 0xb2, 0x52], "assertNotEq"), // assertNotEq(address[],address[])
+    (&[0x72, 0xc7, 0xe0, 0xb5], "assertNotEq"), // assertNotEq(address[],address[],string)
+    (&[0x28, 0x6f, 0xaf, 0xea], "assertNotEq"), // assertNotEq(bool[],bool[])
+    (&[0x62, 0xc6, 0xf9, 0xfb], "assertNotEq"), // assertNotEq(bool[],bool[],string)
+    (&[0x06, 0x03, 0xea, 0x68], "assertNotEq"), // assertNotEq(bytes32[],bytes32[])
+    (&[0xb8, 0x73, 0x63, 0x4c], "assertNotEq"), // assertNotEq(bytes32[],bytes32[],string)
+    (&[0xbd, 0xfa, 0xcb, 0xe8], "assertNotEq"), // assertNotEq(string[],string[])
+    (&[0xb6, 0x71, 0x87, 0xf3], "assertNotEq"), // assertNotEq(string[],string[],string)
+    (&[0xed, 0xec, 0xd0, 0x35], "assertNotEq"), // assertNotEq(bytes[],bytes[])
+    (&[0x1d, 0xcd, 0x1f, 0x68], "assertNotEq"), // assertNotEq(bytes[],bytes[],string)
+    (&[0x27, 0xaf, 0x7d, 0x9c], "assertEqDecimal"), // assertEqDecimal(uint256,uint256,uint256)
+    (&[0xd0, 0xcb, 0xbd, 0xef], "assertEqDecimal"), // assertEqDecimal(uint256,uint256,uint256,string)
+    (&[0x48, 0x01, 0x6c, 0x04], "assertEqDecimal"), // assertEqDecimal(int256,int256,uint256)
+    (&[0x7e, 0x77, 0xb0, 0xc5], "assertEqDecimal"), // assertEqDecimal(int256,int256,uint256,string)
+    (&[0x66, 0x9e, 0xfc, 0xa7], "assertNotEqDecimal"), // assertNotEqDecimal(uint256,uint256,uint256)
+    (&[0xf5, 0xa5, 0x55, 0x58], "assertNotEqDecimal"), // assertNotEqDecimal(uint256,uint256,uint256,string)
+    (&[0x14, 0xe7, 0x56, 0x80], "assertNotEqDecimal"), // assertNotEqDecimal(int256,int256,uint256)
+    (&[0x33, 0x94, 0x9f, 0x0b], "assertNotEqDecimal"), // assertNotEqDecimal(int256,int256,uint256,string)
+    (&[0xec, 0xcd, 0x24, 0x37], "assertGtDecimal"),    // assertGtDecimal(uint256,uint256,uint256)
+    (&[0x64, 0x94, 0x9a, 0x8d], "assertGtDecimal"), // assertGtDecimal(uint256,uint256,uint256,string)
+    (&[0x78, 0x61, 0x1f, 0x0e], "assertGtDecimal"), // assertGtDecimal(int256,int256,uint256)
+    (&[0x04, 0xa5, 0xc7, 0xab], "assertGtDecimal"), // assertGtDecimal(int256,int256,uint256,string)
+    (&[0x3d, 0x1f, 0xe0, 0x8a], "assertGeDecimal"), // assertGeDecimal(uint256,uint256,uint256)
+    (&[0x8b, 0xff, 0x91, 0x33], "assertGeDecimal"), // assertGeDecimal(uint256,uint256,uint256,string)
+    (&[0xdc, 0x28, 0xc0, 0xf1], "assertGeDecimal"), // assertGeDecimal(int256,int256,uint256)
+    (&[0x5d, 0xf9, 0x3c, 0x9b], "assertGeDecimal"), // assertGeDecimal(int256,int256,uint256,string)
+    (&[0x20, 0x77, 0x33, 0x7e], "assertLtDecimal"), // assertLtDecimal(uint256,uint256,uint256)
+    (&[0xa9, 0x72, 0xd0, 0x37], "assertLtDecimal"), // assertLtDecimal(uint256,uint256,uint256,string)
+    (&[0xdb, 0xe8, 0xd8, 0x8b], "assertLtDecimal"), // assertLtDecimal(int256,int256,uint256)
+    (&[0x40, 0xf0, 0xb4, 0xe0], "assertLtDecimal"), // assertLtDecimal(int256,int256,uint256,string)
+    (&[0xc3, 0x04, 0xaa, 0xb7], "assertLeDecimal"), // assertLeDecimal(uint256,uint256,uint256)
+    (&[0x7f, 0xef, 0xbb, 0xe0], "assertLeDecimal"), // assertLeDecimal(uint256,uint256,uint256,string)
+    (&[0x11, 0xd1, 0x36, 0x4a], "assertLeDecimal"), // assertLeDecimal(int256,int256,uint256)
+    (&[0xaa, 0x5c, 0xf7, 0x88], "assertLeDecimal"), // assertLeDecimal(int256,int256,uint256,string)
+    (&[0x16, 0xd2, 0x07, 0xc6], "assertApproxEqAbs"), // assertApproxEqAbs(uint256,uint256,uint256)
+    (&[0xf7, 0x10, 0xb0, 0x62], "assertApproxEqAbs"), // assertApproxEqAbs(uint256,uint256,uint256,string)
+    (&[0x24, 0x0f, 0x83, 0x9d], "assertApproxEqAbs"), // assertApproxEqAbs(int256,int256,uint256)
+    (&[0x82, 0x89, 0xe6, 0x21], "assertApproxEqAbs"), // assertApproxEqAbs(int256,int256,uint256,string)
+    (&[0x8c, 0xf2, 0x5e, 0xf4], "assertApproxEqRel"), // assertApproxEqRel(uint256,uint256,uint256)
+    (&[0x1e, 0xcb, 0x7d, 0x33], "assertApproxEqRel"), // assertApproxEqRel(uint256,uint256,uint256,string)
+    (&[0xfe, 0xa2, 0xd1, 0x4f], "assertApproxEqRel"), // assertApproxEqRel(int256,int256,uint256)
+    (&[0xef, 0x27, 0x7d, 0x72], "assertApproxEqRel"), // assertApproxEqRel(int256,int256,uint256,string)
     // Gas snapshot stubs
     (&[0x3c, 0xad, 0x9d, 0x7b], "startSnapshotGas"), // startSnapshotGas(string)
     (&[0xf6, 0x40, 0x2e, 0xda], "stopSnapshotGas"),  // stopSnapshotGas()
@@ -2093,31 +2168,73 @@ where
     /// On success:  returns empty data (void return).
     /// On failure:  reverts with `Error(string)` carrying a descriptive message.
     fn cheat_assert(&mut self, inputs: &CallInputs, selector: [u8; 4], args: &[u8]) -> CallOutcome {
-        // All handled overloads start with two 32-byte ABI words (left, right).
-        if args.len() < 64 {
+        // Classify the overload's expected calldata shape:
+        //   - `single`  -> 1 static head word  (assertTrue(bool) / assertFalse(bool))
+        //   - `single+msg` -> 2 static head words + string tail
+        //   - `pair`    -> 2 static head words (assertEq/Gt/Ge/Lt/Le/NotEq value-pair)
+        //   - `pair+msg`-> 3 static head words + string tail
+        //
+        // `head_word_count` = number of 32-byte head words BEFORE the string tail
+        // (for non-MSG overloads, it's the total head size with no tail).
+        // `has_msg` = whether a trailing `string err` argument exists.
+        let (head_word_count, has_msg) = match selector {
+            // Single-arg booleans: 1 head word, no string tail.
+            SEL_ASSERT_TRUE | SEL_ASSERT_FALSE => (1usize, false),
+            // Single-arg booleans + string err: 2 head words (bool, str_offset) + tail.
+            SEL_ASSERT_TRUE_MSG | SEL_ASSERT_FALSE_MSG => (2usize, true),
+            // Two-value MSG overloads: 3 head words (left, right, str_offset) + tail.
+            SEL_ASSERT_EQ_U256_MSG
+            | SEL_ASSERT_EQ_I256_MSG
+            | SEL_ASSERT_EQ_ADDR_MSG
+            | SEL_ASSERT_EQ_BOOL_MSG
+            | SEL_ASSERT_EQ_B32_MSG
+            | SEL_ASSERT_NOT_EQ_U256_MSG
+            | SEL_ASSERT_NOT_EQ_I256_MSG
+            | SEL_ASSERT_NOT_EQ_ADDR_MSG
+            | SEL_ASSERT_NOT_EQ_BOOL_MSG
+            | SEL_ASSERT_NOT_EQ_B32_MSG
+            | SEL_ASSERT_GE_U256_MSG
+            | SEL_ASSERT_GE_I256_MSG
+            | SEL_ASSERT_GT_U256_MSG
+            | SEL_ASSERT_GT_I256_MSG
+            | SEL_ASSERT_LE_U256_MSG
+            | SEL_ASSERT_LE_I256_MSG
+            | SEL_ASSERT_LT_U256_MSG
+            | SEL_ASSERT_LT_I256_MSG => (3usize, true),
+            // All other handled selectors are two-value, no-msg.
+            _ => (2usize, false),
+        };
+
+        let min_head_bytes = head_word_count * 32;
+        if args.len() < min_head_bytes {
             return revert_with(
                 inputs,
                 encode_error_string("EDB: vm.assert* called with insufficient calldata"),
             );
         }
-        let left = &args[0..32];
-        let right = &args[32..64];
 
-        // Decode an optional error string from ABI-encoded `(uint256, uint256, string)`
-        // or similar. The third word (args[64..96]) is the ABI offset (always 0x60 for
-        // inline string encoding). The actual string starts at args[96]: 32-byte length
-        // followed by data.
-        let custom_msg: Option<String> = if args.len() >= 96 + 32 {
-            let str_len_bytes: [u8; 8] = args[96 + 24..96 + 32].try_into().unwrap_or([0u8; 8]);
-            let str_len = u64::from_be_bytes(str_len_bytes) as usize;
-            if args.len() >= 96 + 32 + str_len {
-                String::from_utf8(args[96 + 32..96 + 32 + str_len].to_vec()).ok()
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        // For pair/pair+msg/single+msg overloads `left` and `right` are at
+        // args[0..32] and args[32..64]. For the single-arg booleans without
+        // msg, args.len() == 32; in that case `right` is synthesized as the
+        // zero word so the assertTrue/assertFalse arms (which only read
+        // `left[31]`) work uniformly and the failure-message hex dump still
+        // produces a well-formed `right=0x...`.
+        let left = &args[0..32];
+        let zero_right = [0u8; 32];
+        let right: &[u8] = if args.len() >= 64 { &args[32..64] } else { &zero_right[..] };
+
+        // Decode the optional `string err` arg by reading the offset at
+        // `head_word_count - 1` (the last head word holds the string offset for
+        // overloads with `has_msg`), then walking (length, data) at that offset.
+        // The auditor's C2-4 bug was hardcoding the data location to args[120..]
+        // and the length to args[120..128]: correct only for 3-head-word layouts
+        // (offset == 0x60). The single-arg+msg overloads
+        // (assertTrue(bool,string)/assertFalse(bool,string)) instead put the
+        // offset at 0x40 and the data at args[96..]. Routing through
+        // `read_string` reads the encoded offset word and follows it,
+        // generalizing across head-word counts.
+        let custom_msg: Option<String> =
+            if has_msg { read_string(args, head_word_count - 1) } else { None };
 
         // Determine the assertion kind and check it.
         let passed = match selector {
@@ -2673,6 +2790,179 @@ mod tests {
         let decoded = read_string(&encoded, 0).unwrap();
         assert_eq!(decoded, original);
     }
+    /// C2-2 (Round 2 audit): exhaustive table-driven verification that every
+    /// SEL_ASSERT_* constant equals `keccak256(canonical_sig)[..4]`. The 40
+    /// assertion selectors landed in PR #66 without any per-selector pin —
+    /// auditor verified the byte literals out-of-band but a future edit could
+    /// silently flip one. This test locks them all down at compile-test time.
+    #[test]
+    fn all_assertion_selectors_match_canonical() {
+        let cases: &[(&str, [u8; 4])] = &[
+            ("assertEq(uint256,uint256)", SEL_ASSERT_EQ_U256),
+            ("assertEq(uint256,uint256,string)", SEL_ASSERT_EQ_U256_MSG),
+            ("assertEq(int256,int256)", SEL_ASSERT_EQ_I256),
+            ("assertEq(int256,int256,string)", SEL_ASSERT_EQ_I256_MSG),
+            ("assertEq(address,address)", SEL_ASSERT_EQ_ADDR),
+            ("assertEq(address,address,string)", SEL_ASSERT_EQ_ADDR_MSG),
+            ("assertEq(bool,bool)", SEL_ASSERT_EQ_BOOL),
+            ("assertEq(bool,bool,string)", SEL_ASSERT_EQ_BOOL_MSG),
+            ("assertEq(bytes32,bytes32)", SEL_ASSERT_EQ_B32),
+            ("assertEq(bytes32,bytes32,string)", SEL_ASSERT_EQ_B32_MSG),
+            ("assertTrue(bool)", SEL_ASSERT_TRUE),
+            ("assertTrue(bool,string)", SEL_ASSERT_TRUE_MSG),
+            ("assertFalse(bool)", SEL_ASSERT_FALSE),
+            ("assertFalse(bool,string)", SEL_ASSERT_FALSE_MSG),
+            ("assertGe(uint256,uint256)", SEL_ASSERT_GE_U256),
+            ("assertGe(uint256,uint256,string)", SEL_ASSERT_GE_U256_MSG),
+            ("assertGe(int256,int256)", SEL_ASSERT_GE_I256),
+            ("assertGe(int256,int256,string)", SEL_ASSERT_GE_I256_MSG),
+            ("assertGt(uint256,uint256)", SEL_ASSERT_GT_U256),
+            ("assertGt(uint256,uint256,string)", SEL_ASSERT_GT_U256_MSG),
+            ("assertGt(int256,int256)", SEL_ASSERT_GT_I256),
+            ("assertGt(int256,int256,string)", SEL_ASSERT_GT_I256_MSG),
+            ("assertLe(uint256,uint256)", SEL_ASSERT_LE_U256),
+            ("assertLe(uint256,uint256,string)", SEL_ASSERT_LE_U256_MSG),
+            ("assertLe(int256,int256)", SEL_ASSERT_LE_I256),
+            ("assertLe(int256,int256,string)", SEL_ASSERT_LE_I256_MSG),
+            ("assertLt(uint256,uint256)", SEL_ASSERT_LT_U256),
+            ("assertLt(uint256,uint256,string)", SEL_ASSERT_LT_U256_MSG),
+            ("assertLt(int256,int256)", SEL_ASSERT_LT_I256),
+            ("assertLt(int256,int256,string)", SEL_ASSERT_LT_I256_MSG),
+            ("assertNotEq(uint256,uint256)", SEL_ASSERT_NOT_EQ_U256),
+            ("assertNotEq(uint256,uint256,string)", SEL_ASSERT_NOT_EQ_U256_MSG),
+            ("assertNotEq(int256,int256)", SEL_ASSERT_NOT_EQ_I256),
+            ("assertNotEq(int256,int256,string)", SEL_ASSERT_NOT_EQ_I256_MSG),
+            ("assertNotEq(address,address)", SEL_ASSERT_NOT_EQ_ADDR),
+            ("assertNotEq(address,address,string)", SEL_ASSERT_NOT_EQ_ADDR_MSG),
+            ("assertNotEq(bool,bool)", SEL_ASSERT_NOT_EQ_BOOL),
+            ("assertNotEq(bool,bool,string)", SEL_ASSERT_NOT_EQ_BOOL_MSG),
+            ("assertNotEq(bytes32,bytes32)", SEL_ASSERT_NOT_EQ_B32),
+            ("assertNotEq(bytes32,bytes32,string)", SEL_ASSERT_NOT_EQ_B32_MSG),
+        ];
+        assert_eq!(cases.len(), 40, "expected exactly 40 assertion selectors");
+        for (sig, expected) in cases {
+            let computed = sel(sig);
+            assert_eq!(computed, *expected, "selector mismatch for {sig}");
+        }
+    }
+
+    /// C2-2 (Round 2 audit): pin all 6 gas-snapshot selectors to their
+    /// canonical signatures.
+    #[test]
+    fn all_gas_snapshot_selectors_match_canonical() {
+        let cases: &[(&str, [u8; 4])] = &[
+            ("startSnapshotGas(string)", SEL_START_SNAPSHOT_GAS_STR),
+            ("stopSnapshotGas()", SEL_STOP_SNAPSHOT_GAS),
+            ("stopSnapshotGas(string)", SEL_STOP_SNAPSHOT_GAS_STR),
+            ("stopSnapshotGas(string,string)", SEL_STOP_SNAPSHOT_GAS_2STR),
+            ("snapshotGasLastCall(string)", SEL_SNAPSHOT_GAS_LAST_CALL_STR),
+            ("snapshotGasLastCall(string,string)", SEL_SNAPSHOT_GAS_LAST_CALL_2STR),
+        ];
+        assert_eq!(cases.len(), 6, "expected exactly 6 gas-snapshot selectors");
+        for (sig, expected) in cases {
+            assert_eq!(sel(sig), *expected, "selector mismatch for {sig}");
+        }
+    }
+
+    /// C2-3 (Round 2 audit): verify the freshly-cataloged dynamic/array/decimal
+    /// assertion overloads keep their selector literals in lockstep with
+    /// `keccak256(canonical_sig)[..4]`. Without this, a future "fix" that
+    /// retypes one of the array entries (e.g. uint256[] → uint128[]) could
+    /// silently drop catalog coverage. Also asserts each entry classifies as
+    /// `NotYetImplemented` (i.e., is recognized as an assertion name, not in
+    /// the rejected set), so the dispatch fall-through produces the right
+    /// abort wording.
+    #[test]
+    fn known_unsupported_assertion_overloads_are_canonical() {
+        let cases: &[(&str, &str)] = &[
+            ("assertEq(string,string)", "assertEq"),
+            ("assertEq(string,string,string)", "assertEq"),
+            ("assertEq(bytes,bytes)", "assertEq"),
+            ("assertEq(bytes,bytes,string)", "assertEq"),
+            ("assertEq(uint256[],uint256[])", "assertEq"),
+            ("assertEq(uint256[],uint256[],string)", "assertEq"),
+            ("assertEq(int256[],int256[])", "assertEq"),
+            ("assertEq(int256[],int256[],string)", "assertEq"),
+            ("assertEq(address[],address[])", "assertEq"),
+            ("assertEq(address[],address[],string)", "assertEq"),
+            ("assertEq(bool[],bool[])", "assertEq"),
+            ("assertEq(bool[],bool[],string)", "assertEq"),
+            ("assertEq(bytes32[],bytes32[])", "assertEq"),
+            ("assertEq(bytes32[],bytes32[],string)", "assertEq"),
+            ("assertEq(string[],string[])", "assertEq"),
+            ("assertEq(string[],string[],string)", "assertEq"),
+            ("assertEq(bytes[],bytes[])", "assertEq"),
+            ("assertEq(bytes[],bytes[],string)", "assertEq"),
+            ("assertNotEq(string,string)", "assertNotEq"),
+            ("assertNotEq(string,string,string)", "assertNotEq"),
+            ("assertNotEq(bytes,bytes)", "assertNotEq"),
+            ("assertNotEq(bytes,bytes,string)", "assertNotEq"),
+            ("assertNotEq(uint256[],uint256[])", "assertNotEq"),
+            ("assertNotEq(uint256[],uint256[],string)", "assertNotEq"),
+            ("assertNotEq(int256[],int256[])", "assertNotEq"),
+            ("assertNotEq(int256[],int256[],string)", "assertNotEq"),
+            ("assertNotEq(address[],address[])", "assertNotEq"),
+            ("assertNotEq(address[],address[],string)", "assertNotEq"),
+            ("assertNotEq(bool[],bool[])", "assertNotEq"),
+            ("assertNotEq(bool[],bool[],string)", "assertNotEq"),
+            ("assertNotEq(bytes32[],bytes32[])", "assertNotEq"),
+            ("assertNotEq(bytes32[],bytes32[],string)", "assertNotEq"),
+            ("assertNotEq(string[],string[])", "assertNotEq"),
+            ("assertNotEq(string[],string[],string)", "assertNotEq"),
+            ("assertNotEq(bytes[],bytes[])", "assertNotEq"),
+            ("assertNotEq(bytes[],bytes[],string)", "assertNotEq"),
+            ("assertEqDecimal(uint256,uint256,uint256)", "assertEqDecimal"),
+            ("assertEqDecimal(uint256,uint256,uint256,string)", "assertEqDecimal"),
+            ("assertEqDecimal(int256,int256,uint256)", "assertEqDecimal"),
+            ("assertEqDecimal(int256,int256,uint256,string)", "assertEqDecimal"),
+            ("assertNotEqDecimal(uint256,uint256,uint256)", "assertNotEqDecimal"),
+            ("assertNotEqDecimal(uint256,uint256,uint256,string)", "assertNotEqDecimal"),
+            ("assertNotEqDecimal(int256,int256,uint256)", "assertNotEqDecimal"),
+            ("assertNotEqDecimal(int256,int256,uint256,string)", "assertNotEqDecimal"),
+            ("assertGtDecimal(uint256,uint256,uint256)", "assertGtDecimal"),
+            ("assertGtDecimal(uint256,uint256,uint256,string)", "assertGtDecimal"),
+            ("assertGtDecimal(int256,int256,uint256)", "assertGtDecimal"),
+            ("assertGtDecimal(int256,int256,uint256,string)", "assertGtDecimal"),
+            ("assertGeDecimal(uint256,uint256,uint256)", "assertGeDecimal"),
+            ("assertGeDecimal(uint256,uint256,uint256,string)", "assertGeDecimal"),
+            ("assertGeDecimal(int256,int256,uint256)", "assertGeDecimal"),
+            ("assertGeDecimal(int256,int256,uint256,string)", "assertGeDecimal"),
+            ("assertLtDecimal(uint256,uint256,uint256)", "assertLtDecimal"),
+            ("assertLtDecimal(uint256,uint256,uint256,string)", "assertLtDecimal"),
+            ("assertLtDecimal(int256,int256,uint256)", "assertLtDecimal"),
+            ("assertLtDecimal(int256,int256,uint256,string)", "assertLtDecimal"),
+            ("assertLeDecimal(uint256,uint256,uint256)", "assertLeDecimal"),
+            ("assertLeDecimal(uint256,uint256,uint256,string)", "assertLeDecimal"),
+            ("assertLeDecimal(int256,int256,uint256)", "assertLeDecimal"),
+            ("assertLeDecimal(int256,int256,uint256,string)", "assertLeDecimal"),
+            ("assertApproxEqAbs(uint256,uint256,uint256)", "assertApproxEqAbs"),
+            ("assertApproxEqAbs(uint256,uint256,uint256,string)", "assertApproxEqAbs"),
+            ("assertApproxEqAbs(int256,int256,uint256)", "assertApproxEqAbs"),
+            ("assertApproxEqAbs(int256,int256,uint256,string)", "assertApproxEqAbs"),
+            ("assertApproxEqRel(uint256,uint256,uint256)", "assertApproxEqRel"),
+            ("assertApproxEqRel(uint256,uint256,uint256,string)", "assertApproxEqRel"),
+            ("assertApproxEqRel(int256,int256,uint256)", "assertApproxEqRel"),
+            ("assertApproxEqRel(int256,int256,uint256,string)", "assertApproxEqRel"),
+        ];
+        for (sig, expected_name) in cases {
+            let computed = sel(sig);
+            let hit = KNOWN_CHEATCODES.iter().find(|(s, _)| **s == computed);
+            let (_, name) = hit.unwrap_or_else(|| {
+                panic!("KNOWN_CHEATCODES missing canonical assertion overload {sig} (selector 0x{:02x}{:02x}{:02x}{:02x})", computed[0], computed[1], computed[2], computed[3])
+            });
+            assert_eq!(
+                name, expected_name,
+                "catalog entry for {sig} has wrong name (got {name}, want {expected_name})",
+            );
+            // Crucial UX guarantee: these are NOT in the rejected set, so the
+            // dispatch fall-through tags them as NotYetImplemented (not Rejected).
+            assert!(
+                !is_explicitly_rejected_name(name),
+                "{sig} should classify as NotYetImplemented, but is_explicitly_rejected_name({name}) = true",
+            );
+        }
+    }
+
     #[test]
     fn selector_rejected_set_matches_canonical_signatures() {
         // Spot-check a handful of rejected selectors so the rejected list
@@ -2971,6 +3261,186 @@ mod tests {
 
         assert_eq!(read_address(&buf, 0).unwrap(), Address::from_slice(&[0xab; 20]));
         assert_eq!(read_bytes(&buf, 1).unwrap().as_ref(), data);
+    }
+
+    // --- cheat_assert: C2-1 / C2-4 regression coverage ----------------------
+
+    /// Decode an `Error(string)` ABI payload back into its message (returns
+    /// `None` if the bytes aren't a well-formed `Error(string)`).
+    fn decode_error_payload(bytes: &[u8]) -> Option<String> {
+        if bytes.len() < 4 + 64 || bytes[..4] != [0x08, 0xc3, 0x79, 0xa0] {
+            return None;
+        }
+        // Skip selector(4) + offset(32). Length is in the next 32 bytes (BE).
+        let len_word: [u8; 32] = bytes[4 + 32..4 + 64].try_into().ok()?;
+        let mut len_bytes = [0u8; 8];
+        len_bytes.copy_from_slice(&len_word[24..32]);
+        let len = u64::from_be_bytes(len_bytes) as usize;
+        let start: usize = 4 + 64;
+        let end = start.checked_add(len)?;
+        if bytes.len() < end {
+            return None;
+        }
+        String::from_utf8(bytes[start..end].to_vec()).ok()
+    }
+
+    /// C2-1 (Round 2 audit): `vm.assertTrue(bool)` / `vm.assertFalse(bool)`
+    /// must NOT revert with "insufficient calldata" — they have exactly 32
+    /// bytes of args (one bool word), not 64.
+    ///
+    /// Asserts:
+    /// - `vm.assertTrue(true)`  -> ok_return (passing assertion).
+    /// - `vm.assertTrue(false)` -> revert with the assertion-failure message,
+    ///   NOT the "insufficient calldata" guard.
+    /// - `vm.assertFalse(false)` -> ok_return.
+    /// - `vm.assertFalse(true)`  -> revert with assertion-failure.
+    #[test]
+    fn assert_true_false_single_arg_does_not_revert_on_32_bytes() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+
+        // Single 32-byte bool word for `true` / `false`.
+        let mut true_word = [0u8; 32];
+        true_word[31] = 1;
+        let false_word = [0u8; 32];
+
+        // assertTrue(true) - PASS
+        let out = cheats.cheat_assert(&inputs, SEL_ASSERT_TRUE, &true_word);
+        assert!(
+            matches!(out.result.result, InstructionResult::Return),
+            "vm.assertTrue(true) must return successfully, got {:?}",
+            out.result.result,
+        );
+
+        // assertTrue(false) - FAIL with assertion-failure (NOT the bouncer)
+        let out = cheats.cheat_assert(&inputs, SEL_ASSERT_TRUE, &false_word);
+        assert!(matches!(out.result.result, InstructionResult::Revert));
+        let msg = decode_error_payload(&out.result.output).expect("Error(string) payload");
+        assert!(
+            !msg.contains("insufficient calldata"),
+            "C2-1 regression: bouncer fired for single-arg assertTrue; got: {msg}",
+        );
+        assert!(msg.contains("Assertion failed"), "expected assertion-failure msg, got {msg}");
+
+        // assertFalse(false) - PASS
+        let out = cheats.cheat_assert(&inputs, SEL_ASSERT_FALSE, &false_word);
+        assert!(matches!(out.result.result, InstructionResult::Return));
+
+        // assertFalse(true) - FAIL
+        let out = cheats.cheat_assert(&inputs, SEL_ASSERT_FALSE, &true_word);
+        assert!(matches!(out.result.result, InstructionResult::Revert));
+        let msg = decode_error_payload(&out.result.output).expect("Error(string)");
+        assert!(!msg.contains("insufficient calldata"));
+    }
+
+    /// C2-4 (Round 2 audit): the custom-message decoder must produce the right
+    /// error message for the SINGLE-ARG + STRING overloads
+    /// (`assertTrue(bool, string)`, `assertFalse(bool, string)`). Previously
+    /// the decoder hardcoded the string-length location to `args[120..128]`,
+    /// which is correct for 3-head-word layouts but reads zero-padding for the
+    /// 2-head-word layouts — losing the user's error message.
+    ///
+    /// Builds `vm.assertTrue(false, "boom")` calldata exactly per ABI spec and
+    /// asserts the recovered message contains "(boom)".
+    #[test]
+    fn assert_true_with_message_decodes_offset_correctly() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+
+        // ABI for vm.assertTrue(bool data, string err) when data=false, err="boom":
+        //   [0x00..0x00]  (bool false, 32 bytes)
+        //   [0x40 offset] (string offset = 0x40, 32 bytes — points past both head words)
+        //   [0x04 length] (string length = 4, 32 bytes)
+        //   ["boom" right-padded to 32 bytes]
+        // Total: 4 * 32 = 128 bytes.
+        let mut calldata = Vec::with_capacity(128);
+        calldata.extend_from_slice(&[0u8; 32]); // bool false
+        let mut offset = [0u8; 32];
+        offset[31] = 0x40;
+        calldata.extend_from_slice(&offset);
+        let mut len = [0u8; 32];
+        len[31] = 0x04;
+        calldata.extend_from_slice(&len);
+        let mut data = [0u8; 32];
+        data[..4].copy_from_slice(b"boom");
+        calldata.extend_from_slice(&data);
+        assert_eq!(calldata.len(), 128);
+
+        let out = cheats.cheat_assert(&inputs, SEL_ASSERT_TRUE_MSG, &calldata);
+        assert!(matches!(out.result.result, InstructionResult::Revert));
+        let msg = decode_error_payload(&out.result.output).expect("Error(string)");
+        assert!(
+            msg.contains("(boom)"),
+            "C2-4 regression: custom message for assertTrue(bool,string) was lost; got: {msg}",
+        );
+    }
+
+    /// C2-4 also covers the 3-head-word layout
+    /// (`assertEq(uint256, uint256, string)`) — the previous decoder happened
+    /// to work here because the hardcoded offset matched, but the new
+    /// generalized decoder must continue to handle this case too.
+    #[test]
+    fn assert_eq_uint_with_message_decodes_offset_correctly() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+
+        // ABI for vm.assertEq(uint256 left=1, uint256 right=2, string err="mismatch"):
+        //   left=1, right=2, offset=0x60 (3 head words), length=8, "mismatch"
+        let mut calldata = Vec::with_capacity(160);
+        let one = U256::from(1u64).to_be_bytes::<32>();
+        let two = U256::from(2u64).to_be_bytes::<32>();
+        calldata.extend_from_slice(&one);
+        calldata.extend_from_slice(&two);
+        let mut offset = [0u8; 32];
+        offset[31] = 0x60;
+        calldata.extend_from_slice(&offset);
+        let mut len = [0u8; 32];
+        len[31] = 0x08;
+        calldata.extend_from_slice(&len);
+        let mut data = [0u8; 32];
+        data[..8].copy_from_slice(b"mismatch");
+        calldata.extend_from_slice(&data);
+        assert_eq!(calldata.len(), 160);
+
+        let out = cheats.cheat_assert(&inputs, SEL_ASSERT_EQ_U256_MSG, &calldata);
+        assert!(matches!(out.result.result, InstructionResult::Revert));
+        let msg = decode_error_payload(&out.result.output).expect("Error(string)");
+        assert!(msg.contains("(mismatch)"), "msg should include user-supplied err: {msg}");
+    }
+
+    /// Signed-comparison cross-sign smoke test (assertGt(5, -1) must pass).
+    /// Locks down the two's-complement sign-flip handling at
+    /// `cheats.rs::cheat_assert`'s SEL_ASSERT_GT_I256 arm.
+    #[test]
+    fn assert_gt_int256_handles_cross_sign() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+
+        // left = int256(5), right = int256(-1) (two's-complement = all-0xff word).
+        let mut calldata = Vec::with_capacity(64);
+        let five = U256::from(5u64).to_be_bytes::<32>();
+        calldata.extend_from_slice(&five);
+        calldata.extend_from_slice(&[0xffu8; 32]); // int256(-1)
+        let out = cheats.cheat_assert(&inputs, SEL_ASSERT_GT_I256, &calldata);
+        assert!(
+            matches!(out.result.result, InstructionResult::Return),
+            "assertGt(5, -1) must pass for signed int256 comparison",
+        );
+
+        // Reverse direction must fail: assertGt(-1, 5).
+        let mut calldata = Vec::with_capacity(64);
+        calldata.extend_from_slice(&[0xffu8; 32]);
+        calldata.extend_from_slice(&five);
+        let out = cheats.cheat_assert(&inputs, SEL_ASSERT_GT_I256, &calldata);
+        assert!(matches!(out.result.result, InstructionResult::Revert));
     }
 
     // --- Synthetic CallOutcome shape ----------------------------------------
