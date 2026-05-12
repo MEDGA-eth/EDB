@@ -21,4 +21,18 @@ contract SnapshotTest is Test {
         uint256 id2 = vm.snapshotState();
         require(id2 > id1, "ids should be monotonic");
     }
+
+    function testRevertRestoresStorage() public {
+        uint256 id = vm.snapshotState();
+        c.set(42);
+        require(c.value() == 42, "set worked");
+        bool ok = vm.revertToState(id);
+        require(ok, "revertToState returned true");
+        require(c.value() == 7, "storage rolled back to setUp value");
+    }
+
+    function testRevertToUnknownReturnsFalse() public {
+        bool ok = vm.revertToState(999);
+        require(!ok, "unknown id returns false");
+    }
 }

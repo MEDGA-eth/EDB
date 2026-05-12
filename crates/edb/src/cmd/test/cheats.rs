@@ -840,11 +840,10 @@ where
             SEL_SNAPSHOT_STATE | SEL_SNAPSHOT_LEGACY => {
                 self.cheat_snapshot_state(ctx, inputs, args)
             }
-            // Explicitly rejected — state snapshot revert (Task 4+)
-            SEL_REVERT_TO_STATE | SEL_REVERT_TO_LEGACY => revert_with(
-                inputs.gas_limit,
-                unsupported_revert("state snapshot revert (revertToState/revertTo — Task 4)"),
-            ),
+            // State snapshot revert (Task 4)
+            SEL_REVERT_TO_STATE | SEL_REVERT_TO_LEGACY => {
+                self.cheat_revert_to_state(ctx, inputs, args)
+            }
             // Explicitly rejected — separate-tx model
             SEL_TRANSACT => revert_with(inputs.gas_limit, unsupported_revert("transact")),
             // Explicitly rejected — fs + ffi
@@ -910,6 +909,51 @@ where
         // 32-byte result to the correct slot in the caller's memory. Without
         // this, `memory_offset: 0..0` would mean no bytes are written and
         // Solidity would read zeros instead of the encoded id.
+        revm::interpreter::CallOutcome {
+            result: revm::interpreter::InterpreterResult {
+                result: revm::interpreter::InstructionResult::Return,
+                output: alloy_primitives::Bytes::copy_from_slice(&out),
+                gas: revm::interpreter::Gas::new(inputs.gas_limit),
+            },
+            memory_offset: inputs.return_memory_offset.clone(),
+            was_precompile_called: false,
+            precompile_call_logs: Vec::new(),
+        }
+    }
+
+    fn cheat_revert_to_state(
+        &mut self,
+        ctx: &mut edb_common::EdbContext<DB>,
+        inputs: &revm::interpreter::CallInputs,
+        args: &[u8],
+    ) -> revm::interpreter::CallOutcome {
+        if args.len() < 32 {
+            return revert_with(
+                inputs.gas_limit,
+                encode_error_string("vm.revertToState: bad calldata"),
+            );
+        }
+        // Decode the uint256 arg as u64 (low 8 bytes of the 32-byte word).
+        let id_bytes: [u8; 8] = args[24..32].try_into().unwrap_or([0; 8]);
+        let id = u64::from_be_bytes(id_bytes);
+
+        // Take ownership of the snapshot (foundry semantics: revert is one-shot).
+        let restored = match self.snapshots.remove(&id) {
+            Some(snap) => {
+                // Restore journal + DB. The DB lives INSIDE the journal as
+                // ctx.journaled_state.database (see Task 3's findings).
+                ctx.journaled_state = snap.journal;
+                true
+            }
+            None => false,
+        };
+
+        // Encode bool as uint256-padded.
+        let mut out = [0u8; 32];
+        out[31] = if restored { 1 } else { 0 };
+
+        // Same memory_offset trick as snapshotState — Solidity will copy 32 bytes
+        // from the call's return-data slot back into the caller's memory.
         revm::interpreter::CallOutcome {
             result: revm::interpreter::InterpreterResult {
                 result: revm::interpreter::InstructionResult::Return,
