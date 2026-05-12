@@ -69,11 +69,27 @@ pub struct CompiledEntrypoint {
     pub artifact: edb_engine::Artifact,
 }
 
+/// RAII guard that removes a directory tree on drop.
+///
+/// Used to ensure the unique temp directory created for the synthetic entrypoint
+/// is cleaned up whether compilation succeeds or fails.
+struct TempDirGuard(std::path::PathBuf);
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
 /// Generate and compile the synthetic entrypoint using foundry-compilers.
 ///
-/// Writes the source into `project_root/<ENTRYPOINT_FILE>` (best-effort cleanup
-/// on exit), then invokes the project's solc to compile it together with the
-/// test source via standard-json.
+/// Writes the source into `<project_root>/.edb-entrypoint-<pid>-<nanos>/`
+/// (cleaned up on exit via a RAII guard) to avoid collisions with user files
+/// named `_EdbTestEntrypoint.sol` and to prevent races when two `edb test`
+/// invocations run on the same project concurrently.
+///
+/// The subdirectory is UNDER project_root so that foundry-compilers' remapping
+/// resolution (which anchors at the project root) still works correctly.
 #[allow(dead_code)] // consumed by downstream tasks (4.2+)
 pub fn compile_entrypoint(
     contract_name: &str,
@@ -95,7 +111,22 @@ pub fn compile_entrypoint(
         import_path,
     );
 
-    let entrypoint_path = project_root.join(ENTRYPOINT_FILE);
+    // Build a unique subdirectory name: <pid>-<subsecond nanos> is cheap and
+    // collision-resistant for the concurrent-runs use case.
+    let unique_name = format!(
+        ".edb-entrypoint-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos()
+    );
+    let temp_dir = project_root.join(&unique_name);
+    std::fs::create_dir_all(&temp_dir)?;
+    // RAII guard ensures the temp dir is removed on all exit paths.
+    let _guard = TempDirGuard(temp_dir.clone());
+
+    let entrypoint_path = temp_dir.join(ENTRYPOINT_FILE);
     std::fs::write(&entrypoint_path, &src)?;
 
     // Compile via foundry-config + foundry-compilers, mirroring `cmd::test::mod::run_foundry_test`.
@@ -113,7 +144,6 @@ pub fn compile_entrypoint(
         .map_err(|e| eyre::eyre!("compile entrypoint: {e}"))?;
 
     if output.has_compiler_errors() {
-        let _ = std::fs::remove_file(&entrypoint_path);
         bail!("entrypoint compile errors:\n{output}");
     }
 
@@ -126,7 +156,6 @@ pub fn compile_entrypoint(
 
     let entry = output.artifact_ids().find(|(id, _)| id.name == ENTRYPOINT_NAME);
     let Some((entry_id, artifact)) = entry else {
-        let _ = std::fs::remove_file(&entrypoint_path);
         bail!("entrypoint artifact not produced (compile output had {ENTRYPOINT_NAME}?)");
     };
 
@@ -141,10 +170,10 @@ pub fn compile_entrypoint(
     // entrypoint without an Etherscan round-trip.
     let mut lifted = edb_engine::Artifact::from_foundry(&entry_id, artifact)
         .map_err(|e| eyre::eyre!("lift entrypoint artifact: {e}"))?;
-    // The entrypoint file is deleted on exit (see the cleanup below), so
-    // `cmd::test::artifacts::backfill_source_contents` cannot read it from
-    // disk later. Patch the in-memory source body directly so analysis has
-    // the entrypoint contents available.
+    // The entrypoint file is deleted on exit (the _guard above removes the
+    // whole temp dir), so `cmd::test::artifacts::backfill_source_contents`
+    // cannot read it from disk later. Patch the in-memory source body directly
+    // so analysis has the entrypoint contents available.
     {
         use std::sync::Arc;
         let path_in_input = lifted
@@ -161,9 +190,7 @@ pub fn compile_entrypoint(
         }
     }
 
-    // Best-effort cleanup; if the user re-runs we'll just overwrite.
-    let _ = std::fs::remove_file(&entrypoint_path);
-
+    // _guard drops here, removing the temp dir.
     Ok(CompiledEntrypoint {
         deployed_bytecode: deployed,
         run_selector: alloy_primitives::keccak256(b"run()")[..4].try_into().unwrap(),

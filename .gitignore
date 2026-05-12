@@ -146,3 +146,7 @@ testdata/foundry-fixture/broadcast/
 # External foundry projects fetched on demand for e2e tests
 /testdata/foundry-e2e/*
 !/testdata/foundry-e2e/.gitkeep
+
+# Unique temp dirs created by compile_entrypoint; cleaned up on exit but
+# accidental leftovers shouldn't pollute users' git status.
+.edb-entrypoint-*/
