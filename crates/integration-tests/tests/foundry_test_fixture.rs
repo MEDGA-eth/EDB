@@ -868,3 +868,92 @@ async fn roll_fork_updates_block_number() -> Result<()> {
     let _ = session.shutdown();
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Assertion family (C2-6 from the Round-2 audit) — end-to-end coverage for
+// the 40 assertion handlers in `cmd/test/cheats.rs::cheat_assert`. Lives in
+// `testdata/foundry-fixture/test/Asserts.t.sol`.
+// ---------------------------------------------------------------------------
+
+/// Helper: run one `Asserts::testFoo` and assert the top-level frame is
+/// `Success` with no revert anywhere in the trace.
+async fn run_asserts_test(target: &str) -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        target,
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    assert!(!trace.is_empty(), "trace was empty for {target}");
+
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .unwrap_or_else(|| panic!("no depth-0 entry in trace for {target}"));
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success for {target}; got: {:?}",
+        top.result,
+    );
+    assert!(!trace_has_revert(&trace), "unexpected revert in trace for {target}: {trace:#?}");
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
+/// Trivial: `vm.assertEq(1, 1)` through forge-std's wrapper. Exercises the
+/// short-circuit branch (no actual cheatcode call).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn asserts_eq_uint_passes() -> Result<()> {
+    run_asserts_test("Asserts::testAssertEqUintPasses").await
+}
+
+/// C2-1 regression: direct `vm.assertTrue(true)` — 32-byte calldata that the
+/// previous bouncer rejected with "insufficient calldata". After the fix the
+/// inspector returns successfully and the top frame is Success.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn asserts_true_direct_call_does_not_revert() -> Result<()> {
+    run_asserts_test("Asserts::testAssertTrueDirectCall").await
+}
+
+/// Direct call to `vm.assertFalse(false)` — symmetric to assertTrue.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn asserts_false_direct_call_does_not_revert() -> Result<()> {
+    run_asserts_test("Asserts::testAssertFalseDirectCall").await
+}
+
+/// Cross-sign signed comparison: `assertGt(5, -1)` must pass. Exercises the
+/// two's-complement sign-flip branch in `cheat_assert`'s SEL_ASSERT_GT_I256.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn asserts_gt_signed_cross_sign_passes() -> Result<()> {
+    run_asserts_test("Asserts::testAssertGtSignedCrossSign").await
+}
+
+/// Passing assertion with a custom message via forge-std's
+/// `assertEq(uint, uint, string)` wrapper.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn asserts_eq_with_custom_message_pass() -> Result<()> {
+    run_asserts_test("Asserts::testAssertEqWithCustomMessagePass").await
+}
+
+/// C2-4 regression: direct call to `vm.assertTrue(true, "ok")` on the passing
+/// branch. The 2-head-word + string-tail layout used to trip the bouncer or
+/// produce a malformed error message; with the fix the call succeeds and the
+/// test's top frame is Success. Combined with the unit test
+/// `assert_true_with_message_decodes_offset_correctly` (failing branch), this
+/// locks the decoder fix in end-to-end.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn asserts_true_with_message_pass() -> Result<()> {
+    run_asserts_test("Asserts::testAssertTrueWithMessagePass").await
+}
