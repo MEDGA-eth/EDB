@@ -42,6 +42,14 @@ address (`0x7109709ECfa91a80626fF3989D68f67F5b1DD12D`) and dispatches by
 | `vm.envOr(string,bool)` / `vm.envOr(string,bytes)` / `vm.envOr(string,string)` | Same as the corresponding `envXxx` but returns the second argument when the var is not set instead of reverting. |
 | `vm.pauseGasMetering()` / `vm.resumeGasMetering()` | **Stub.** Tracks a `gas_metering_paused` flag but does NOT actually pause REVM's gas accounting. Tests that call these for flow control (don't crash) work fine; tests that assert different gas behavior between paused and running may see unexpected values. |
 | `vm.lastCallGas() returns (Gas memory)` | **Stub.** Returns an all-zero `Gas` struct (`gasLimit`, `gasTotalUsed`, `gasMemoryUsed`, `gasRefunded`, `gasRemaining` all 0). EDB runs the same transaction in multiple instrumented passes; real REVM gas values differ between passes and would cause non-determinism, so zero is the correct deterministic stub. Tests that assert specific gas values will fail; tests that only flow through (don't assert gas) will work. |
+| `vm.snapshotState() returns (uint256)` | Capture journaled state + DB; return fresh monotonic id (starts at 1). |
+| `vm.snapshot() returns (uint256)` | Deprecated alias of `snapshotState`. |
+| `vm.revertToState(uint256) returns (bool)` | Restore from snapshot; **also delete** the snapshot (foundry one-shot semantics). Returns `true` if id existed, `false` otherwise (no revert). |
+| `vm.revertTo(uint256) returns (bool)` | Deprecated alias of `revertToState`. |
+| `vm.revertToStateAndDelete(uint256) returns (bool)` | Same behavior as `revertToState` — delete-on-revert is already the default. |
+| `vm.deleteStateSnapshot(uint256) returns (bool)` | Drop a snapshot without restoring. Returns `true` if id existed. |
+| `vm.deleteStateSnapshots()` | Drop all snapshots. |
+| `vm.rollFork(uint256)` | **Partial v1.** Updates `block.number` only. Does NOT update `block.timestamp` (pair with `vm.warp`), does NOT update `block.basefee`/etc, does NOT invalidate the CacheDB. Tests needing cross-block state queries should use `--fork-block-number` at the CLI. |
 
 All selectors are verified at test time against `keccak256(canonical_signature)[..4]`;
 see the unit tests in `crates/edb/src/cmd/test/cheats.rs`.
@@ -82,9 +90,9 @@ These cheatcodes return a clear revert message — `EDB: cheatcode vm.<name> not
 
 | Cheatcode | Why |
 |---|---|
-| `vm.createFork`, `vm.createSelectFork`, `vm.selectFork`, `vm.rollFork`, `vm.activeFork`, `vm.makePersistent` | No multi-fork backend in v1. (Same-fork `rollFork(block)` will land later — see Task 8.3.) |
+| `vm.createFork`, `vm.createSelectFork`, `vm.selectFork`, `vm.activeFork`, `vm.makePersistent` | No multi-fork backend in v1. |
+| `vm.rollFork(bytes32)`, `vm.rollFork(uint256,uint256)`, `vm.rollFork(uint256,bytes32)` | Cross-fork variants require the multi-fork backend; not available in v1. |
 | `vm.transact(bytes32)` | Requires the multi-fork backend and a separate-tx execution model. |
-| `vm.snapshotState`, `vm.revertToState`, plus legacy `vm.snapshot` / `vm.revertTo` | Mid-tx journal rewind is not exposed via EDB's CacheDB journal in v1. |
 | `vm.broadcast`, `vm.startBroadcast`, `vm.stopBroadcast` | Script-only; not applicable to `forge test`. |
 | `vm.ffi`, `vm.readFile`, `vm.writeFile`, `vm.removeFile` | Security: external process / fs access disabled in v1. |
 | `vm.expectCallMinGas(address,uint256,uint64,bytes)` | Gas accounting under EDB's instrumented bytecode needs separate design work; deferred to v2. |
