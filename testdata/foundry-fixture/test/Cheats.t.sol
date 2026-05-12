@@ -89,6 +89,15 @@ contract Cheats is Test {
         require(read == expected, "vm.load returned wrong value (memory_offset propagation bug)");
     }
 
+    /// `vm.expectRevert(bytes4)` — match only the leading 4-byte selector of
+    /// the revert payload. Used by tests that expect a custom error like
+    /// `revert BadInput(x)` where the trailing ABI-encoded args may vary.
+    function testExpectRevertSelector() public {
+        ExpectRevertSelectorTarget t = new ExpectRevertSelectorTarget();
+        vm.expectRevert(ExpectRevertSelectorTarget.BadInput.selector);
+        t.boom(42);
+    }
+
     function revertingFn() internal pure {
         revert("boom");
     }
@@ -101,5 +110,15 @@ contract ExpectCallTarget {
     uint256 public x;
     function increment() external {
         x += 1;
+    }
+}
+
+/// External callee for `testExpectRevertSelector`. `boom` reverts with the
+/// custom error `BadInput(uint256)` whose ABI encoding is `selector || arg`;
+/// only the leading selector is significant for `vm.expectRevert(bytes4)`.
+contract ExpectRevertSelectorTarget {
+    error BadInput(uint256 got);
+    function boom(uint256 x) external pure {
+        revert BadInput(x);
     }
 }

@@ -1034,3 +1034,41 @@ async fn cheats_sign_roundtrips_via_ecrecover() -> Result<()> {
     let _ = session.shutdown();
     Ok(())
 }
+
+/// `vm.expectRevert(bytes4)` — match the leading 4-byte selector of the next
+/// sub-call's revert payload. The fixture calls a contract that reverts with
+/// a custom `error BadInput(uint256)`; the cheatcode is armed with
+/// `BadInput.selector`. EDB must match the leading 4 bytes regardless of the
+/// trailing ABI args, rewrite the revert to a success at call_end, and let
+/// the test's top frame succeed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_expect_revert_bytes4_matches_selector() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testExpectRevertSelector",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    assert!(!trace.is_empty(), "trace was empty for Cheats::testExpectRevertSelector");
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry in trace for Cheats::testExpectRevertSelector");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success when vm.expectRevert(bytes4) matches; got: {:?}",
+        top.result,
+    );
+    assert!(
+        !trace_revert_contains(&trace, "expectRevert did not match"),
+        "vm.expectRevert(bytes4) reported a mismatch; trace = {trace:#?}",
+    );
+    let _ = session.shutdown();
+    Ok(())
+}

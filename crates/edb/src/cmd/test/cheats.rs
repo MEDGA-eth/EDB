@@ -58,6 +58,7 @@ const SEL_MOCK_CALL_REVERT: [u8; 4] = [0xdb, 0xaa, 0xd1, 0x47]; // mockCallRever
 const SEL_CLEAR_MOCKED_CALLS: [u8; 4] = [0x3f, 0xdf, 0x4e, 0x15]; // clearMockedCalls()
 const SEL_EXPECT_REVERT_BARE: [u8; 4] = [0xf4, 0x84, 0x48, 0x14]; // expectRevert()
 const SEL_EXPECT_REVERT_BYTES: [u8; 4] = [0xf2, 0x8d, 0xce, 0xb3]; // expectRevert(bytes)
+const SEL_EXPECT_REVERT_BYTES4: [u8; 4] = [0xc3, 0x1e, 0xb0, 0xe0]; // expectRevert(bytes4)
 const SEL_LABEL: [u8; 4] = [0xc6, 0x57, 0xc7, 0x18]; // label(address,string)
 const SEL_RECORD_LOGS: [u8; 4] = [0x41, 0xaf, 0x2f, 0x52]; // recordLogs()
 const SEL_GET_RECORDED_LOGS: [u8; 4] = [0x19, 0x15, 0x53, 0xa4]; // getRecordedLogs()
@@ -204,6 +205,7 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0x81, 0xba, 0xd6, 0xf3], "expectEmit"), // expectEmit(bool,bool,bool,bool,address)
     (&[0xf4, 0x84, 0x48, 0x14], "expectRevert"), // expectRevert()
     (&[0xf2, 0x8d, 0xce, 0xb3], "expectRevert"), // expectRevert(bytes)
+    (&[0xc3, 0x1e, 0xb0, 0xe0], "expectRevert"), // expectRevert(bytes4)
     (&[0xbd, 0x6a, 0xf4, 0x34], "expectCall"), // expectCall(address,bytes)
     (&[0xc1, 0xad, 0xbb, 0xff], "expectCall"), // expectCall(address,bytes,uint64)
     (&[0x19, 0x15, 0x53, 0xa4], "getRecordedLogs"), // getRecordedLogs()
@@ -618,10 +620,25 @@ enum MockReturn {
     Revert(Bytes),
 }
 
+/// What a pending `vm.expectRevert` should match against the next call's
+/// revert output.
+#[derive(Clone, Debug)]
+enum ExpectedRevertMatch {
+    /// `vm.expectRevert()` — match any revert.
+    Bare,
+    /// `vm.expectRevert(bytes)` — match the revert output bytes exactly.
+    Exact(Bytes),
+    /// `vm.expectRevert(bytes4)` — match the leading 4-byte selector of the
+    /// revert output. Used by tests that expect a custom error like
+    /// `revert MyError(...)` where the encoded payload begins with the
+    /// 4-byte `MyError.selector` and is followed by the ABI-encoded args.
+    Selector([u8; 4]),
+}
+
 #[derive(Clone, Debug)]
 struct ExpectedRevert {
-    /// `None` = match any revert; `Some(bytes)` = match exact revert payload.
-    expected_data: Option<Bytes>,
+    /// What the next call's revert payload must look like.
+    expected: ExpectedRevertMatch,
 }
 
 /// Pending `vm.expectEmit` expectation. v1 soft-match semantics: we don't
@@ -878,9 +895,15 @@ where
         // expectRevert: verify the just-completed call matches.
         if let Some(expected) = self.expected_revert.take() {
             let reverted = matches!(outcome.result.result, InstructionResult::Revert);
-            let matched = match (reverted, &expected.expected_data) {
-                (true, None) => true,
-                (true, Some(want)) => outcome.result.output.as_ref() == want.as_ref(),
+            let matched = match (reverted, &expected.expected) {
+                (true, ExpectedRevertMatch::Bare) => true,
+                (true, ExpectedRevertMatch::Exact(want)) => {
+                    outcome.result.output.as_ref() == want.as_ref()
+                }
+                (true, ExpectedRevertMatch::Selector(sel)) => {
+                    outcome.result.output.len() >= 4
+                        && &outcome.result.output[..4] == sel.as_slice()
+                }
                 (false, _) => false,
             };
             if matched {
@@ -1075,8 +1098,9 @@ where
             SEL_MOCK_CALL => self.cheat_mock_call(ctx, inputs, args, false),
             SEL_MOCK_CALL_REVERT => self.cheat_mock_call(ctx, inputs, args, true),
             SEL_CLEAR_MOCKED_CALLS => self.cheat_clear_mocked_calls(ctx, inputs),
-            SEL_EXPECT_REVERT_BARE => self.cheat_expect_revert(inputs, None),
-            SEL_EXPECT_REVERT_BYTES => self.cheat_expect_revert(inputs, Some(args)),
+            SEL_EXPECT_REVERT_BARE => self.cheat_expect_revert_bare(inputs),
+            SEL_EXPECT_REVERT_BYTES => self.cheat_expect_revert_bytes(inputs, args),
+            SEL_EXPECT_REVERT_BYTES4 => self.cheat_expect_revert_bytes4(inputs, args),
             SEL_LABEL => self.cheat_label(ctx, inputs, args),
             SEL_RECORD_LOGS => self.cheat_record_logs(inputs),
             SEL_GET_RECORDED_LOGS => self.cheat_get_recorded_logs(inputs),
@@ -1663,20 +1687,40 @@ where
 
     // --- expectRevert --------------------------------------------------------
 
-    fn cheat_expect_revert(&mut self, inputs: &CallInputs, args: Option<&[u8]>) -> CallOutcome {
-        let expected_data = match args {
-            None => None,
-            Some(a) => match read_bytes(a, 0) {
-                Some(b) => Some(b),
-                None => {
-                    return revert_with(
-                        inputs,
-                        encode_error_string("vm.expectRevert(bytes): bad bytes arg"),
-                    );
-                }
-            },
+    /// `vm.expectRevert()` — match any revert from the next sub-call.
+    fn cheat_expect_revert_bare(&mut self, inputs: &CallInputs) -> CallOutcome {
+        self.expected_revert = Some(ExpectedRevert { expected: ExpectedRevertMatch::Bare });
+        ok_return(inputs, Bytes::new())
+    }
+
+    /// `vm.expectRevert(bytes)` — match the next sub-call's revert payload
+    /// against the supplied bytes exactly (byte-for-byte).
+    fn cheat_expect_revert_bytes(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(want) = read_bytes(args, 0) else {
+            return revert_with(
+                inputs,
+                encode_error_string("vm.expectRevert(bytes): bad bytes arg"),
+            );
         };
-        self.expected_revert = Some(ExpectedRevert { expected_data });
+        self.expected_revert = Some(ExpectedRevert { expected: ExpectedRevertMatch::Exact(want) });
+        ok_return(inputs, Bytes::new())
+    }
+
+    /// `vm.expectRevert(bytes4)` — match the leading 4 bytes (selector) of the
+    /// next sub-call's revert payload. Used for custom-error reverts where
+    /// only the selector is significant (the trailing ABI-encoded args may
+    /// vary across runs).
+    fn cheat_expect_revert_bytes4(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        // bytes4 is left-aligned in its 32-byte head word.
+        let Some(word) = read_word(args, 0) else {
+            return revert_with(
+                inputs,
+                encode_error_string("vm.expectRevert(bytes4): bad bytes4 arg"),
+            );
+        };
+        let sel: [u8; 4] = word[..4].try_into().expect("4 bytes from a 32-byte word");
+        self.expected_revert =
+            Some(ExpectedRevert { expected: ExpectedRevertMatch::Selector(sel) });
         ok_return(inputs, Bytes::new())
     }
 
@@ -2786,6 +2830,7 @@ mod tests {
     fn selector_expect_revert() {
         assert_eq!(sel("expectRevert()"), SEL_EXPECT_REVERT_BARE);
         assert_eq!(sel("expectRevert(bytes)"), SEL_EXPECT_REVERT_BYTES);
+        assert_eq!(sel("expectRevert(bytes4)"), SEL_EXPECT_REVERT_BYTES4);
     }
     #[test]
     fn addr_and_sign_selectors_match_canonical() {
@@ -3205,8 +3250,8 @@ mod tests {
         type TestDB = CacheDB<EmptyDB>;
         let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
 
-        // Simulate what `cheat_expect_revert` does: arm the slot.
-        cheats.expected_revert = Some(ExpectedRevert { expected_data: None });
+        // Simulate what `cheat_expect_revert_bare` does: arm the slot.
+        cheats.expected_revert = Some(ExpectedRevert { expected: ExpectedRevertMatch::Bare });
 
         // The guard condition mirrors the one in `call_end`:
         //   if inputs.target_address != CHEATCODE_ADDRESS { take() }
@@ -3639,6 +3684,31 @@ mod tests {
             msg.contains("invalid private key"),
             "expected 'invalid private key' message, got: {msg}",
         );
+    }
+
+    // --- vm.expectRevert(bytes4) --------------------------------------------
+
+    /// `vm.expectRevert(bytes4)` arms the expectation for a leading-selector
+    /// match. Verify the handler decodes the bytes4 head word correctly (bytes4
+    /// is left-aligned in its 32-byte slot, NOT right-aligned like uint256).
+    #[test]
+    fn cheat_expect_revert_bytes4_decodes_left_aligned_selector() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+
+        // bytes4 selector `0xdeadbeef` left-aligned in 32-byte word.
+        let mut args = [0u8; 32];
+        args[..4].copy_from_slice(&[0xde, 0xad, 0xbe, 0xef]);
+        let out = cheats.cheat_expect_revert_bytes4(&inputs, &args);
+        assert!(matches!(out.result.result, InstructionResult::Return));
+        match cheats.expected_revert.as_ref().expect("expected_revert must be armed").expected {
+            ExpectedRevertMatch::Selector(sel) => {
+                assert_eq!(sel, [0xde, 0xad, 0xbe, 0xef], "selector must be the leading 4 bytes");
+            }
+            _ => panic!("expected ExpectedRevertMatch::Selector"),
+        }
     }
 
     // --- Synthetic CallOutcome shape ----------------------------------------

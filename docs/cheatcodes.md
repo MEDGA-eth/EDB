@@ -56,6 +56,7 @@ cheatcode) before retrying.
 | `vm.clearMockedCalls()` | Clears all mocks. |
 | `vm.expectRevert()` | Asserts the next sub-call reverts (any reason). If it does, the matched revert is rewritten to a success; otherwise an EDB error is raised. |
 | `vm.expectRevert(bytes)` | Like `expectRevert()` but matches the revert payload exactly. |
+| `vm.expectRevert(bytes4)` | Like `expectRevert()` but matches the leading 4 bytes (selector) of the revert payload — convenient for custom-error reverts where the trailing ABI args may vary. |
 | `vm.label(address, string)` | Records a human-readable label for an address (queryable on the inspector). |
 | `vm.recordLogs()` | Starts capturing logs into the inspector's recorder. |
 | `vm.getRecordedLogs()` | Returns the captured logs as `Log[]` (foundry's `Vm.Log` shape: `{ bytes32[] topics; bytes data; address emitter; }`), then resets the recorder. |
