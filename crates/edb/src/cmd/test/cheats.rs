@@ -1066,12 +1066,7 @@ where
         // Clone the EVM's journal (which carries the CacheDB at
         // journaled_state.database) into a Snapshot. No separate db clone is
         // needed: restoring the journal restores the DB along with it.
-        self.snapshots.insert(
-            id,
-            Snapshot {
-                journal: ctx.journaled_state.clone(),
-            },
-        );
+        self.snapshots.insert(id, Snapshot { journal: ctx.journaled_state.clone() });
 
         // Encode the u64 id as a uint256 return (32-byte big-endian). The
         // memory_offset propagation lives in ok_return: REVM copies these 32
