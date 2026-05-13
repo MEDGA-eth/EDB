@@ -327,6 +327,34 @@ contract Cheats is Test {
         (, address afterOrigin) = PrankWitness(callee).observe();
         require(afterOrigin == preOrigin, "stacked stopPrank restored to intermediate origin");
     }
+
+    /// `vm.getBlockNumber()` reads `ctx.block.number`. After `vm.roll(N)` the
+    /// cheatcode must return `N` even though the cached `block.number` in
+    /// Solidity would (without this dodge) be the compile-time captured value.
+    function testGetBlockNumber() public {
+        vm.roll(987_654);
+        require(vm.getBlockNumber() == 987_654, "vm.getBlockNumber did not match vm.roll");
+    }
+
+    /// `vm.getNonce(address)` mirrors `vm.setNonce`'s journal-load path.
+    /// Setting then reading the same account must round-trip exactly.
+    function testGetNonceRoundtripsSetNonce() public {
+        address acct = address(0xCAFE);
+        vm.setNonce(acct, 42);
+        require(vm.getNonce(acct) == 42, "vm.getNonce did not match vm.setNonce");
+    }
+
+    /// `vm.setBlockhash(blockNumber, hash)` installs a `BLOCKHASH` override.
+    /// After the call, the EVM's `blockhash(blockNumber)` opcode must return
+    /// the installed hash for any `blockNumber` in `[block.number - 256, block.number)`.
+    function testSetBlockhash() public {
+        // Move to a high block so we have room for an override 5 blocks back.
+        vm.roll(1000);
+        uint256 target = 995;
+        bytes32 sentinel = bytes32(uint256(0xDEADBEEF));
+        vm.setBlockhash(target, sentinel);
+        require(blockhash(target) == sentinel, "vm.setBlockhash did not apply");
+    }
 }
 
 /// External callee used by `testExpectCall` so the `increment()` invocation

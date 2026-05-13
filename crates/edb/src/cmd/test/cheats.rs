@@ -50,6 +50,9 @@ const SEL_ETCH: [u8; 4] = [0xb4, 0xd6, 0xc7, 0x82]; // etch(address,bytes)
 const SEL_STORE: [u8; 4] = [0x70, 0xca, 0x10, 0xbb]; // store(address,bytes32,bytes32)
 const SEL_LOAD: [u8; 4] = [0x66, 0x7f, 0x9d, 0x70]; // load(address,bytes32)
 const SEL_SET_NONCE: [u8; 4] = [0xf8, 0xe1, 0x8b, 0x57]; // setNonce(address,uint64)
+const SEL_GET_NONCE: [u8; 4] = [0x2d, 0x03, 0x35, 0xab]; // getNonce(address)
+const SEL_GET_BLOCK_NUMBER: [u8; 4] = [0x42, 0xcb, 0xb1, 0x5c]; // getBlockNumber()
+const SEL_SET_BLOCKHASH: [u8; 4] = [0x53, 0x14, 0xb5, 0x4a]; // setBlockhash(uint256,bytes32)
 const SEL_PRANK: [u8; 4] = [0xca, 0x66, 0x9f, 0xa7]; // prank(address)
 const SEL_START_PRANK: [u8; 4] = [0x06, 0x44, 0x7d, 0x56]; // startPrank(address)
 const SEL_START_PRANK_2: [u8; 4] = [0x45, 0xb5, 0x60, 0x78]; // startPrank(address,address)
@@ -310,6 +313,10 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     // `LocalArtifactSet` (see SEL_GET_DEPLOYED_CODE + dispatch).  Hosted in
     // the supported section so the static-coverage estimator sees it.
     (&[0x3e, 0xbf, 0x73, 0xb4], "getDeployedCode"), // getDeployedCode(string)
+    // --- Supported: block/state introspection + nonce read --------------
+    (&[0x42, 0xcb, 0xb1, 0x5c], "getBlockNumber"), // getBlockNumber()
+    (&[0x2d, 0x03, 0x35, 0xab], "getNonce"),       // getNonce(address)
+    (&[0x53, 0x14, 0xb5, 0x4a], "setBlockhash"),   // setBlockhash(uint256,bytes32)
     // --- Explicitly rejected in EDB v1 ---
     (&[0x2f, 0x10, 0x3f, 0x22], "activeFork"), // activeFork()
     (&[0xaf, 0xc9, 0x80, 0x40], "broadcast"),  // broadcast()
@@ -475,46 +482,46 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0x17, 0xaa, 0x13, 0xce], "getMappingKeyOf"), // getMappingKeyOf(address,bytes32)
     (&[0x2f, 0x2f, 0xd6, 0x3f], "getMappingLength"), // getMappingLength(address,bytes32)
     (&[0xeb, 0xc7, 0x3a, 0xb4], "getMappingSlotAt"), // getMappingSlotAt(address,bytes32,uint256)
-    (&[0x2d, 0x03, 0x35, 0xab], "getNonce"),        // getNonce(address)
-    (&[0x7d, 0x15, 0xd0, 0x19], "isDir"),           // isDir(string)
-    (&[0xe0, 0xeb, 0x04, 0xd4], "isFile"),          // isFile(string)
-    (&[0xd9, 0x2d, 0x8e, 0xfd], "isPersistent"),    // isPersistent(address)
-    (&[0x52, 0x8a, 0x68, 0x3c], "keyExists"),       // keyExists(string,string)
-    (&[0xb3, 0xa0, 0x56, 0xd7], "loadAllocs"),      // loadAllocs(string)
-    (&[0xad, 0xf8, 0x4d, 0x21], "mockFunction"),    // mockFunction(address,address,bytes)
-    (&[0x42, 0x34, 0x6c, 0x5e], "parseInt"),        // parseInt(string)
-    (&[0x21, 0x3e, 0x41, 0x98], "parseJsonKeys"),   // parseJsonKeys(string,string)
-    (&[0xc6, 0xce, 0x05, 0x9d], "parseAddress"),    // parseAddress(string)
-    (&[0x97, 0x4e, 0xf9, 0x24], "parseBool"),       // parseBool(string)
-    (&[0x8f, 0x5d, 0x23, 0x2d], "parseBytes"),      // parseBytes(string)
-    (&[0x08, 0x7e, 0x6e, 0x81], "parseBytes32"),    // parseBytes32(string)
-    (&[0x59, 0x21, 0x51, 0xf0], "parseToml"),       // parseToml(string)
-    (&[0x37, 0x73, 0x6e, 0x08], "parseToml"),       // parseToml(string,string)
-    (&[0xfa, 0x91, 0x45, 0x4d], "parseUint"),       // parseUint(string)
-    (&[0xd9, 0x30, 0xa0, 0xe6], "projectRoot"),     // projectRoot()
-    (&[0xc4, 0xbc, 0x59, 0xe0], "readDir"),         // readDir(string)
-    (&[0x70, 0xf5, 0x57, 0x28], "readLine"),        // readLine(string)
-    (&[0x9f, 0x56, 0x84, 0xa2], "readLink"),        // readLink(string)
-    (&[0x22, 0x10, 0x00, 0x64], "rememberKey"),     // rememberKey(uint256)
+    // NOTE: getNonce(address) moved up to the supported section.
+    (&[0x7d, 0x15, 0xd0, 0x19], "isDir"),        // isDir(string)
+    (&[0xe0, 0xeb, 0x04, 0xd4], "isFile"),       // isFile(string)
+    (&[0xd9, 0x2d, 0x8e, 0xfd], "isPersistent"), // isPersistent(address)
+    (&[0x52, 0x8a, 0x68, 0x3c], "keyExists"),    // keyExists(string,string)
+    (&[0xb3, 0xa0, 0x56, 0xd7], "loadAllocs"),   // loadAllocs(string)
+    (&[0xad, 0xf8, 0x4d, 0x21], "mockFunction"), // mockFunction(address,address,bytes)
+    (&[0x42, 0x34, 0x6c, 0x5e], "parseInt"),     // parseInt(string)
+    (&[0x21, 0x3e, 0x41, 0x98], "parseJsonKeys"), // parseJsonKeys(string,string)
+    (&[0xc6, 0xce, 0x05, 0x9d], "parseAddress"), // parseAddress(string)
+    (&[0x97, 0x4e, 0xf9, 0x24], "parseBool"),    // parseBool(string)
+    (&[0x8f, 0x5d, 0x23, 0x2d], "parseBytes"),   // parseBytes(string)
+    (&[0x08, 0x7e, 0x6e, 0x81], "parseBytes32"), // parseBytes32(string)
+    (&[0x59, 0x21, 0x51, 0xf0], "parseToml"),    // parseToml(string)
+    (&[0x37, 0x73, 0x6e, 0x08], "parseToml"),    // parseToml(string,string)
+    (&[0xfa, 0x91, 0x45, 0x4d], "parseUint"),    // parseUint(string)
+    (&[0xd9, 0x30, 0xa0, 0xe6], "projectRoot"),  // projectRoot()
+    (&[0xc4, 0xbc, 0x59, 0xe0], "readDir"),      // readDir(string)
+    (&[0x70, 0xf5, 0x57, 0x28], "readLine"),     // readLine(string)
+    (&[0x9f, 0x56, 0x84, 0xa2], "readLink"),     // readLink(string)
+    (&[0x22, 0x10, 0x00, 0x64], "rememberKey"),  // rememberKey(uint256)
     (&[0x3c, 0xe9, 0x69, 0xe6], "revokePersistent"), // revokePersistent(address[])
     (&[0x99, 0x7a, 0x02, 0x22], "revokePersistent"), // revokePersistent(address)
     (&[0x97, 0x2c, 0x60, 0x62], "serializeAddress"), // serializeAddress(string,string,address)
-    (&[0xac, 0x22, 0xe9, 0x71], "serializeBool"),   // serializeBool(string,string,bool)
-    (&[0xf2, 0x1d, 0x52, 0xc7], "serializeBytes"),  // serializeBytes(string,string,bytes)
+    (&[0xac, 0x22, 0xe9, 0x71], "serializeBool"), // serializeBool(string,string,bool)
+    (&[0xf2, 0x1d, 0x52, 0xc7], "serializeBytes"), // serializeBytes(string,string,bytes)
     (&[0x2d, 0x81, 0x2b, 0x44], "serializeBytes32"), // serializeBytes32(string,string,bytes32)
-    (&[0x3f, 0x33, 0xdb, 0x60], "serializeInt"),    // serializeInt(string,string,int256)
+    (&[0x3f, 0x33, 0xdb, 0x60], "serializeInt"), // serializeInt(string,string,int256)
     (&[0x88, 0xda, 0x6d, 0x35], "serializeString"), // serializeString(string,string,string)
-    (&[0x12, 0x9e, 0x90, 0x02], "serializeUint"),   // serializeUint(string,string,uint256)
+    (&[0x12, 0x9e, 0x90, 0x02], "serializeUint"), // serializeUint(string,string,uint256)
     (&[0x3e, 0x97, 0x05, 0xc0], "startMappingRecording"), // startMappingRecording()
     (&[0xcf, 0x22, 0xe3, 0xc9], "startStateDiffRecording"), // startStateDiffRecording()
     (&[0xaa, 0x5c, 0xf9, 0x0e], "stopAndReturnStateDiff"), // stopAndReturnStateDiff()
     (&[0x0d, 0x4a, 0xae, 0x9b], "stopMappingRecording"), // stopMappingRecording()
-    (&[0xe6, 0x96, 0x2c, 0xdb], "broadcast"),       // broadcast(address)
-    (&[0x61, 0x9d, 0x89, 0x7f], "writeLine"),       // writeLine(string,string)
-    (&[0xe2, 0x3c, 0xd1, 0x9f], "writeJson"),       // writeJson(string,string)
-    (&[0x35, 0xd6, 0xad, 0x46], "writeJson"),       // writeJson(string,string,string)
-    (&[0xc0, 0x86, 0x5b, 0xa7], "writeToml"),       // writeToml(string,string)
-    (&[0x51, 0xac, 0x6a, 0x33], "writeToml"),       // writeToml(string,string,string)
+    (&[0xe6, 0x96, 0x2c, 0xdb], "broadcast"),    // broadcast(address)
+    (&[0x61, 0x9d, 0x89, 0x7f], "writeLine"),    // writeLine(string,string)
+    (&[0xe2, 0x3c, 0xd1, 0x9f], "writeJson"),    // writeJson(string,string)
+    (&[0x35, 0xd6, 0xad, 0x46], "writeJson"),    // writeJson(string,string,string)
+    (&[0xc0, 0x86, 0x5b, 0xa7], "writeToml"),    // writeToml(string,string)
+    (&[0x51, 0xac, 0x6a, 0x33], "writeToml"),    // writeToml(string,string,string)
 ];
 
 // ----------------------------------------------------------------------------
@@ -1198,6 +1205,9 @@ where
             SEL_STORE => self.cheat_store(ctx, inputs, args),
             SEL_LOAD => self.cheat_load(ctx, inputs, args),
             SEL_SET_NONCE => self.cheat_set_nonce(ctx, inputs, args),
+            SEL_GET_NONCE => self.cheat_get_nonce(ctx, inputs, args),
+            SEL_GET_BLOCK_NUMBER => self.cheat_get_block_number(ctx, inputs),
+            SEL_SET_BLOCKHASH => self.cheat_set_blockhash(ctx, inputs, args),
             SEL_PRANK => self.cheat_prank(ctx, inputs, args, true),
             SEL_START_PRANK => self.cheat_prank(ctx, inputs, args, false),
             SEL_START_PRANK_2 => self.cheat_start_prank_2(ctx, inputs, args),
@@ -2050,6 +2060,88 @@ where
                 revert_with(inputs, encode_error_string("vm.setNonce: failed to load account"))
             }
         }
+    }
+
+    /// `vm.getNonce(address) returns (uint64)` — mirror of `vm.setNonce`'s
+    /// journal-load path. Returns the account's current nonce as a left-padded
+    /// 32-byte ABI word (the uint64 sits in the trailing 8 bytes).
+    fn cheat_get_nonce(
+        &mut self,
+        ctx: &mut edb_common::EdbContext<DB>,
+        inputs: &CallInputs,
+        args: &[u8],
+    ) -> CallOutcome {
+        let Some(target) = read_address(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.getNonce: bad address arg"));
+        };
+        match ctx.journaled_state.load_account(target) {
+            Ok(acc) => {
+                let nonce: u64 = acc.info.nonce;
+                let mut out = [0u8; 32];
+                out[24..].copy_from_slice(&nonce.to_be_bytes());
+                ok_return(inputs, Bytes::copy_from_slice(&out))
+            }
+            Err(_) => {
+                revert_with(inputs, encode_error_string("vm.getNonce: failed to load account"))
+            }
+        }
+    }
+
+    /// `vm.getBlockNumber() returns (uint256)` — reads `ctx.block.number`.
+    /// Foundry exposes this so tests can re-read the current block.number
+    /// after `vm.roll`/`vm.rollFork`, dodging the solc optimization that
+    /// caches `block.number` as a constant across a transaction body.
+    fn cheat_get_block_number(
+        &mut self,
+        ctx: &mut edb_common::EdbContext<DB>,
+        inputs: &CallInputs,
+    ) -> CallOutcome {
+        let n: U256 = ctx.block.number;
+        let bytes = n.to_be_bytes::<32>();
+        ok_return(inputs, Bytes::copy_from_slice(&bytes))
+    }
+
+    /// `vm.setBlockhash(uint256 blockNumber, bytes32 blockHash)` — install an
+    /// override for the BLOCKHASH opcode at `blockNumber`. We write directly
+    /// into CacheDB's `block_hashes` cache: the BLOCKHASH opcode reads through
+    /// `Database::block_hash`, which consults the cache before falling back to
+    /// the underlying `DatabaseRef`. The cache is consulted with `U256::from(number: u64)`
+    /// so we store under the same key.
+    ///
+    /// Mirrors foundry's restriction `block.number - 256 <= n < block.number`,
+    /// but applied loosely (we accept the equality endpoint on the current
+    /// block too, matching foundry's `<=`).
+    fn cheat_set_blockhash(
+        &mut self,
+        ctx: &mut edb_common::EdbContext<DB>,
+        inputs: &CallInputs,
+        args: &[u8],
+    ) -> CallOutcome {
+        let Some(block_number) = read_u256(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.setBlockhash: bad uint256 arg"));
+        };
+        let Some(block_hash) = read_b256(args, 1) else {
+            return revert_with(inputs, encode_error_string("vm.setBlockhash: bad bytes32 arg"));
+        };
+        if block_number > U256::from(u64::MAX) {
+            return revert_with(
+                inputs,
+                encode_error_string("vm.setBlockhash: blockNumber must fit in u64"),
+            );
+        }
+        if block_number > ctx.block.number {
+            return revert_with(
+                inputs,
+                encode_error_string(
+                    "vm.setBlockhash: block number must be less than or equal to the current block number",
+                ),
+            );
+        }
+        // CacheDB::block_hash reads through this map first, so an explicit
+        // insert here suffices for both opcode-driven and `block_hash_ref`
+        // lookups within the current run.
+        ctx.journaled_state.database.cache.block_hashes.insert(block_number, block_hash);
+        ok_return(inputs, Bytes::new())
     }
 
     // --- Pranks --------------------------------------------------------------
@@ -3583,6 +3675,18 @@ mod tests {
     #[test]
     fn selector_set_nonce() {
         assert_eq!(sel("setNonce(address,uint64)"), SEL_SET_NONCE);
+    }
+    #[test]
+    fn selector_get_nonce() {
+        assert_eq!(sel("getNonce(address)"), SEL_GET_NONCE);
+    }
+    #[test]
+    fn selector_get_block_number() {
+        assert_eq!(sel("getBlockNumber()"), SEL_GET_BLOCK_NUMBER);
+    }
+    #[test]
+    fn selector_set_blockhash() {
+        assert_eq!(sel("setBlockhash(uint256,bytes32)"), SEL_SET_BLOCKHASH);
     }
     #[test]
     fn selector_prank() {

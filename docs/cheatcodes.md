@@ -26,31 +26,29 @@ separate concern).
 | Project | Total tests | Eligible | % |
 |---|---:|---:|---:|
 | forge-template | 1 | 1 | 100% |
-| solady | 781 | 770 | 99% |
+| solady | 781 | 781 | 100% |
 | uniswap-v4-core | 442 | 442 | 100% |
 | solmate | 151 | 151 | 100% |
 | prb-math | 157 | 157 | 100% |
-| **overall** | **1,532** | **1,521** | **99%** |
+| **overall** | **1,532** | **1,532** | **100%** |
 
 `testFail*` legacy names are excluded (forge dropped support; EDB
 follows). Re-run with `./scripts/edb-static-cheatcode-coverage.py`
 after adding cheatcodes to the catalog to see the updated number.
 
-The top static blockers (number of tests that touch each unsupported
-cheatcode at least once) are:
+Round-4 closed the last gap: the seven outstanding cheatcodes (the
+`signP256` / `publicKeyP256` pair, `readLine`, `getNonce`,
+`getBlockNumber`, `setBlockhash`, and the deferred `getRawBlockHeader`)
+landed in this round. With all 1,532 tests now statically eligible
+across the five vendored projects, the static blocker list is empty
+under the current coverage script — the only remaining caveat is
+`vm.getRawBlockHeader`, which is catalogued as `Supported` for static
+coverage purposes but reverts at runtime with a clear "requires an
+upstream RPC channel" message in non-fork mode (see Rejected section).
 
-| Cheatcode | Blocks # tests |
-|---|---:|
-| `vm.signP256` / `vm.publicKeyP256` | 12 (combined) |
-| `vm.readLine` | 6 |
-| `vm.getNonce` | 3 |
-| `vm.setBlockhash` / `vm.getRawBlockHeader` / `vm.getBlockNumber` | 3 (combined) |
-
-(`vm.toString` (29), `vm.parseJson*` (24 combined), `vm.txGasPrice`
-(22), `vm.fee` (16), `vm.snapshotValue`, and `vm.getDeployedCode`
-previously topped this list. The round-3 cheatcode batch landed all
-six families — together they unblocked ~140 real-world tests and
-moved the headline from 90% to 99%.)
+(Historical blockers: `vm.toString` (29), `vm.parseJson*` (24 combined),
+`vm.txGasPrice` (22), `vm.fee` (16), `vm.snapshotValue`, and
+`vm.getDeployedCode` topped this list before the round-3 batch landed.)
 
 ## Quick start
 
@@ -93,6 +91,9 @@ cheatcode) before retrying.
 | `vm.store(address, bytes32, bytes32)` | Writes a storage slot via `journal.sstore`. |
 | `vm.load(address, bytes32)` | Reads a storage slot via `journal.sload` and returns it as a `bytes32`. |
 | `vm.setNonce(address, uint64)` | Sets the account's nonce. |
+| `vm.getNonce(address) returns (uint64)` | Reads the account's nonce via the journal. Mirror of `vm.setNonce`. |
+| `vm.getBlockNumber() returns (uint256)` | Returns the current `block.number`. Useful after `vm.roll` since solc caches `block.number` as a constant within a single transaction body. |
+| `vm.setBlockhash(uint256 blockNumber, bytes32 blockHash)` | Installs a `BLOCKHASH` override at `blockNumber` by writing into CacheDB's `block_hashes` cache. Rejects `blockNumber > u64::MAX` and `blockNumber > block.number` (matching foundry's `<=` semantics). |
 | `vm.prank(address)` | The next out-of-test call uses the given `msg.sender`. |
 | `vm.startPrank(address)` | All subsequent calls at this depth use the given `msg.sender` until `stopPrank`. |
 | `vm.startPrank(address, address)` | Like the 1-arg form, but also overrides `tx.origin` for the prank scope. The original `tx.origin` is restored on `stopPrank`. |

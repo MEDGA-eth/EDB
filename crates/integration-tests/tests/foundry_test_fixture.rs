@@ -1443,3 +1443,83 @@ async fn cheats_start_prank_resolves_witness_artifact() -> Result<()> {
     let _ = session.shutdown();
     Ok(())
 }
+
+/// `vm.getBlockNumber()` reads `ctx.block.number` directly — must reflect
+/// `vm.roll(N)` even though Solidity would (without this dodge) cache
+/// `block.number` as a constant within a single transaction body.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_get_block_number_reflects_vm_roll() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testGetBlockNumber",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    assert!(
+        !trace_has_revert(&trace),
+        "vm.getBlockNumber didn't return the rolled value: {trace:#?}",
+    );
+    assert!(
+        !trace_revert_contains(&trace, "vm.getBlockNumber did not match vm.roll"),
+        "vm.getBlockNumber require fired: {trace:#?}",
+    );
+    let _ = session.shutdown();
+    Ok(())
+}
+
+/// `vm.getNonce(address)` round-trips with `vm.setNonce` — the read returns
+/// exactly the value the test just wrote.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_get_nonce_roundtrips_set_nonce() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testGetNonceRoundtripsSetNonce",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    assert!(!trace_has_revert(&trace), "vm.getNonce didn't round-trip: {trace:#?}");
+    assert!(
+        !trace_revert_contains(&trace, "vm.getNonce did not match vm.setNonce"),
+        "vm.getNonce require fired: {trace:#?}",
+    );
+    let _ = session.shutdown();
+    Ok(())
+}
+
+/// `vm.setBlockhash(blockNumber, hash)` overrides the BLOCKHASH opcode for
+/// the given height. The fixture rolls to block 1000, installs an override
+/// at block 995, and asserts `blockhash(995)` matches.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_set_blockhash_overrides_blockhash_opcode() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testSetBlockhash",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    assert!(!trace_has_revert(&trace), "vm.setBlockhash didn't override blockhash: {trace:#?}");
+    assert!(
+        !trace_revert_contains(&trace, "vm.setBlockhash did not apply"),
+        "vm.setBlockhash require fired: {trace:#?}",
+    );
+    let _ = session.shutdown();
+    Ok(())
+}
