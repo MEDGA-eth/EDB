@@ -307,35 +307,27 @@ The full not-yet-implemented set is enumerated in `KNOWN_CHEATCODES` in
 
 These aren't cheatcode-level limits but they affect what EDB can debug.
 
-### Contracts with `immutable` state — source may not resolve
+### EDB explicitly does not model gas
 
-EDB indexes the local project's compiled contracts by
-`keccak256(deployed_bytecode_template)`. For contracts that use the
-`immutable` keyword, the solc-emitted **template** has zero placeholders
-at the immutable byte positions, which the constructor patches via
-`MSTORE` at deployment time. The actual on-chain runtime bytes therefore
-differ from the template by exactly those positions → different
-`keccak256` → EDB's `LocalArtifactSet` lookup misses for that
-contract's address.
+EDB is a **source-level debugger**, not a gas profiler. The multi-pass
+engine runs each transaction with hook-instrumented bytecode in the
+hook-snapshot pass; each statement boundary inserts a small `require(
+keccak256(abi.encode(MAGIC, USID)) != 0x2333)` check whose gas cost is
+on the order of ~30 gas. Across hundreds of statements per call this
+adds up.
 
-**Symptoms:** the contract executes correctly (state changes, calls,
-returns all work) but the snapshot inspector has no source to step
-through. In `--fork-url` mode EDB falls back to the verified source
-from Etherscan; in non-forked mode the contract becomes opaque in the
-debugger UI even though execution behaves correctly.
+We make **no attempt** to keep gas usage faithful between EDB and
+forge. Cheatcodes in this family are silent stubs by design:
 
-**Workaround:** rewrite the immutables as `constant` if the test only
-needs source-level debugging and the value is known at compile time;
-otherwise the upcoming codehash-normalization fix (planned for v1.x —
-zeros out the byte ranges listed in `immutableReferences` before
-hashing both sides) will close this gap.
+| Cheatcode | What EDB does |
+|---|---|
+| `vm.pauseGasMetering` / `vm.resumeGasMetering` | Records the flag but does NOT pause REVM gas accounting |
+| `vm.lastCallGas` | Returns all-zero `Gas{}` |
+| `vm.startSnapshotGas` / `vm.stopSnapshotGas` / `vm.snapshotGasLastCall` / `vm.snapshotValue` | Silent no-op stubs |
 
-### Linked libraries — same limitation
-
-External libraries get their address linked into the deployed bytecode
-at deploy time via the same MSTORE-patch mechanism solc uses for
-immutables. Same root cause, same workaround (planned fix is the same
-codehash-normalization patch).
+If your test asserts specific gas values, EDB will give different
+numbers than forge — **this is intentional** and not a bug. Run under
+`forge test` for gas-precise assertions.
 
 ### Forked tests + unverified contracts
 
@@ -347,41 +339,79 @@ the debugger UI. The call/return semantics are still faithful (we
 execute the actual runtime bytecode); only the source-level view is
 missing.
 
-### Instrumented-bytecode test-reverts (a small handful of known cases)
+### Instrumentation-side test-reverts (a small handful of known cases)
 
-A few real-world tests pass under `forge test` but revert under EDB.
-The round-2 coverage audit (`docs/superpowers/audits/2026-05-12-coverage-round2.md`)
-found 6 such cases out of ~18 tracked failure-mode regressions. After
-the round-2 `vm.expectEmit` soft-match relaxation
-(`OwnableTest::testHandoverOwnershipWithCancellation` was unblocked by
-no longer demanding `topics.len() ≥ 4` or `data.len() > 0` from the
-mask bits — see "soft-match — detail" above), the remaining cases
-trace to instrumentation divergences in the recompiled contract, not
-to cheatcode stubs:
+The engine runs the transaction in three passes (tracer → opcode
+snapshots → hook snapshots), with the third pass executing
+**instrumented runtime bytecode** that mirrors the original Solidity
+source but with snapshot-hook `require(keccak256(...))` calls inserted
+at every statement boundary. Hooks never SSTORE — only read-side
+keccak — so:
 
-- `solady` `ERC4337Test::testDepositFunctions` — `vm.etch`'s installed
-  MockEntryPoint runs the instrumented runtime bytecode at the canonical
-  ERC-4337 entrypoint address, and the second-pass `account.addDeposit`
-  call reverts mid-execution. Root cause is in the engine
-  (instrumentation pipeline) — `crates/engine/src/instrumentation/`.
+- **Storage layout is preserved.** Solc lays out state-variable slots
+  based on declaration order alone, which the instrumenter doesn't
+  touch.
+- **`address(this)` / CREATE / CREATE2-derived addresses are
+  preserved.** The hook-snapshot inspector intercepts `CREATE` at
+  `crates/engine/src/inspector/hook_snapshot_inspector.rs:652-678`,
+  substitutes the instrumented initcode but pins the deployment
+  address to whatever the original-initcode CREATE would have produced
+  (`CreateScheme::Custom { address: predicted_address }`). So:
+  - For CREATE: `address(this)` matches Pass 1 (deployer+nonce
+    sequence is preserved).
+  - For CREATE2: the natural
+    `keccak(0xff || deployer || salt || keccak(initcode))[12:]`
+    derivation would yield a different address for the instrumented
+    initcode, but `CreateScheme::Custom` overrides that with the
+    original-initcode address. Tests that hard-code expected
+    CREATE2 addresses continue to work.
+- **Immutables work transparently.** Solc emits the instrumented
+  constructor with MSTORE patch instructions at the correct (shifted)
+  byte positions for the instrumented runtime; the patched values
+  themselves are computed by the same Solidity logic in both
+  compilations.
+
+Despite all of this, a small number of real-world tests pass under
+`forge test` but revert under EDB. The remaining divergences trace
+mostly to:
+
+1. **`vm.etch(addr, address(thing).code)` patterns** — `.code`
+   evaluated in Pass 3 returns the *instrumented* runtime, which
+   carries hooks but also embedded references (immutables, library
+   links) to its original deployment context. Re-installing this code
+   at a different address can break those embedded references.
+2. **Inline assembly with memory-layout assumptions** — the
+   instrumenter operates on the Solidity AST, but assembly blocks can
+   make assumptions about scratch-memory state that no longer hold
+   after a hook just wrote there.
+3. **Self-hash checks** — code that does
+   `keccak256(type(C).runtimeCode)` or checks its own deployed code
+   against a recorded hash necessarily diverges (the instrumented
+   runtime hashes differently).
+
+Confirmed-divergent cases (1 per category):
+
+- `solady` `ERC4337Test::testDepositFunctions` — case (1): the test
+  does `vm.etch(account.entryPoint(), address(new MockEntryPoint()).code)`
+  to install MockEntryPoint at the canonical ERC-4337 entrypoint address.
+  The `.code` it copies is instrumented (Pass 3), and re-installing
+  there triggers a revert mid-execution.
 - `uniswap-v4-core` `CustomAccountingTest::test_swap_afterSwapFeeOnUnspecified_exactOutput`
-  — second-pass CREATE outcome diverges from the first-pass trace at
-  one of the ~14 contract CREATEs in `_setUpFeeTakingPool()`, which
-  cascades into the final `swapRouter.swap` reverting. Diagnostic
-  surfaces as `"Create outcome mismatch at frame N: expected Some(Success ...), got CreateOutcome { result: Revert ... }"`
-  in `crates/engine/src/inspector/hook_snapshot_inspector.rs:861`.
-- `solmate` `WETHTest::testFallbackDeposit` (and the whole WETHTest
-  suite — `testDeposit`, `testWithdraw`, etc.) — every WETH-direct
-  test reverts under EDB but passes under forge. WETH derives from
-  ERC20 which uses `immutable INITIAL_CHAIN_ID / INITIAL_DOMAIN_SEPARATOR`;
-  this likely interacts with the same MSTORE-patch class as the
-  immutable-codehash issue above, but in the instrumentation phase
-  rather than the artifact-lookup phase.
+  — diagnostic at `crates/engine/src/inspector/hook_snapshot_inspector.rs:861`:
+  `Create outcome mismatch at frame N: expected Some(Success ...), got CreateOutcome { result: Revert ... }`.
+  One of ~14 CREATEs in `_setUpFeeTakingPool()` has a Pass 3
+  constructor that reverts where Pass 1 succeeded. Likely case (2)
+  (inline assembly in one of the pool-manager contracts), but the
+  exact contract still needs to be bisected.
+- `solmate` `WETHTest::*` (the whole suite reverts) — root cause
+  unclear; given the address-pinning + storage-preservation
+  invariants above, the WETH-specific issue is neither
+  `address(this)` nor storage layout. Worth a focused
+  per-test investigation.
 
-These are tracked as v1.x engine bugs, not cheatcode limitations.
-Run `forge test` against the same fixtures when you hit a "test-revert"
-status on EDB and want to verify whether the test is supposed to
-pass.
+These are tracked as v1.x engine bugs. Run `forge test` against the
+same fixtures when you hit a `test-revert` status on EDB and want to
+verify whether the test is supposed to pass.
 
 ## Error messages
 
