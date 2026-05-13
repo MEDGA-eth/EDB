@@ -211,6 +211,48 @@ async fn cheats_tx_gas_price_actually_intercepts() -> Result<()> {
     Ok(())
 }
 
+/// `vm.toString` — six type overloads producing the Solidity-canonical
+/// string for each primitive (decimal for ints, EIP-55 checksum for
+/// address, `0x...` lowercase hex for `bytes` / `bytes32`, `"true"` /
+/// `"false"` for bool). `Cheats::testToStringFamily` exercises every
+/// branch and `require`s the result hashes to the expected literal; any
+/// regression surfaces as a clean revert with a descriptive message.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_to_string_family_actually_intercepts() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testToStringFamily",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(!trace_has_revert(&trace), "vm.toString family produced a revert; trace = {trace:#?}",);
+    for needle in [
+        "vm.toString(uint256) wrong",
+        "vm.toString(int256) negative wrong",
+        "vm.toString(int256) positive wrong",
+        "vm.toString(bool) true wrong",
+        "vm.toString(bool) false wrong",
+        "vm.toString(bytes) wrong",
+        "vm.toString(bytes32) wrong",
+        "vm.toString(address) wrong checksum",
+    ] {
+        assert!(
+            !trace_revert_contains(&trace, needle),
+            "vm.toString overload regression: {needle}; trace = {trace:#?}",
+        );
+    }
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_fixture)]
 async fn cheats_expect_revert_rewrites_outcome() -> Result<()> {

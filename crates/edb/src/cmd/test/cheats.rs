@@ -85,6 +85,15 @@ const SEL_LAST_CALL_GAS: [u8; 4] = [0x2b, 0x58, 0x9b, 0x28]; // lastCallGas()
 const SEL_FEE: [u8; 4] = [0x39, 0xb3, 0x7a, 0xb0]; // fee(uint256)            -> sets block.basefee
 const SEL_TX_GAS_PRICE: [u8; 4] = [0x48, 0xf5, 0x0c, 0x0f]; // txGasPrice(uint256)   -> sets tx.gas_price
 
+// vm.toString — formatting primitives as their Solidity-canonical string.
+// Returns an ABI-encoded `string` (offset+length+padded UTF-8).
+const SEL_TO_STRING_ADDRESS: [u8; 4] = [0x56, 0xca, 0x62, 0x3e]; // toString(address)
+const SEL_TO_STRING_BOOL: [u8; 4] = [0x71, 0xdc, 0xe7, 0xda]; // toString(bool)
+const SEL_TO_STRING_BYTES: [u8; 4] = [0x71, 0xaa, 0xd1, 0x0d]; // toString(bytes)
+const SEL_TO_STRING_BYTES32: [u8; 4] = [0xb1, 0x1a, 0x19, 0xe8]; // toString(bytes32)
+const SEL_TO_STRING_INT256: [u8; 4] = [0xa3, 0x22, 0xc4, 0x0e]; // toString(int256)
+const SEL_TO_STRING_UINT256: [u8; 4] = [0x69, 0x00, 0xa3, 0xae]; // toString(uint256)
+
 // Crypto cheatcodes (secp256k1 — backed by k256 via alloy-signer-local).
 const SEL_ADDR: [u8; 4] = [0xff, 0xa1, 0x86, 0x49]; // addr(uint256)
 const SEL_SIGN: [u8; 4] = [0xe3, 0x41, 0xea, 0xa4]; // sign(uint256,bytes32)
@@ -252,6 +261,13 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0x45, 0xb5, 0x60, 0x78], "startPrank"), // startPrank(address,address)
     (&[0x90, 0xc5, 0x01, 0x3b], "stopPrank"), // stopPrank()
     (&[0x70, 0xca, 0x10, 0xbb], "store"),    // store(address,bytes32,bytes32)
+    // vm.toString — six type overloads, all supported via the dispatch arm.
+    (&[0x56, 0xca, 0x62, 0x3e], "toString"), // toString(address)
+    (&[0x71, 0xdc, 0xe7, 0xda], "toString"), // toString(bool)
+    (&[0x71, 0xaa, 0xd1, 0x0d], "toString"), // toString(bytes)
+    (&[0xb1, 0x1a, 0x19, 0xe8], "toString"), // toString(bytes32)
+    (&[0xa3, 0x22, 0xc4, 0x0e], "toString"), // toString(int256)
+    (&[0x69, 0x00, 0xa3, 0xae], "toString"), // toString(uint256)
     (&[0x48, 0xf5, 0x0c, 0x0f], "txGasPrice"), // txGasPrice(uint256) — sets tx.gas_price
     (&[0xe5, 0xd6, 0xbf, 0x02], "warp"),     // warp(uint256)
     // --- Supported: gas-snapshot stubs (silent success + one-time warn) ---
@@ -475,12 +491,6 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0xcf, 0x22, 0xe3, 0xc9], "startStateDiffRecording"), // startStateDiffRecording()
     (&[0xaa, 0x5c, 0xf9, 0x0e], "stopAndReturnStateDiff"), // stopAndReturnStateDiff()
     (&[0x0d, 0x4a, 0xae, 0x9b], "stopMappingRecording"), // stopMappingRecording()
-    (&[0x71, 0xdc, 0xe7, 0xda], "toString"), // toString(bool)
-    (&[0x56, 0xca, 0x62, 0x3e], "toString"), // toString(address)
-    (&[0x71, 0xaa, 0xd1, 0x0d], "toString"), // toString(bytes)
-    (&[0xb1, 0x1a, 0x19, 0xe8], "toString"), // toString(bytes32)
-    (&[0xa3, 0x22, 0xc4, 0x0e], "toString"), // toString(int256)
-    (&[0x69, 0x00, 0xa3, 0xae], "toString"), // toString(uint256)
     (&[0xe6, 0x96, 0x2c, 0xdb], "broadcast"), // broadcast(address)
     (&[0x61, 0x9d, 0x89, 0x7f], "writeLine"), // writeLine(string,string)
     (&[0xe2, 0x3c, 0xd1, 0x9f], "writeJson"), // writeJson(string,string)
@@ -1151,6 +1161,12 @@ where
             SEL_CHAIN_ID => self.cheat_chain_id(ctx, inputs, args),
             SEL_FEE => self.cheat_fee(ctx, inputs, args),
             SEL_TX_GAS_PRICE => self.cheat_tx_gas_price(ctx, inputs, args),
+            SEL_TO_STRING_ADDRESS => self.cheat_to_string_address(inputs, args),
+            SEL_TO_STRING_BOOL => self.cheat_to_string_bool(inputs, args),
+            SEL_TO_STRING_BYTES => self.cheat_to_string_bytes(inputs, args),
+            SEL_TO_STRING_BYTES32 => self.cheat_to_string_bytes32(inputs, args),
+            SEL_TO_STRING_INT256 => self.cheat_to_string_int256(inputs, args),
+            SEL_TO_STRING_UINT256 => self.cheat_to_string_uint256(inputs, args),
             SEL_DEAL => self.cheat_deal(ctx, inputs, args),
             SEL_ETCH => self.cheat_etch(ctx, inputs, args),
             SEL_STORE => self.cheat_store(ctx, inputs, args),
@@ -1601,6 +1617,73 @@ where
         };
         ctx.tx.gas_price = value.try_into().unwrap_or(u128::MAX);
         ok_return(inputs, Bytes::new())
+    }
+
+    // --- vm.toString family -------------------------------------------------
+    //
+    // Six type overloads, each formatting a Solidity primitive as the
+    // canonical string representation foundry produces:
+    //   - address  -> EIP-55 checksum (alloy's Display for Address)
+    //   - bool     -> "true" / "false"
+    //   - bytes    -> "0x" + lowercase hex (alloy's Display for Bytes)
+    //   - bytes32  -> "0x" + lowercase hex (alloy's Display for B256)
+    //   - uint256  -> decimal
+    //   - int256   -> signed decimal (alloy's Display for I256)
+    //
+    // Return shape: ABI-encoded `string` (offset + length + padded UTF-8),
+    // produced by `encode_abi_string`. Matches what `vm.envString` already
+    // does for its return shape.
+
+    fn cheat_to_string_address(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(addr) = read_address(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.toString(address): bad calldata"));
+        };
+        ok_return(inputs, encode_abi_string(&addr.to_string()))
+    }
+
+    fn cheat_to_string_bool(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(b) = read_bool(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.toString(bool): bad calldata"));
+        };
+        let s = if b { "true" } else { "false" };
+        ok_return(inputs, encode_abi_string(s))
+    }
+
+    fn cheat_to_string_bytes(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(b) = read_bytes(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.toString(bytes): bad calldata"));
+        };
+        // "0x" + lowercase hex (matches alloy's `Display for Bytes`).
+        let mut s = String::with_capacity(2 + b.len() * 2);
+        s.push_str("0x");
+        s.push_str(&alloy_primitives::hex::encode(&b));
+        ok_return(inputs, encode_abi_string(&s))
+    }
+
+    fn cheat_to_string_bytes32(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(w) = read_b256(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.toString(bytes32): bad calldata"));
+        };
+        // alloy's Display for B256 already prints `0x` + lowercase hex.
+        ok_return(inputs, encode_abi_string(&w.to_string()))
+    }
+
+    fn cheat_to_string_int256(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(w) = read_word(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.toString(int256): bad calldata"));
+        };
+        // alloy's I256 has a from-raw constructor that interprets the 32 bytes
+        // as two's complement and its Display impl produces the signed-decimal
+        // representation foundry's tests expect.
+        let signed = alloy_primitives::I256::from_be_bytes::<32>(w);
+        ok_return(inputs, encode_abi_string(&signed.to_string()))
+    }
+
+    fn cheat_to_string_uint256(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(v) = read_u256(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.toString(uint256): bad calldata"));
+        };
+        ok_return(inputs, encode_abi_string(&v.to_string()))
     }
 
     // --- Account state mutators ---------------------------------------------
@@ -3030,6 +3113,17 @@ mod tests {
         assert_eq!(sel("txGasPrice(uint256)"), SEL_TX_GAS_PRICE);
     }
     #[test]
+    fn selectors_to_string_family() {
+        // Pin every vm.toString overload against keccak256(sig)[..4] so the
+        // dispatch arms can't silently drift from foundry's canonical spec.
+        assert_eq!(sel("toString(address)"), SEL_TO_STRING_ADDRESS);
+        assert_eq!(sel("toString(bool)"), SEL_TO_STRING_BOOL);
+        assert_eq!(sel("toString(bytes)"), SEL_TO_STRING_BYTES);
+        assert_eq!(sel("toString(bytes32)"), SEL_TO_STRING_BYTES32);
+        assert_eq!(sel("toString(int256)"), SEL_TO_STRING_INT256);
+        assert_eq!(sel("toString(uint256)"), SEL_TO_STRING_UINT256);
+    }
+    #[test]
     fn selector_deal() {
         assert_eq!(sel("deal(address,uint256)"), SEL_DEAL);
     }
@@ -3703,6 +3797,156 @@ mod tests {
 
         assert_eq!(read_address(&buf, 0).unwrap(), Address::from_slice(&[0xab; 20]));
         assert_eq!(read_bytes(&buf, 1).unwrap().as_ref(), data);
+    }
+
+    // --- vm.toString behavior tests -----------------------------------------
+
+    /// Decode an ABI-encoded `string` (offset + length + padded UTF-8) back
+    /// to a Rust `String`. Returns `None` if the bytes are malformed.
+    fn decode_abi_string(bytes: &[u8]) -> Option<String> {
+        if bytes.len() < 64 {
+            return None;
+        }
+        let len_word: [u8; 32] = bytes[32..64].try_into().ok()?;
+        let mut len_bytes = [0u8; 8];
+        len_bytes.copy_from_slice(&len_word[24..32]);
+        let len = u64::from_be_bytes(len_bytes) as usize;
+        let start: usize = 64;
+        let end = start.checked_add(len)?;
+        if bytes.len() < end {
+            return None;
+        }
+        String::from_utf8(bytes[start..end].to_vec()).ok()
+    }
+
+    /// Build calldata for a cheatcode that takes a single static 32-byte arg.
+    fn single_word_args(word: [u8; 32]) -> Vec<u8> {
+        word.to_vec()
+    }
+
+    /// Build calldata for `vm.toString(bytes data)` with the given payload.
+    fn dyn_bytes_args(payload: &[u8]) -> Vec<u8> {
+        // head[0] = offset to bytes (== 0x20)
+        // head[1] = length
+        // payload right-padded to 32-byte multiple
+        let mut out = Vec::with_capacity(64 + payload.len().div_ceil(32) * 32);
+        let mut offset = [0u8; 32];
+        offset[31] = 0x20;
+        out.extend_from_slice(&offset);
+        let mut len = [0u8; 32];
+        len[24..].copy_from_slice(&(payload.len() as u64).to_be_bytes());
+        out.extend_from_slice(&len);
+        out.extend_from_slice(payload);
+        let pad = (32 - payload.len() % 32) % 32;
+        out.extend(std::iter::repeat_n(0u8, pad));
+        out
+    }
+
+    #[test]
+    fn to_string_uint256_formats_decimal() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+        let mut arg = [0u8; 32];
+        arg[24..].copy_from_slice(&123_456u64.to_be_bytes());
+        let out = cheats.cheat_to_string_uint256(&inputs, &arg);
+        assert!(matches!(out.result.result, InstructionResult::Return));
+        assert_eq!(decode_abi_string(out.result.output.as_ref()).as_deref(), Some("123456"));
+    }
+
+    #[test]
+    fn to_string_int256_handles_negative() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+        // -7 as two's complement int256: all 0xFF...F9
+        let mut arg = [0xffu8; 32];
+        arg[31] = 0xf9;
+        let out = cheats.cheat_to_string_int256(&inputs, &arg);
+        assert!(matches!(out.result.result, InstructionResult::Return));
+        assert_eq!(decode_abi_string(out.result.output.as_ref()).as_deref(), Some("-7"));
+
+        // Positive int256 = 42
+        let mut pos = [0u8; 32];
+        pos[31] = 42;
+        let out = cheats.cheat_to_string_int256(&inputs, &pos);
+        assert_eq!(decode_abi_string(out.result.output.as_ref()).as_deref(), Some("42"));
+    }
+
+    #[test]
+    fn to_string_bool_yields_true_or_false() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+        let mut t = [0u8; 32];
+        t[31] = 1;
+        let out = cheats.cheat_to_string_bool(&inputs, &t);
+        assert_eq!(decode_abi_string(out.result.output.as_ref()).as_deref(), Some("true"));
+        let f = [0u8; 32];
+        let out = cheats.cheat_to_string_bool(&inputs, &f);
+        assert_eq!(decode_abi_string(out.result.output.as_ref()).as_deref(), Some("false"));
+    }
+
+    #[test]
+    fn to_string_address_is_eip55_checksum() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+        // 0x52908400098527886e0f7030069857d2e4169ee7 — one of the canonical
+        // EIP-55 test vectors whose checksum is all-uppercase, exercising the
+        // case-sensitivity path of alloy's `Display for Address` impl.
+        let addr_bytes: [u8; 20] = [
+            0x52, 0x90, 0x84, 0x00, 0x09, 0x85, 0x27, 0x88, 0x6e, 0x0f, 0x70, 0x30, 0x06, 0x98,
+            0x57, 0xd2, 0xe4, 0x16, 0x9e, 0xe7,
+        ];
+        let mut arg = [0u8; 32];
+        arg[12..].copy_from_slice(&addr_bytes);
+        let out = cheats.cheat_to_string_address(&inputs, &arg);
+        let s = decode_abi_string(out.result.output.as_ref()).expect("decoded string");
+        // Independent EIP-55 reference value cross-checked against alloy's
+        // `Address::to_checksum(None)`.
+        assert_eq!(s, "0x52908400098527886E0F7030069857D2E4169EE7");
+    }
+
+    #[test]
+    fn to_string_bytes32_prints_full_hex() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+        let mut arg = [0u8; 32];
+        for (i, slot) in arg.iter_mut().enumerate() {
+            *slot = i as u8;
+        }
+        let out = cheats.cheat_to_string_bytes32(&inputs, &arg);
+        let s = decode_abi_string(out.result.output.as_ref()).expect("decoded string");
+        assert_eq!(s, "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+    }
+
+    #[test]
+    fn to_string_bytes_dynamic_payload_round_trip() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+        let payload: &[u8] = b"\xde\xad\xbe\xef";
+        let calldata = dyn_bytes_args(payload);
+        let out = cheats.cheat_to_string_bytes(&inputs, &calldata);
+        let s = decode_abi_string(out.result.output.as_ref()).expect("decoded string");
+        assert_eq!(s, "0xdeadbeef");
+
+        // Also assert an empty payload renders as "0x".
+        let calldata = dyn_bytes_args(b"");
+        let out = cheats.cheat_to_string_bytes(&inputs, &calldata);
+        let s = decode_abi_string(out.result.output.as_ref()).expect("decoded string");
+        assert_eq!(s, "0x");
+
+        // Silence unused-helper warnings for utility functions kept for symmetry.
+        let _ = single_word_args([0u8; 32]);
     }
 
     // --- cheat_assert: C2-1 / C2-4 regression coverage ----------------------

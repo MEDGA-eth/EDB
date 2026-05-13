@@ -28,6 +28,64 @@ contract Cheats is Test {
         require(tx.gasprice == 123_456_789, "vm.txGasPrice did not apply");
     }
 
+    /// `vm.toString` — six overloads converting primitive types to their
+    /// Solidity-canonical string form. Each branch hashes the result against
+    /// the expected literal so a regression surfaces as a clean require
+    /// failure with a descriptive message.
+    function testToStringFamily() public {
+        // uint256 -> decimal
+        require(
+            keccak256(bytes(vm.toString(uint256(123)))) == keccak256(bytes("123")),
+            "vm.toString(uint256) wrong"
+        );
+
+        // int256 -> signed decimal (negative + positive)
+        require(
+            keccak256(bytes(vm.toString(int256(-7)))) == keccak256(bytes("-7")),
+            "vm.toString(int256) negative wrong"
+        );
+        require(
+            keccak256(bytes(vm.toString(int256(42)))) == keccak256(bytes("42")),
+            "vm.toString(int256) positive wrong"
+        );
+
+        // bool -> "true" / "false"
+        require(
+            keccak256(bytes(vm.toString(true))) == keccak256(bytes("true")),
+            "vm.toString(bool) true wrong"
+        );
+        require(
+            keccak256(bytes(vm.toString(false))) == keccak256(bytes("false")),
+            "vm.toString(bool) false wrong"
+        );
+
+        // bytes -> "0x" + lowercase hex
+        bytes memory raw = hex"deadbeef";
+        require(
+            keccak256(bytes(vm.toString(raw))) == keccak256(bytes("0xdeadbeef")),
+            "vm.toString(bytes) wrong"
+        );
+
+        // bytes32 -> "0x" + 64 lowercase hex chars
+        bytes32 w = bytes32(uint256(0xc0ffee));
+        require(
+            keccak256(bytes(vm.toString(w))) ==
+                keccak256(bytes("0x0000000000000000000000000000000000000000000000000000000000c0ffee")),
+            "vm.toString(bytes32) wrong"
+        );
+
+        // address -> EIP-55 checksum.
+        // 0x52908400098527886e0f7030069857d2e4169ee7 is one of the canonical
+        // EIP-55 test vectors that flips to all-uppercase under the checksum,
+        // so any case-sensitivity bug would surface here.
+        address a = address(0x52908400098527886E0F7030069857D2E4169EE7);
+        require(
+            keccak256(bytes(vm.toString(a))) ==
+                keccak256(bytes("0x52908400098527886E0F7030069857D2E4169EE7")),
+            "vm.toString(address) wrong checksum"
+        );
+    }
+
     function testDeal() public {
         address payable a = payable(address(0xA11CE));
         vm.deal(a, 1 ether);

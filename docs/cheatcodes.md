@@ -87,6 +87,7 @@ cheatcode) before retrying.
 | `vm.chainId(uint256)` | Mutates `cfg.chain_id`; the `CHAINID` opcode reads the new value. |
 | `vm.fee(uint256)` | Mutates `block.basefee` (saturating to `u64::MAX` since REVM's `BlockEnv.basefee` is `u64`). Subsequent `BASEFEE` opcodes read the new value. |
 | `vm.txGasPrice(uint256)` | Mutates `tx.gas_price` (saturating to `u128::MAX` since REVM's `TxEnv.gas_price` is `u128`). Subsequent `GASPRICE` opcodes read the new value. |
+| `vm.toString(address)` / `(bool)` / `(bytes)` / `(bytes32)` / `(int256)` / `(uint256)` | Format the value as the Solidity-canonical string. `address` -> EIP-55 checksum; `bool` -> `"true"` / `"false"`; `bytes` / `bytes32` -> `"0x"` + lowercase hex; `uint256` / `int256` -> decimal (signed for `int256`). |
 | `vm.deal(address, uint256)` | Sets the account's balance. |
 | `vm.etch(address, bytes)` | Sets the account's deployed code via `journal.set_code`. |
 | `vm.store(address, bytes32, bytes32)` | Writes a storage slot via `journal.sstore`. |
