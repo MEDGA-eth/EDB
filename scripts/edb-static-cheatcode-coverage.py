@@ -45,6 +45,19 @@ PROJECTS = [
 # catalog name overlap is good enough for a static estimate.
 # ---------------------------------------------------------------------------
 def parse_supported_cheatcodes() -> set[str]:
+    """Return the set of supported cheatcode *names* (e.g. "assertEq", "addr").
+
+    KNOWN LIMITATION: the catalog uses the same `name` field for ALL
+    overloads of a cheatcode — both `assertEq(uint256, uint256)` (supported)
+    and `assertEq(uint256[], uint256[])` (not yet implemented) catalog as
+    `"assertEq"`. The static analyzer matches user `vm.<name>(...)` calls
+    against this name set, so a test invoking the dynamic overload will be
+    counted eligible even though the runtime dispatch fall-through aborts
+    that selector as `NotYetImplemented`. The headline "X/Y eligible" is
+    therefore an upper bound; selector-aware parsing of each invocation's
+    argument types would be required for a precise number, which the
+    current name-only design does not do.
+    """
     text = CHEATS_RS.read_text()
     # Find the KNOWN_CHEATCODES const body (between `&[` and the matching `];`).
     start = text.find("const KNOWN_CHEATCODES")
