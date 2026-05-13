@@ -17,22 +17,26 @@
 //! Build a [`edb_engine::LocalArtifactSet`] from a foundry
 //! [`ProjectCompileOutput`] plus the synthesized entrypoint contract.
 //!
-//! The set is keyed by deployed-bytecode `keccak256`. It is fed into
-//! [`edb_engine::Engine::prepare_with_router_and_cheats`] so the engine can
-//! satisfy `load_local_artifacts` for every address touched during the test
-//! transaction without an Etherscan round-trip — synthetic addresses don't
-//! exist on Etherscan, and locally-compiled artifacts are the ground truth
-//! we want to debug against anyway.
+//! Each project artifact is inserted along with its deployed-bytecode
+//! template AND the immutable-references / link-references that solc emits
+//! for it. The engine then uses foundry-style masked + fuzzy matching
+//! (`get_by_runtime`) to resolve on-chain runtime bytecode against those
+//! templates, correctly handling contracts that use `immutable` state vars,
+//! linked libraries, library call-protection, or that carry slightly
+//! different CBOR metadata trailers than what solc emitted locally.
+//!
+//! Synthetic addresses don't exist on Etherscan, and locally-compiled
+//! artifacts are the ground truth we want to debug against anyway.
 
-use alloy_primitives::{Bytes, keccak256};
+use alloy_primitives::Bytes;
 use edb_engine::{Artifact, LocalArtifactSet};
 use eyre::Result;
 use foundry_compilers::ProjectCompileOutput;
 use std::path::Path;
 use std::sync::Arc;
 
-/// Build a codehash-keyed index of every contract in the project, plus the
-/// synthesized entrypoint.
+/// Build an index of every contract in the project, plus the synthesized
+/// entrypoint, keyed for foundry-style template matching.
 ///
 /// Contracts whose deployed bytecode is empty (e.g. interfaces, libraries
 /// with no deployable code, abstract contracts) are silently skipped — they
@@ -52,26 +56,56 @@ pub fn build_local_artifact_set(
 
     let mut set = LocalArtifactSet::default();
 
-    // Index every contract in the project by its deployed-bytecode keccak.
     for (id, art) in output.artifact_ids() {
         let Some(bytes) = art.get_deployed_bytecode_bytes() else { continue };
         if bytes.is_empty() {
             continue;
         }
-        let ch = keccak256(bytes.as_ref());
+
+        // Extract immutable / link references for masked matching. We pull
+        // them directly off `ConfigurableContractArtifact::deployed_bytecode`
+        // because foundry's `Artifact::get_deployed_bytecode_bytes()` only
+        // returns the raw bytes and doesn't surface the side metadata.
+        let (immutable_refs, link_refs) = match &art.deployed_bytecode {
+            Some(dbc) => {
+                let imm = dbc.immutable_references.clone();
+                let link =
+                    dbc.bytecode.as_ref().map(|b| b.link_references.clone()).unwrap_or_default();
+                (imm, link)
+            }
+            None => Default::default(),
+        };
+
+        // Solc marks libraries via the AST `contractKind` field. The simplest
+        // robust proxy at the bytecode level is the call-protection prefix
+        // itself: `compute_mask` already gates the 20-byte mask on the
+        // template's first byte being PUSH20 (0x73), so passing `is_library = false`
+        // here is safe even for libraries — the mask helper detects it
+        // independently when needed. Keep this explicit anyway so future
+        // readers don't think this is a bug.
+        let is_library = matches!(bytes.first(), Some(&0x73)) && bytes.len() >= 21;
+
         let mut lifted = Artifact::from_foundry(&id, art)
             .map_err(|e| eyre::eyre!("lift artifact for {}: {e}", id.name))?;
         backfill_source_contents(&mut lifted, project_root);
-        set.insert(ch, lifted);
+        set.insert_with_template(&bytes, &immutable_refs, &link_refs, is_library, lifted);
     }
 
     // The synthesized entrypoint isn't part of `output` (it's compiled in a
-    // separate `compile_file` pass — see `cmd::test::entrypoint`), so we add
-    // it explicitly here.
+    // separate `compile_file` pass — see `cmd::test::entrypoint`). Its
+    // runtime bytecode has no immutables / linked libraries to mask, but
+    // we still register it with the template so `get_by_runtime` can find
+    // it (the engine resolves touched addresses by their observed runtime
+    // bytes, not by a pre-computed codehash).
     let mut entrypoint_artifact = entrypoint_artifact;
     backfill_source_contents(&mut entrypoint_artifact, project_root);
-    let entry_ch = keccak256(entrypoint_bytecode.as_ref());
-    set.insert(entry_ch, entrypoint_artifact);
+    set.insert_with_template(
+        entrypoint_bytecode.as_ref(),
+        &Default::default(),
+        &Default::default(),
+        false,
+        entrypoint_artifact,
+    );
 
     Ok(set)
 }

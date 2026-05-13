@@ -72,6 +72,7 @@ rayon.workspace = true
 semver.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
+ciborium.workspace = true
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 derive_more.workspace = true

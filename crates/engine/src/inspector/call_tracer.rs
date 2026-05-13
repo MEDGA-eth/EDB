@@ -20,7 +20,7 @@
 //! and execution flow. The trace can be replayed later to determine execution paths
 //! without needing to re-examine transaction inputs/outputs.
 
-use alloy_primitives::{Address, B256, Log, U256, keccak256};
+use alloy_primitives::{Address, B256, Bytes, Log, U256, keccak256};
 use edb_common::types::{CallResult, Trace, TraceEntry};
 use revm::{
     Inspector,
@@ -41,6 +41,11 @@ pub struct TraceReplayResult {
     /// contain these addresses, so a `db.basic(addr)` from the original
     /// context would return `KECCAK_EMPTY`).
     pub in_tx_codehashes: HashMap<Address, B256>,
+    /// Post-deployment runtime bytecode for each address that was CREATEd
+    /// during this transaction. Captured alongside [`Self::in_tx_codehashes`]
+    /// so the foundry-style local-artifact lookup (which needs the raw bytes,
+    /// not just the keccak) can resolve in-tx-deployed contracts.
+    pub in_tx_runtime_code: HashMap<Address, Bytes>,
     /// Complete execution trace with call/create details
     pub execution_trace: Trace,
 }
@@ -55,6 +60,9 @@ pub struct CallTracer {
     /// Keccak256 of the post-deploy runtime bytecode for each address that was
     /// CREATEd during this transaction. Populated in `create_end`.
     pub in_tx_codehashes: HashMap<Address, B256>,
+    /// Post-deploy runtime bytecode for each address that was CREATEd during
+    /// this transaction. Populated in `create_end` alongside `in_tx_codehashes`.
+    pub in_tx_runtime_code: HashMap<Address, Bytes>,
     /// Stack to track call indices for proper nesting
     call_stack: Vec<usize>,
 }
@@ -66,6 +74,7 @@ impl CallTracer {
             trace: Trace::default(),
             visited_addresses: HashMap::new(),
             in_tx_codehashes: HashMap::new(),
+            in_tx_runtime_code: HashMap::new(),
             call_stack: Vec::new(),
         }
     }
@@ -85,6 +94,7 @@ impl CallTracer {
         TraceReplayResult {
             visited_addresses: self.visited_addresses,
             in_tx_codehashes: self.in_tx_codehashes,
+            in_tx_runtime_code: self.in_tx_runtime_code,
             execution_trace: self.trace,
         }
     }
@@ -274,6 +284,8 @@ impl<CTX: ContextTr> Inspector<CTX> for CallTracer {
         if !runtime_code.is_empty() {
             self.in_tx_codehashes
                 .insert(created_address_for_marking, keccak256(runtime_code.as_ref()));
+            self.in_tx_runtime_code
+                .insert(created_address_for_marking, Bytes::copy_from_slice(runtime_code.as_ref()));
         }
     }
 

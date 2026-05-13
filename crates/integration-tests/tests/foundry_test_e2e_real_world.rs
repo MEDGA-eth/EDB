@@ -323,3 +323,73 @@ async fn solmate_fixed_point_math_mul_wad() -> Result<()> {
     let _ = session.shutdown();
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Regression: contracts that use `immutable` state variables must resolve to
+// their local artifact (not silently fall through to "no source"). Before
+// the foundry-style local-artifact identification fix, `MockEIP712` (which
+// inherits from solady's `EIP712` and so has 5 immutables in its deployed
+// bytecode) failed the codehash lookup and produced only opcode-level
+// snapshots. After the fix, the contract is resolved by template+mask
+// matching and source-level snapshots are produced.
+// ---------------------------------------------------------------------------
+
+/// Solady EIP712Test::testDomainSeparator — calls `mock.DOMAIN_SEPARATOR()`
+/// on a freshly-deployed `MockEIP712` instance. `MockEIP712` carries five
+/// `immutable` cached fields populated in the EIP712 constructor; the
+/// on-chain runtime bytes therefore differ from solc's `deployedBytecode`
+/// at the immutable offsets, which means the OLD codehash-only lookup
+/// would miss this artifact entirely.
+///
+/// This test asserts that, after the fix, EDB collects at least one
+/// **source-level (`Hook`)** snapshot whose `path` lives under solady's
+/// `src/utils/EIP712.sol` — i.e. that the artifact was successfully
+/// identified for an immutable-using contract.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_e2e_realworld)]
+async fn solady_eip712_immutable_artifact_resolved() -> Result<()> {
+    init::init_test_environment(true);
+    let root = require_fixture("solady");
+
+    let target = "EIP712Test::testDomainSeparator";
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        target,
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    let trace = session.fetch_trace().await?;
+    assert!(!trace_has_revert(&trace), "{target} should not revert; got: {trace:#?}");
+
+    // Walk all snapshots looking for at least one Hook (source-level) entry
+    // that points into MockEIP712 or solady's EIP712.sol. Either origin is
+    // proof the immutable-using contract resolved to a local artifact.
+    let total = session.snapshot_count().await?;
+    let mut resolved_eip712 = false;
+    for id in 0..total {
+        let info = session.fetch_snapshot_info(id as u64).await?;
+        if let Some(detail) = info.get("detail")
+            && let Some(hook) = detail.get("Hook")
+            && let Some(path) = hook.get("path").and_then(|p| p.as_str())
+        {
+            let p = path.replace('\\', "/");
+            if p.contains("EIP712.sol") || p.contains("MockEIP712.sol") {
+                resolved_eip712 = true;
+                break;
+            }
+        }
+    }
+    assert!(
+        resolved_eip712,
+        "expected at least one Hook snapshot under EIP712.sol / MockEIP712.sol \
+         (total snapshots: {total}); before the foundry-style local-artifact \
+         lookup fix, immutables would cause the codehash-keyed lookup to miss \
+         and only opcode-level snapshots would be produced.",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}

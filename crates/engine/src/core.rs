@@ -46,7 +46,7 @@
 //! - **Instrumentation**: Automatic debugging hook injection
 //! - **Comprehensive inspection**: Opcode and source-level snapshot collection
 
-use alloy_primitives::{Address, TxHash};
+use alloy_primitives::{Address, Bytes, TxHash};
 use dashmap::DashMap;
 use edb_common::ForkResult;
 use eyre::Result;
@@ -317,29 +317,30 @@ impl Engine {
         // Step 2: Resolve artifacts — prefer local (codehash-keyed), fall back to Etherscan.
         send_progress!(2, 8, "Downloading verified source code for each contract...");
 
-        // Build a codehash map for every touched address. For contracts that
-        // were CREATEd inside this transaction the pre-tx database doesn't yet
-        // know about them, so we prefer the post-deploy codehash captured by
-        // the CallTracer (`in_tx_codehashes`) and only fall back to the
-        // database for addresses already-on-chain at tx-start.
-        let touched_with_codehashes = build_touched_codehashes(
+        // Build a `address → runtime bytecode` map for every touched address.
+        // For contracts CREATEd inside this transaction the pre-tx database
+        // doesn't yet know about them, so we prefer the post-deploy runtime
+        // captured by the CallTracer (`in_tx_runtime_code`) and only fall
+        // back to the database for addresses already-on-chain at tx-start.
+        //
+        // The foundry-style local-artifact lookup needs the actual bytes
+        // (not just the codehash) so it can mask immutables / linked-library
+        // offsets and fall back to fuzzy matching for metadata variance.
+        let touched_with_runtime = build_touched_runtime_bytes(
             &mut ctx,
             &replay_result.visited_addresses,
-            &replay_result.in_tx_codehashes,
+            &replay_result.in_tx_runtime_code,
         )?;
 
         // Resolve as many addresses as possible from the local artifact set.
         let mut artifacts = match local_artifacts.as_ref() {
-            Some(local) => orchestration::load_local_artifacts(&touched_with_codehashes, local),
+            Some(local) => orchestration::load_local_artifacts(&touched_with_runtime, local),
             None => HashMap::new(),
         };
 
         // For addresses still missing, fall back to Etherscan only when an upstream RPC exists.
-        let unmatched: Vec<Address> = touched_with_codehashes
-            .keys()
-            .filter(|a| !artifacts.contains_key(*a))
-            .copied()
-            .collect();
+        let unmatched: Vec<Address> =
+            touched_with_runtime.keys().filter(|a| !artifacts.contains_key(*a)).copied().collect();
         if !unmatched.is_empty() && self.config.has_upstream_rpc() {
             let etherscan_artifacts = orchestration::download_verified_source_code(
                 &self.config,
@@ -524,18 +525,21 @@ impl Engine {
     }
 }
 
-/// Build a map from touched contract address to its deployed-bytecode `code_hash`.
-/// Used to resolve artifacts from a [`crate::orchestration::LocalArtifactSet`].
+/// Build a map from touched contract address to its on-chain runtime bytecode.
+/// Used to resolve artifacts from a [`crate::orchestration::LocalArtifactSet`]
+/// via foundry-style masked / fuzzy matching.
 ///
-/// Contracts deployed inside the current transaction don't exist in the pre-tx
-/// database yet, so `db.basic(addr)` would return `KECCAK_EMPTY`. For those
-/// addresses we use the post-deploy codehash captured by the [`CallTracer`]
-/// during replay (`in_tx_codehashes`).
-fn build_touched_codehashes<DB>(
+/// For contracts CREATEd inside this transaction the pre-tx database doesn't
+/// yet know about them, so we prefer the post-deploy runtime captured by the
+/// [`CallTracer`] during replay (`in_tx_runtime_code`). For addresses that
+/// already exist in the pre-tx state we issue a `db.basic` to get the
+/// `code_hash`, then resolve the code via `db.code_by_hash`. Addresses with
+/// no code (EOAs, addresses with empty code) are skipped.
+fn build_touched_runtime_bytes<DB>(
     ctx: &mut edb_common::EdbContext<DB>,
     visited_addresses: &HashMap<Address, bool>,
-    in_tx_codehashes: &HashMap<Address, alloy_primitives::B256>,
-) -> Result<HashMap<Address, alloy_primitives::B256>>
+    in_tx_runtime_code: &HashMap<Address, Bytes>,
+) -> Result<HashMap<Address, Bytes>>
 where
     DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
     <CacheDB<DB> as Database>::Error: Clone + Send + Sync,
@@ -543,8 +547,8 @@ where
 {
     let mut out = HashMap::new();
     for addr in visited_addresses.keys() {
-        if let Some(ch) = in_tx_codehashes.get(addr) {
-            out.insert(*addr, *ch);
+        if let Some(code) = in_tx_runtime_code.get(addr) {
+            out.insert(*addr, code.clone());
             continue;
         }
         let info = ctx
@@ -552,7 +556,31 @@ where
             .basic(*addr)
             .map_err(|e| eyre::eyre!("db.basic({addr}): {e:?}"))?
             .unwrap_or_default();
-        out.insert(*addr, info.code_hash);
+        // Fetch the bytecode for the address. `info.code` is populated only
+        // when the underlying DB eagerly attached it; otherwise we resolve
+        // by code_hash. Either way, skip EOAs / empty-code addresses — they
+        // have nothing for the local-artifact matcher to chew on.
+        if info.code_hash == revm::primitives::KECCAK_EMPTY {
+            continue;
+        }
+        let code = if let Some(bc) = info.code {
+            Bytes::copy_from_slice(bc.original_byte_slice())
+        } else {
+            match ctx.db_mut().code_by_hash(info.code_hash) {
+                Ok(bc) => Bytes::copy_from_slice(bc.original_byte_slice()),
+                Err(e) => {
+                    tracing::debug!(
+                        target: "edb::engine::core",
+                        "code_by_hash({addr}, {:?}) failed: {e:?}",
+                        info.code_hash
+                    );
+                    continue;
+                }
+            }
+        };
+        if !code.is_empty() {
+            out.insert(*addr, code);
+        }
     }
     Ok(out)
 }
