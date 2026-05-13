@@ -95,6 +95,8 @@ cheatcode) before retrying.
 | `vm.getBlockNumber() returns (uint256)` | Returns the current `block.number`. Useful after `vm.roll` since solc caches `block.number` as a constant within a single transaction body. |
 | `vm.setBlockhash(uint256 blockNumber, bytes32 blockHash)` | Installs a `BLOCKHASH` override at `blockNumber` by writing into CacheDB's `block_hashes` cache. Rejects `blockNumber > u64::MAX` and `blockNumber > block.number` (matching foundry's `<=` semantics). |
 | `vm.readLine(string path) returns (string)` | Opens the file (lazily, cached per-path), advances by one line per call, strips the trailing `\n` / `\r\n`, and returns `""` at EOF. Subsequent calls to the same path continue from the previous cursor. Paths are canonicalized against `project_root`; absolute paths and `..` escapes are rejected. |
+| `vm.signP256(uint256 privateKey, bytes32 digest) returns (bytes32 r, bytes32 s)` | NIST P-256 (secp256r1) ECDSA over the 32-byte pre-hashed digest (signed AS-IS via `sign_prehash`). The returned `s` is low-half normalized (matches foundry's `normalize_s().unwrap_or(signature)`). Rejects `sk == 0` and `sk >= n` with a clear message. |
+| `vm.publicKeyP256(uint256 privateKey) returns (uint256 x, uint256 y)` | Derives the uncompressed P-256 public point. Returns ABI-encoded `(x, y)` as two 32-byte big-endian uint256 words. Same private-key validation as `vm.signP256`. |
 | `vm.prank(address)` | The next out-of-test call uses the given `msg.sender`. |
 | `vm.startPrank(address)` | All subsequent calls at this depth use the given `msg.sender` until `stopPrank`. |
 | `vm.startPrank(address, address)` | Like the 1-arg form, but also overrides `tx.origin` for the prank scope. The original `tx.origin` is restored on `stopPrank`. |

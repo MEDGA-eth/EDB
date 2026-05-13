@@ -1556,3 +1556,59 @@ async fn cheats_read_line_sequential_and_eof() -> Result<()> {
     let _ = session.shutdown();
     Ok(())
 }
+
+/// `vm.publicKeyP256(1)` returns the FIPS 186-4 P-256 generator point —
+/// the public key for private key 1.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn crypto_public_key_p256_sk_one_matches_generator() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Crypto::testPublicKeyP256SkOneMatchesGenerator",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    assert!(
+        !trace_has_revert(&trace),
+        "vm.publicKeyP256(1) didn't match the P-256 generator: {trace:#?}",
+    );
+    for needle in
+        ["vm.publicKeyP256(1) X coordinate wrong", "vm.publicKeyP256(1) Y coordinate wrong"]
+    {
+        assert!(!trace_revert_contains(&trace, needle), "{needle} require fired: {trace:#?}");
+    }
+    let _ = session.shutdown();
+    Ok(())
+}
+
+/// `vm.signP256(sk, digest)` returns a 64-byte (r, s) signature with `s`
+/// low-half-normalized (matching foundry's `normalize_s()` semantics).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn crypto_sign_p256_returns_canonical_low_s_signature() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Crypto::testSignP256ReturnsCanonicalLowSSignature",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    assert!(
+        !trace_has_revert(&trace),
+        "vm.signP256 didn't return a canonical low-s signature: {trace:#?}",
+    );
+    for needle in ["vm.signP256 returned r=0", "vm.signP256 returned high-s signature"] {
+        assert!(!trace_revert_contains(&trace, needle), "{needle} require fired: {trace:#?}");
+    }
+    let _ = session.shutdown();
+    Ok(())
+}

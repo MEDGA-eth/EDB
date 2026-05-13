@@ -2342,6 +2342,7 @@ dependencies = [
  "foundry-compilers",
  "foundry-config",
  "futures",
+ "p256",
  "pathdiff",
  "predicates",
  "reqwest 0.13.3",

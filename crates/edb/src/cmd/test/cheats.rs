@@ -116,6 +116,10 @@ const SEL_PARSE_JSON_ADDRESS: [u8; 4] = [0x1e, 0x19, 0xe6, 0x57]; // parseJsonAd
 const SEL_ADDR: [u8; 4] = [0xff, 0xa1, 0x86, 0x49]; // addr(uint256)
 const SEL_SIGN: [u8; 4] = [0xe3, 0x41, 0xea, 0xa4]; // sign(uint256,bytes32)
 
+// NIST P-256 (secp256r1) cheatcodes — backed by the `p256` crate.
+const SEL_SIGN_P256: [u8; 4] = [0x83, 0x21, 0x1b, 0x40]; // signP256(uint256,bytes32)
+const SEL_PUBLIC_KEY_P256: [u8; 4] = [0xc4, 0x53, 0x94, 0x9e]; // publicKeyP256(uint256)
+
 // Assertion cheatcodes (forge-std StdAssertions → vm.assertEq / assertNe / etc.)
 // All selectors verified by keccak256 of the canonical ABI signature.
 const SEL_ASSERT_EQ_U256: [u8; 4] = [0x98, 0x29, 0x6c, 0x54]; // assertEq(uint256,uint256)
@@ -321,6 +325,9 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0x53, 0x14, 0xb5, 0x4a], "setBlockhash"),   // setBlockhash(uint256,bytes32)
     // --- Supported: filesystem read (sandboxed to project_root) ----------
     (&[0x70, 0xf5, 0x57, 0x28], "readLine"), // readLine(string)
+    // --- Supported: NIST P-256 (secp256r1) ECDSA via `p256` crate --------
+    (&[0x83, 0x21, 0x1b, 0x40], "signP256"), // signP256(uint256,bytes32)
+    (&[0xc4, 0x53, 0x94, 0x9e], "publicKeyP256"), // publicKeyP256(uint256)
     // --- Explicitly rejected in EDB v1 ---
     (&[0x2f, 0x10, 0x3f, 0x22], "activeFork"), // activeFork()
     (&[0xaf, 0xc9, 0x80, 0x40], "broadcast"),  // broadcast()
@@ -1288,6 +1295,8 @@ where
             // Crypto cheatcodes
             SEL_ADDR => self.cheat_addr(inputs, args),
             SEL_SIGN => self.cheat_sign(inputs, args),
+            SEL_SIGN_P256 => self.cheat_sign_p256(inputs, args),
+            SEL_PUBLIC_KEY_P256 => self.cheat_public_key_p256(inputs, args),
 
             // vm.rollFork(uint256) — single-arg: updates block.number only (Task 7)
             sel if sel == SEL_ROLL_FORK_UINT => self.cheat_roll_fork_single(ctx, inputs, args),
@@ -2427,6 +2436,90 @@ where
         }
     }
 
+    /// `vm.signP256(uint256 privateKey, bytes32 digest) returns (bytes32 r, bytes32 s)` —
+    /// NIST P-256 (secp256r1) ECDSA over the 32-byte pre-hashed digest. The
+    /// digest is signed AS-IS via `sign_prehash` (no extra hashing applied).
+    ///
+    /// Foundry normalizes `s` to the low half of the curve order before
+    /// returning (`signature.normalize_s().unwrap_or(signature)`), which makes
+    /// downstream EIP-7212-style verifiers happy. We follow the same
+    /// convention here.
+    fn cheat_sign_p256(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        use p256::ecdsa::{
+            Signature as P256Signature, SigningKey, signature::hazmat::PrehashSigner,
+        };
+        let Some(sk) = read_u256(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.signP256: bad uint256 arg"));
+        };
+        let Some(digest) = read_b256(args, 1) else {
+            return revert_with(inputs, encode_error_string("vm.signP256: bad bytes32 arg"));
+        };
+        if let Err(msg) = validate_p256_private_key(&sk) {
+            return revert_with(inputs, encode_error_string(&msg));
+        }
+        let sk_bytes: [u8; 32] = sk.to_be_bytes();
+        let Ok(signing_key) = SigningKey::from_bytes((&sk_bytes).into()) else {
+            return revert_with(inputs, encode_error_string("vm.signP256: invalid private key"));
+        };
+        let signature: P256Signature = match signing_key.sign_prehash(digest.as_slice()) {
+            Ok(sig) => sig,
+            Err(_) => {
+                return revert_with(inputs, encode_error_string("vm.signP256: signing failed"));
+            }
+        };
+        // Low-s normalization matches foundry's behavior so downstream verifiers
+        // (typically EIP-7212-style) see a canonical signature.
+        let signature = signature.normalize_s().unwrap_or(signature);
+        let r_bytes: [u8; 32] = signature.r().to_bytes().into();
+        let s_bytes: [u8; 32] = signature.s().to_bytes().into();
+        // ABI-encode as `(bytes32 r, bytes32 s)` — two consecutive 32-byte slots.
+        let mut out = [0u8; 64];
+        out[..32].copy_from_slice(&r_bytes);
+        out[32..].copy_from_slice(&s_bytes);
+        ok_return(inputs, Bytes::copy_from_slice(&out))
+    }
+
+    /// `vm.publicKeyP256(uint256 privateKey) returns (uint256 x, uint256 y)` —
+    /// derives the uncompressed P-256 (secp256r1) public point from the
+    /// private key. Returns ABI-encoded `(x, y)` as two 32-byte big-endian
+    /// uint256 words (matching foundry's `(U256, U256).abi_encode()`).
+    fn cheat_public_key_p256(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        use p256::ecdsa::SigningKey;
+        let Some(sk) = read_u256(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.publicKeyP256: bad uint256 arg"));
+        };
+        if let Err(msg) = validate_p256_private_key(&sk) {
+            return revert_with(inputs, encode_error_string(&msg));
+        }
+        let sk_bytes: [u8; 32] = sk.to_be_bytes();
+        let Ok(signing_key) = SigningKey::from_bytes((&sk_bytes).into()) else {
+            return revert_with(
+                inputs,
+                encode_error_string("vm.publicKeyP256: invalid private key"),
+            );
+        };
+        let verifying_key = signing_key.verifying_key();
+        let encoded_point = verifying_key.to_encoded_point(false); // uncompressed
+        // The encoded point is `04 || X (32 bytes) || Y (32 bytes)`; x()/y()
+        // return the 32-byte coordinates only.
+        let Some(x) = encoded_point.x() else {
+            return revert_with(
+                inputs,
+                encode_error_string("vm.publicKeyP256: missing X coordinate"),
+            );
+        };
+        let Some(y) = encoded_point.y() else {
+            return revert_with(
+                inputs,
+                encode_error_string("vm.publicKeyP256: missing Y coordinate"),
+            );
+        };
+        let mut out = [0u8; 64];
+        out[..32].copy_from_slice(x);
+        out[32..].copy_from_slice(y);
+        ok_return(inputs, Bytes::copy_from_slice(&out))
+    }
+
     // --- Labels --------------------------------------------------------------
 
     fn cheat_label(
@@ -3362,6 +3455,32 @@ fn resolve_sandboxed_path(
     Ok(canon)
 }
 
+/// NIST P-256 curve order n, as a 32-byte big-endian constant.
+/// `n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551`
+/// Mirrors `p256::NistP256::ORDER` but doesn't pull the `PrimeCurve` trait
+/// import into module scope.
+const P256_CURVE_ORDER_BE: [u8; 32] = [
+    0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xbc, 0xe6, 0xfa, 0xad, 0xa7, 0x17, 0x9e, 0x84, 0xf3, 0xb9, 0xca, 0xc2, 0xfc, 0x63, 0x25, 0x51,
+];
+
+/// Validate that `sk` is a usable P-256 private key: nonzero and strictly
+/// less than the curve order. Mirrors foundry's `validate_private_key<P256>`
+/// preflight so we return the same friendly message instead of a less-clear
+/// "invalid private key" from the crate.
+fn validate_p256_private_key(sk: &U256) -> Result<(), String> {
+    if *sk == U256::ZERO {
+        return Err("vm.signP256/publicKeyP256: private key cannot be 0".to_string());
+    }
+    let order = U256::from_be_bytes(P256_CURVE_ORDER_BE);
+    if *sk >= order {
+        return Err(format!(
+            "vm.signP256/publicKeyP256: private key must be less than the P-256 curve order ({order})"
+        ));
+    }
+    Ok(())
+}
+
 // ----------------------------------------------------------------------------
 // ABI decoding helpers (32-byte head per arg)
 //
@@ -3861,6 +3980,11 @@ mod tests {
         // If one of these silently flips, the dispatch arm goes dead.
         assert_eq!(sel("addr(uint256)"), SEL_ADDR);
         assert_eq!(sel("sign(uint256,bytes32)"), SEL_SIGN);
+    }
+    #[test]
+    fn p256_selectors_match_canonical() {
+        assert_eq!(sel("signP256(uint256,bytes32)"), SEL_SIGN_P256);
+        assert_eq!(sel("publicKeyP256(uint256)"), SEL_PUBLIC_KEY_P256);
     }
     #[test]
     fn selector_label() {
@@ -5102,6 +5226,117 @@ mod tests {
         assert!(
             msg.contains("invalid private key"),
             "expected 'invalid private key' message, got: {msg}",
+        );
+    }
+
+    // --- vm.publicKeyP256 / vm.signP256 behavior -----------------------------
+
+    /// `vm.publicKeyP256(1)` must return the well-known P-256 generator
+    /// `G = (Gx, Gy)` (the public key for the private key `1`). These
+    /// constants are taken from FIPS 186-4 §D.1.2.3:
+    /// - `Gx = 0x6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296`
+    /// - `Gy = 0x4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5`
+    #[test]
+    fn cheat_public_key_p256_sk1_matches_generator() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..64);
+
+        let mut args = [0u8; 32];
+        args[31] = 1;
+        let out = cheats.cheat_public_key_p256(&inputs, &args);
+        assert!(
+            matches!(out.result.result, InstructionResult::Return),
+            "vm.publicKeyP256(1) should succeed, got {:?}",
+            out.result.result,
+        );
+        assert_eq!(out.result.output.len(), 64, "(x, y) must be 64 bytes (2 × 32-byte slots)");
+
+        let expected_gx: [u8; 32] = alloy_primitives::hex::decode(
+            "6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296",
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+        let expected_gy: [u8; 32] = alloy_primitives::hex::decode(
+            "4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5",
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+        assert_eq!(&out.result.output[..32], &expected_gx, "X coordinate mismatch");
+        assert_eq!(&out.result.output[32..], &expected_gy, "Y coordinate mismatch");
+    }
+
+    /// `vm.publicKeyP256(0)` must revert — zero is not a valid P-256 private
+    /// key (the order-bound is `0 < sk < n`).
+    #[test]
+    fn cheat_public_key_p256_zero_key_reverts() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..64);
+        let args = [0u8; 32];
+        let out = cheats.cheat_public_key_p256(&inputs, &args);
+        assert!(matches!(out.result.result, InstructionResult::Revert));
+        let msg = decode_error_payload(&out.result.output).expect("Error(string) payload");
+        assert!(
+            msg.contains("private key cannot be 0"),
+            "expected 'private key cannot be 0' message, got: {msg}",
+        );
+    }
+
+    /// `vm.signP256(sk, digest)` must produce a signature whose `r/s` slots are
+    /// 64 bytes total, with `s` low-half normalized (s <= n/2). We don't pin
+    /// exact bytes (deterministic-k k might change across crate revs) — we
+    /// check the shape + low-s invariant.
+    #[test]
+    fn cheat_sign_p256_returns_canonical_low_s_signature() {
+        use alloy_primitives::keccak256;
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..64);
+
+        let digest = keccak256(b"hello edb p256");
+        let mut args = Vec::with_capacity(64);
+        let mut sk_word = [0u8; 32];
+        sk_word[31] = 1;
+        args.extend_from_slice(&sk_word);
+        args.extend_from_slice(digest.as_slice());
+
+        let out = cheats.cheat_sign_p256(&inputs, &args);
+        assert!(
+            matches!(out.result.result, InstructionResult::Return),
+            "vm.signP256 should succeed for sk=1, got {:?}",
+            out.result.result,
+        );
+        assert_eq!(out.result.output.len(), 64, "(r, s) must be 64 bytes (2 × 32-byte slots)");
+
+        // Low-s: the integer in slot 1 (s) must be <= n/2. P-256 n/2 is well
+        // below 2^255, so the high bit of `s` must be clear.
+        let s_bytes = &out.result.output[32..];
+        let n_half = U256::from_be_bytes(P256_CURVE_ORDER_BE) >> 1;
+        let s = U256::from_be_slice(s_bytes);
+        assert!(s <= n_half, "signature s must be low-half-normalized; got s = {s}");
+    }
+
+    /// `vm.signP256(0, ...)` rejects the zero secret key the same way
+    /// `vm.publicKeyP256(0)` does.
+    #[test]
+    fn cheat_sign_p256_zero_key_reverts() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..64);
+        let args = [0u8; 64]; // sk = 0, digest = 0
+        let out = cheats.cheat_sign_p256(&inputs, &args);
+        assert!(matches!(out.result.result, InstructionResult::Revert));
+        let msg = decode_error_payload(&out.result.output).expect("Error(string) payload");
+        assert!(
+            msg.contains("private key cannot be 0"),
+            "expected 'private key cannot be 0' message, got: {msg}",
         );
     }
 

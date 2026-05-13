@@ -43,6 +43,10 @@ alloy-rpc-types = { workspace = true, features = ["eth"] }
 alloy-signer.workspace = true
 alloy-signer-local.workspace = true
 
+# vm.signP256 / vm.publicKeyP256 — NIST P-256 (secp256r1) ECDSA.
+# Pure-Rust; tracks the same RustCrypto ecosystem as k256.
+p256.workspace = true
+
 # foundry
 foundry-config.workspace = true
 foundry-compilers.workspace = true

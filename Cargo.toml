@@ -125,6 +125,11 @@ alloy-transport-ipc = { version = "2.0.1", default-features = false }
 alloy-transport-ws = { version = "2.0.1", default-features = false }
 alloy-trie = "0.9"
 
+# NIST P-256 (secp256r1) ECDSA. Used by `vm.signP256` / `vm.publicKeyP256`.
+# Pure-Rust; no native crypto deps. `ecdsa` feature pulls in the SigningKey
+# / signature::Signer trait; `default-features = false` keeps build lean.
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+
 # foundry - aligned with Foundry's current workspace requirements
 foundry-block-explorers = { version = "0.23.1", default-features = false }
 foundry-compilers = { version = "0.20.0", default-features = false, features = [
