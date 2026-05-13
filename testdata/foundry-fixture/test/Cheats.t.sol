@@ -58,6 +58,17 @@ contract Cheats is Test {
         );
     }
 
+    /// `vm.snapshotValue` (both overloads) is a no-op stub in EDB v1 — it
+    /// must not revert. Foundry's benchmark recorder is not wired up; we just
+    /// confirm the call sequence flows through and the test returns normally.
+    function testSnapshotValueStubsDoNotRevert() public {
+        vm.snapshotValue("a", uint256(123));
+        vm.snapshotValue("group", "b", uint256(456));
+        // Hit each overload more than once to also exercise the warn_once
+        // deduplication path.
+        vm.snapshotValue("a", uint256(789));
+    }
+
     function testGasMeteringStubs() public {
         // pauseGasMetering / resumeGasMetering are stubs — just confirm they
         // don't revert.
@@ -120,6 +131,34 @@ contract Cheats is Test {
         (address afterSender, address afterOrigin) = PrankWitness(callee).observe();
         require(afterSender != newSender, "msg.sender stuck after stopPrank");
         require(afterOrigin != newOrigin, "tx.origin stuck after stopPrank");
+    }
+
+    /// Stacked 2-arg startPrank: two consecutive `vm.startPrank(sender,
+    /// origin)` calls without an intervening `vm.stopPrank` must NOT cause
+    /// the second override to win on restore — `vm.stopPrank` should
+    /// restore back to the GENUINE pre-prank-A tx.origin, not to
+    /// origin-A. The handler pins `saved_tx_origin = Some(ctx.tx.caller)`
+    /// only on the FIRST 2-arg startPrank in scope; this fixture pins
+    /// that invariant end-to-end.
+    function testStartPrankStackedRestoresOriginalOrigin() public {
+        address payable callee = payable(address(new PrankWitness()));
+        address originA = address(0xAAAA);
+        address originB = address(0xBBBB);
+        (, address preOrigin) = PrankWitness(callee).observe();
+
+        vm.startPrank(address(0xAAA1), originA);
+        // Second startPrank without intervening stopPrank — origin should
+        // shift to originB, but the SAVED slot must still hold preOrigin.
+        vm.startPrank(address(0xBBB1), originB);
+        (, address midOrigin) = PrankWitness(callee).observe();
+        require(midOrigin == originB, "second startPrank did not override tx.origin");
+        vm.stopPrank();
+
+        // After a single stopPrank, both the prank stack AND the tx.origin
+        // save are consumed. tx.origin must be back to preOrigin (NOT
+        // originA — that would be the bug we're guarding against).
+        (, address afterOrigin) = PrankWitness(callee).observe();
+        require(afterOrigin == preOrigin, "stacked stopPrank restored to intermediate origin");
     }
 }
 

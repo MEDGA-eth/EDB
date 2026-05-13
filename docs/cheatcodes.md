@@ -151,6 +151,21 @@ All selectors are verified at test time against
 (`all_assertion_selectors_match_canonical`,
 `all_gas_snapshot_selectors_match_canonical`).
 
+### Benchmark-value snapshot stubs
+
+Two selectors recorded as **no-op stubs** so tests that record benchmark
+values (e.g. tracked metrics, expected post-conditions in solady's
+benchmark suite) don't hard-abort. EDB is not a benchmark recorder in
+v1; these calls succeed silently. A first-time `tracing::warn!` fires
+once per `edb test` run under the `snapshotValue` name.
+
+- `vm.snapshotValue(string,uint256)`
+- `vm.snapshotValue(string,string,uint256)`
+
+Selectors verified against `keccak256(canonical_signature)[..4]` in
+`all_snapshot_value_selectors_match_canonical` (see
+`crates/edb/src/cmd/test/cheats.rs`).
+
 ## Partial support (warns at runtime)
 
 These cheatcodes are SUPPORTED but with limitations. EDB emits a one-time

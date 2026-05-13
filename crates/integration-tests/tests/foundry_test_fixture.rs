@@ -337,6 +337,40 @@ async fn cheats_env_or_returns_fallback() -> Result<()> {
     Ok(())
 }
 
+/// `vm.snapshotValue` (both 2-arg and 3-arg overloads) is a silent stub — EDB
+/// is not a benchmark recorder. The test must not abort during prepare (the
+/// cheatcode is catalogued as Supported) and the top-level frame must succeed.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_snapshot_value_stubs_dont_revert() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testSnapshotValueStubsDoNotRevert",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(!trace.is_empty(), "trace was empty for Cheats::testSnapshotValueStubsDoNotRevert");
+
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry for Cheats::testSnapshotValueStubsDoNotRevert");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success for snapshotValue stubs; got: {:?}",
+        top.result,
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_fixture)]
 async fn cheats_gas_metering_stubs_dont_revert() -> Result<()> {
@@ -1103,6 +1137,38 @@ async fn cheats_start_prank_with_origin_overrides_both() -> Result<()> {
         matches!(top.result, Some(CallResult::Success { .. })),
         "top-level frame should succeed when startPrank(addr,addr) overrides both \
          msg.sender and tx.origin; got: {:?}",
+        top.result,
+    );
+    let _ = session.shutdown();
+    Ok(())
+}
+
+/// Stacked-prank regression (R3-6 from audit round 3): two consecutive
+/// `vm.startPrank(_, originA); vm.startPrank(_, originB);` without an
+/// intervening `vm.stopPrank` must NOT cause `stopPrank` to restore
+/// `tx.origin` to `originA` — the genuine pre-prank-A origin must
+/// survive. The handler pins `saved_tx_origin` only on the FIRST 2-arg
+/// startPrank in scope; this end-to-end test locks that invariant down.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_start_prank_stacked_restores_original_origin() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testStartPrankStackedRestoresOriginalOrigin",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    assert!(!trace.is_empty(), "trace was empty for stacked-prank test");
+    let top = trace.iter().find(|e| e.depth == 0).expect("no depth-0 entry for stacked-prank test");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "stacked startPrank(addr,addr) must restore the GENUINE pre-prank-A \
+         origin on stopPrank; got: {:?}",
         top.result,
     );
     let _ = session.shutdown();

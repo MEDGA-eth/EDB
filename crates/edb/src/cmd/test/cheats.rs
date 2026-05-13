@@ -134,6 +134,13 @@ const SEL_STOP_SNAPSHOT_GAS_STR: [u8; 4] = [0x77, 0x3b, 0x28, 0x05]; // stopSnap
 const SEL_STOP_SNAPSHOT_GAS_2STR: [u8; 4] = [0x0c, 0x9d, 0xb7, 0x07]; // stopSnapshotGas(string,string)
 const SEL_SNAPSHOT_GAS_LAST_CALL_STR: [u8; 4] = [0xdd, 0x9f, 0xca, 0x12]; // snapshotGasLastCall(string)
 const SEL_SNAPSHOT_GAS_LAST_CALL_2STR: [u8; 4] = [0x20, 0x0c, 0x67, 0x72]; // snapshotGasLastCall(string,string)
+// Benchmark-value snapshot stubs — same shape as the gas-snapshot family:
+// EDB does not record benchmark snapshots, so we accept these as no-ops.
+// Foundry defines exactly two overloads in `cheatcodes.json` (no `bytes32`
+// variants in v1.7.x); verified via `keccak256(sig)[..4]` in the
+// `all_snapshot_value_selectors_match_canonical` unit test.
+const SEL_SNAPSHOT_VALUE_2: [u8; 4] = [0x51, 0xdb, 0x80, 0x5a]; // snapshotValue(string,uint256)
+const SEL_SNAPSHOT_VALUE_3: [u8; 4] = [0x6d, 0x2b, 0x27, 0xd8]; // snapshotValue(string,string,uint256)
 
 // Explicitly rejected — multi-fork / state-snapshot / scripting / fs+ffi.
 const SEL_SNAPSHOT_STATE: [u8; 4] = [0x9c, 0xd2, 0x38, 0x35]; // snapshotState()
@@ -245,6 +252,11 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0x0c, 0x9d, 0xb7, 0x07], "stopSnapshotGas"),  // stopSnapshotGas(string,string)
     (&[0xdd, 0x9f, 0xca, 0x12], "snapshotGasLastCall"), // snapshotGasLastCall(string)
     (&[0x20, 0x0c, 0x67, 0x72], "snapshotGasLastCall"), // snapshotGasLastCall(string,string)
+    // --- Supported: benchmark-value snapshot stubs (silent success + one-time warn) ---
+    // EDB does not record benchmark snapshots in v1; these calls succeed
+    // silently. Same approach as the gas-snapshot family above.
+    (&[0x51, 0xdb, 0x80, 0x5a], "snapshotValue"), // snapshotValue(string,uint256)
+    (&[0x6d, 0x2b, 0x27, 0xd8], "snapshotValue"), // snapshotValue(string,string,uint256)
     // --- Explicitly rejected in EDB v1 ---
     (&[0x2f, 0x10, 0x3f, 0x22], "activeFork"), // activeFork()
     (&[0xaf, 0xc9, 0x80, 0x40], "broadcast"),  // broadcast()
@@ -1295,6 +1307,11 @@ where
                 };
                 self.cheat_gas_snapshot_stub(inputs, name)
             }
+
+            // Benchmark-value snapshot stubs — EDB is not a benchmark recorder
+            // in v1; both `snapshotValue` overloads succeed as no-ops with a
+            // one-time warning. Same pattern as the gas-snapshot family.
+            SEL_SNAPSHOT_VALUE_2 | SEL_SNAPSHOT_VALUE_3 => self.cheat_snapshot_value_stub(inputs),
 
             _ => {
                 let hex = alloy_primitives::hex::encode(selector);
@@ -2491,6 +2508,19 @@ where
         );
         ok_return(inputs, Bytes::new())
     }
+
+    /// Benchmark-value snapshot stub: `vm.snapshotValue(string,uint256)` and
+    /// `vm.snapshotValue(string,string,uint256)`. EDB does not record benchmark
+    /// snapshots in v1; the call succeeds silently. Both overloads share the
+    /// same handler — the only side effect is the one-time warn under the
+    /// `snapshotValue` name.
+    fn cheat_snapshot_value_stub(&mut self, inputs: &CallInputs) -> CallOutcome {
+        self.warn_once(
+            "snapshotValue",
+            "EDB does not record benchmark snapshots; the call succeeds silently.",
+        );
+        ok_return(inputs, Bytes::new())
+    }
 }
 
 /// Argument-shape selector for the four supported `vm.expectEmit` overloads.
@@ -3037,6 +3067,22 @@ mod tests {
         }
     }
 
+    /// Pin the two `vm.snapshotValue` selectors against `keccak256(sig)[..4]`.
+    /// Cross-referenced against foundry's `crates/cheatcodes/assets/cheatcodes.json`
+    /// (v1.7.x), which defines exactly two overloads. Any drift between the
+    /// signature and the SEL_* constant will trip this test.
+    #[test]
+    fn all_snapshot_value_selectors_match_canonical() {
+        let cases: &[(&str, [u8; 4])] = &[
+            ("snapshotValue(string,uint256)", SEL_SNAPSHOT_VALUE_2),
+            ("snapshotValue(string,string,uint256)", SEL_SNAPSHOT_VALUE_3),
+        ];
+        assert_eq!(cases.len(), 2, "foundry v1.7 defines exactly 2 snapshotValue overloads");
+        for (sig, expected) in cases {
+            assert_eq!(sel(sig), *expected, "selector mismatch for {sig}");
+        }
+    }
+
     /// C2-3 (Round 2 audit): verify the freshly-cataloged dynamic/array/decimal
     /// assertion overloads keep their selector literals in lockstep with
     /// `keccak256(canonical_sig)[..4]`. Without this, a future "fix" that
@@ -3265,6 +3311,37 @@ mod tests {
         assert!(
             KNOWN_CHEATCODES.iter().find(|(s, _)| **s == bogus).is_none(),
             "0xdeadbeef should not be in KNOWN_CHEATCODES"
+        );
+    }
+
+    /// Regression (R3-8 from audit round 3): the supported single-arg
+    /// `vm.rollFork(uint256)` (selector `0xd9bbf3a1`) MUST have an
+    /// explicit dispatch arm BEFORE the catalog fall-through. The catalog
+    /// itself lists `"rollFork"` under the rejected name set (because the
+    /// cross-fork overloads are rejected and share that name), so if a
+    /// future refactor accidentally removes the explicit arm, the
+    /// supported variant would re-classify as `Rejected` with no test
+    /// catching it. This guard verifies the routing by name+category and
+    /// also pins the constant so a typo in `SEL_ROLL_FORK_UINT` would
+    /// surface.
+    #[test]
+    fn supported_roll_fork_uint_does_not_route_through_catalog() {
+        // SEL_ROLL_FORK_UINT must match the canonical keccak.
+        assert_eq!(sel("rollFork(uint256)"), SEL_ROLL_FORK_UINT);
+        // The catalog entry for this exact selector has name "rollFork",
+        // which `is_explicitly_rejected_name` says is rejected — so if the
+        // explicit arm were removed, the fall-through would record this
+        // call as Rejected. We assert the precondition (catalog says
+        // rejected) so future refactors can see the booby-trap clearly.
+        let by_sel = KNOWN_CHEATCODES.iter().find(|(s, _)| **s == SEL_ROLL_FORK_UINT);
+        assert!(by_sel.is_some(), "rollFork(uint256) selector must be in KNOWN_CHEATCODES");
+        let (_, name) = by_sel.unwrap();
+        assert_eq!(*name, "rollFork");
+        assert!(
+            is_explicitly_rejected_name(name),
+            "the rollFork name is bucketed with the rejected family — the supported \
+             single-arg overload depends on the explicit SEL_ROLL_FORK_UINT dispatch \
+             arm in dispatch() to bypass the catalog fall-through"
         );
     }
 
