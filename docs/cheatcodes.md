@@ -26,11 +26,11 @@ separate concern).
 | Project | Total tests | Eligible | % |
 |---|---:|---:|---:|
 | forge-template | 1 | 1 | 100% |
-| solady | 781 | 735 | 94% |
-| uniswap-v4-core | 442 | 413 | 93% |
+| solady | 781 | 770 | 99% |
+| uniswap-v4-core | 442 | 442 | 100% |
 | solmate | 151 | 151 | 100% |
 | prb-math | 157 | 157 | 100% |
-| **overall** | **1,532** | **1,457** | **95%** |
+| **overall** | **1,532** | **1,521** | **99%** |
 
 `testFail*` legacy names are excluded (forge dropped support; EDB
 follows). Re-run with `./scripts/edb-static-cheatcode-coverage.py`
@@ -41,18 +41,16 @@ cheatcode at least once) are:
 
 | Cheatcode | Blocks # tests |
 |---|---:|
-| `vm.toString` | 29 |
-| `vm.txGasPrice` | 22 |
-| `vm.fee` | 16 |
-| `vm.parseJson*` (4 overloads) | 24 (combined) |
 | `vm.signP256` / `vm.publicKeyP256` | 12 (combined) |
 | `vm.readLine` | 6 |
 | `vm.getNonce` | 3 |
+| `vm.setBlockhash` / `vm.getRawBlockHeader` / `vm.getBlockNumber` | 3 (combined) |
 
-(`vm.snapshotValue` and `vm.getDeployedCode` previously topped this
-list — the first as a no-op stub, the second as a real implementation
-backed by EDB's `LocalArtifactSet`. Together they unblocked ~80
-real-world tests.)
+(`vm.toString` (29), `vm.parseJson*` (24 combined), `vm.txGasPrice`
+(22), `vm.fee` (16), `vm.snapshotValue`, and `vm.getDeployedCode`
+previously topped this list. The round-3 cheatcode batch landed all
+six families — together they unblocked ~140 real-world tests and
+moved the headline from 90% to 99%.)
 
 ## Quick start
 
