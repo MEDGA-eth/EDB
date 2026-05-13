@@ -11,6 +11,23 @@ contract Cheats is Test {
         require(block.timestamp == 1234567, "vm.warp did not apply");
     }
 
+    /// `vm.fee(uint256)` — mutate `block.basefee`. Subsequent `BASEFEE`
+    /// opcodes read the new value. We use `7 gwei` so the saturating
+    /// `u256 -> u64` conversion is exercised on a value safely inside
+    /// `u64::MAX`.
+    function testFee() public {
+        vm.fee(7 gwei);
+        require(block.basefee == 7 gwei, "vm.fee did not apply");
+    }
+
+    /// `vm.txGasPrice(uint256)` — mutate `tx.gasprice`. The next read of
+    /// `tx.gasprice` (which Solidity reads via the GASPRICE opcode) should
+    /// reflect the new value.
+    function testTxGasPrice() public {
+        vm.txGasPrice(123_456_789);
+        require(tx.gasprice == 123_456_789, "vm.txGasPrice did not apply");
+    }
+
     function testDeal() public {
         address payable a = payable(address(0xA11CE));
         vm.deal(a, 1 ether);

@@ -152,6 +152,65 @@ async fn cheats_deal_actually_intercepts() -> Result<()> {
     Ok(())
 }
 
+/// `vm.fee(uint256)` mutates `ctx.block.basefee`; the fixture test asserts
+/// `block.basefee == 7 gwei` after the call. If the cheatcode were a no-op
+/// (e.g. catalog says supported but dispatch missing), the require would fire
+/// and we'd see "vm.fee did not apply" in the revert payload.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_fee_actually_intercepts() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testFee",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(!trace_has_revert(&trace), "vm.fee didn't intercept; testFee reverted: {trace:#?}",);
+    assert!(
+        !trace_revert_contains(&trace, "vm.fee did not apply"),
+        "vm.fee didn't intercept; require fired: {trace:#?}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
+/// `vm.txGasPrice(uint256)` mutates `ctx.tx.gas_price`; the fixture test
+/// asserts `tx.gasprice == 123_456_789` after the call.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_tx_gas_price_actually_intercepts() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testTxGasPrice",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(
+        !trace_has_revert(&trace),
+        "vm.txGasPrice didn't intercept; testTxGasPrice reverted: {trace:#?}",
+    );
+    assert!(
+        !trace_revert_contains(&trace, "vm.txGasPrice did not apply"),
+        "vm.txGasPrice didn't intercept; require fired: {trace:#?}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[serial(foundry_fixture)]
 async fn cheats_expect_revert_rewrites_outcome() -> Result<()> {

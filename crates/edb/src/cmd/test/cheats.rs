@@ -81,6 +81,10 @@ const SEL_PAUSE_GAS_METERING: [u8; 4] = [0xd1, 0xa5, 0xb3, 0x6f]; // pauseGasMet
 const SEL_RESUME_GAS_METERING: [u8; 4] = [0x2b, 0xcd, 0x50, 0xe0]; // resumeGasMetering()
 const SEL_LAST_CALL_GAS: [u8; 4] = [0x2b, 0x58, 0x9b, 0x28]; // lastCallGas()
 
+// Block / tx env mutators (peers of vm.warp / vm.roll / vm.chainId).
+const SEL_FEE: [u8; 4] = [0x39, 0xb3, 0x7a, 0xb0]; // fee(uint256)            -> sets block.basefee
+const SEL_TX_GAS_PRICE: [u8; 4] = [0x48, 0xf5, 0x0c, 0x0f]; // txGasPrice(uint256)   -> sets tx.gas_price
+
 // Crypto cheatcodes (secp256k1 — backed by k256 via alloy-signer-local).
 const SEL_ADDR: [u8; 4] = [0xff, 0xa1, 0x86, 0x49]; // addr(uint256)
 const SEL_SIGN: [u8; 4] = [0xe3, 0x41, 0xea, 0xa4]; // sign(uint256,bytes32)
@@ -212,6 +216,7 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0xd1, 0x45, 0x73, 0x6c], "envOr"), // envOr(string,string)
     (&[0xf8, 0x77, 0xcb, 0x19], "envString"), // envString(string)
     (&[0xb4, 0xd6, 0xc7, 0x82], "etch"), // etch(address,bytes)
+    (&[0x39, 0xb3, 0x7a, 0xb0], "fee"),  // fee(uint256)             — sets block.basefee
     (&[0x44, 0x0e, 0xd1, 0x0d], "expectEmit"), // expectEmit()
     (&[0x86, 0xb9, 0x62, 0x0d], "expectEmit"), // expectEmit(address)
     (&[0x49, 0x1c, 0xc7, 0xc2], "expectEmit"), // expectEmit(bool,bool,bool,bool)
@@ -247,6 +252,7 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0x45, 0xb5, 0x60, 0x78], "startPrank"), // startPrank(address,address)
     (&[0x90, 0xc5, 0x01, 0x3b], "stopPrank"), // stopPrank()
     (&[0x70, 0xca, 0x10, 0xbb], "store"),    // store(address,bytes32,bytes32)
+    (&[0x48, 0xf5, 0x0c, 0x0f], "txGasPrice"), // txGasPrice(uint256) — sets tx.gas_price
     (&[0xe5, 0xd6, 0xbf, 0x02], "warp"),     // warp(uint256)
     // --- Supported: gas-snapshot stubs (silent success + one-time warn) ---
     // EDB is not a gas profiler in v1; these calls succeed without producing
@@ -1143,6 +1149,8 @@ where
             SEL_WARP => self.cheat_warp(ctx, inputs, args),
             SEL_ROLL => self.cheat_roll(ctx, inputs, args),
             SEL_CHAIN_ID => self.cheat_chain_id(ctx, inputs, args),
+            SEL_FEE => self.cheat_fee(ctx, inputs, args),
+            SEL_TX_GAS_PRICE => self.cheat_tx_gas_price(ctx, inputs, args),
             SEL_DEAL => self.cheat_deal(ctx, inputs, args),
             SEL_ETCH => self.cheat_etch(ctx, inputs, args),
             SEL_STORE => self.cheat_store(ctx, inputs, args),
@@ -1554,6 +1562,44 @@ where
             }
         };
         ctx.cfg.chain_id = chain_id;
+        ok_return(inputs, Bytes::new())
+    }
+
+    /// `vm.fee(uint256)` — set `block.basefee` for subsequent calls.
+    ///
+    /// REVM's [`BlockEnv::basefee`] is `u64` (post-EIP-1559 the network-level
+    /// basefee fits in u64 by construction; foundry's spec admits any
+    /// uint256 from solidity, but the eventual EIP-1559 enforcement caps the
+    /// effective value). We saturate to `u64::MAX` rather than rejecting so
+    /// that real-world tests that pass `type(uint256).max` as a "very high
+    /// fee" sentinel still work.
+    fn cheat_fee(
+        &mut self,
+        ctx: &mut edb_common::EdbContext<DB>,
+        inputs: &CallInputs,
+        args: &[u8],
+    ) -> CallOutcome {
+        let Some(value) = read_u256(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.fee: bad uint256 arg"));
+        };
+        ctx.block.basefee = value.try_into().unwrap_or(u64::MAX);
+        ok_return(inputs, Bytes::new())
+    }
+
+    /// `vm.txGasPrice(uint256)` — set `tx.gas_price` for subsequent calls.
+    ///
+    /// REVM's [`TxEnv::gas_price`] is `u128`; we saturate (rather than
+    /// reject) on overflow for the same reason as `vm.fee`.
+    fn cheat_tx_gas_price(
+        &mut self,
+        ctx: &mut edb_common::EdbContext<DB>,
+        inputs: &CallInputs,
+        args: &[u8],
+    ) -> CallOutcome {
+        let Some(value) = read_u256(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.txGasPrice: bad uint256 arg"));
+        };
+        ctx.tx.gas_price = value.try_into().unwrap_or(u128::MAX);
         ok_return(inputs, Bytes::new())
     }
 
@@ -2974,6 +3020,14 @@ mod tests {
     #[test]
     fn selector_chain_id() {
         assert_eq!(sel("chainId(uint256)"), SEL_CHAIN_ID);
+    }
+    #[test]
+    fn selector_fee() {
+        assert_eq!(sel("fee(uint256)"), SEL_FEE);
+    }
+    #[test]
+    fn selector_tx_gas_price() {
+        assert_eq!(sel("txGasPrice(uint256)"), SEL_TX_GAS_PRICE);
     }
     #[test]
     fn selector_deal() {
