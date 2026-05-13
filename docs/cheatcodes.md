@@ -12,6 +12,43 @@ we didn't embed `foundry-cheatcodes`, the multi-pass instrumentation
 constraints, etc.), see
 `docs/superpowers/specs/2026-05-10-edb-test-design.md`.
 
+## Real-world coverage at a glance
+
+The script `scripts/edb-static-cheatcode-coverage.py` walks the vendored
+Foundry projects in `testdata/foundry-e2e/` and reports, for each test
+function, whether every `vm.*` cheatcode it (or anything else in its
+file) invokes is in EDB's supported catalog. A test is "eligible" when
+all cheatcodes it touches are supported — meaning `edb test` will NOT
+abort with an unsupported-cheatcode error before launching the UI
+(execution-time behavior, e.g. instrumented-bytecode divergence, is a
+separate concern).
+
+| Project | Total tests | Eligible | % |
+|---|---:|---:|---:|
+| forge-template | 1 | 1 | 100% |
+| solady | 781 | 735 | 94% |
+| uniswap-v4-core | 442 | 333 | 75% |
+| solmate | 151 | 151 | 100% |
+| prb-math | 157 | 157 | 100% |
+| **overall** | **1,532** | **1,377** | **90%** |
+
+`testFail*` legacy names are excluded (forge dropped support; EDB
+follows). Re-run with `./scripts/edb-static-cheatcode-coverage.py`
+after adding cheatcodes to the catalog to see the updated number.
+
+The top static blockers (number of tests that touch each unsupported
+cheatcode at least once) are:
+
+| Cheatcode | Blocks # tests |
+|---|---:|
+| `vm.snapshotValue` | 77 |
+| `vm.getDeployedCode` | 72 |
+| `vm.toString` | 29 |
+| `vm.txGasPrice` | 22 |
+| `vm.fee` | 16 |
+| `vm.parseJson*` (4 overloads) | 24 (combined) |
+| `vm.signP256` / `vm.publicKeyP256` | 12 (combined) |
+
 ## Quick start
 
 ```bash

@@ -236,6 +236,15 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0x90, 0xc5, 0x01, 0x3b], "stopPrank"), // stopPrank()
     (&[0x70, 0xca, 0x10, 0xbb], "store"),    // store(address,bytes32,bytes32)
     (&[0xe5, 0xd6, 0xbf, 0x02], "warp"),     // warp(uint256)
+    // --- Supported: gas-snapshot stubs (silent success + one-time warn) ---
+    // EDB is not a gas profiler in v1; these calls succeed without producing
+    // any snapshot output. See docs/cheatcodes.md "Partial support".
+    (&[0x3c, 0xad, 0x9d, 0x7b], "startSnapshotGas"), // startSnapshotGas(string)
+    (&[0xf6, 0x40, 0x2e, 0xda], "stopSnapshotGas"),  // stopSnapshotGas()
+    (&[0x77, 0x3b, 0x28, 0x05], "stopSnapshotGas"),  // stopSnapshotGas(string)
+    (&[0x0c, 0x9d, 0xb7, 0x07], "stopSnapshotGas"),  // stopSnapshotGas(string,string)
+    (&[0xdd, 0x9f, 0xca, 0x12], "snapshotGasLastCall"), // snapshotGasLastCall(string)
+    (&[0x20, 0x0c, 0x67, 0x72], "snapshotGasLastCall"), // snapshotGasLastCall(string,string)
     // --- Explicitly rejected in EDB v1 ---
     (&[0x2f, 0x10, 0x3f, 0x22], "activeFork"), // activeFork()
     (&[0xaf, 0xc9, 0x80, 0x40], "broadcast"),  // broadcast()
@@ -379,13 +388,6 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0x1e, 0xcb, 0x7d, 0x33], "assertApproxEqRel"), // assertApproxEqRel(uint256,uint256,uint256,string)
     (&[0xfe, 0xa2, 0xd1, 0x4f], "assertApproxEqRel"), // assertApproxEqRel(int256,int256,uint256)
     (&[0xef, 0x27, 0x7d, 0x72], "assertApproxEqRel"), // assertApproxEqRel(int256,int256,uint256,string)
-    // Gas snapshot stubs
-    (&[0x3c, 0xad, 0x9d, 0x7b], "startSnapshotGas"), // startSnapshotGas(string)
-    (&[0xf6, 0x40, 0x2e, 0xda], "stopSnapshotGas"),  // stopSnapshotGas()
-    (&[0x77, 0x3b, 0x28, 0x05], "stopSnapshotGas"),  // stopSnapshotGas(string)
-    (&[0x0c, 0x9d, 0xb7, 0x07], "stopSnapshotGas"),  // stopSnapshotGas(string,string)
-    (&[0xdd, 0x9f, 0xca, 0x12], "snapshotGasLastCall"), // snapshotGasLastCall(string)
-    (&[0x20, 0x0c, 0x67, 0x72], "snapshotGasLastCall"), // snapshotGasLastCall(string,string)
     // --- Not yet implemented ---
     (&[0x65, 0xbc, 0x94, 0x81], "accesses"), // accesses(address)
     (&[0xf0, 0x25, 0x9e, 0x92], "breakpoint"), // breakpoint(string)
