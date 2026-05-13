@@ -24,8 +24,8 @@ use eyre::Result;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use alloy_primitives::TxHash;
-use edb_common::types::Trace;
+use alloy_primitives::{Address, TxHash};
+use edb_common::types::{Code, Trace};
 use edb_engine::{Engine, EngineConfig};
 use foundry_compilers::artifacts::output_selection::OutputSelection;
 use serde_json::Value;
@@ -103,6 +103,21 @@ impl TestSessionHandle {
     /// variant fields to inspect without depending on internal types.
     pub async fn fetch_snapshot_info(&self, id: u64) -> Result<Value> {
         self.call_rpc("edb_getSnapshotInfo", serde_json::json!([id])).await
+    }
+
+    /// Fetch the resolved code for a specific address via `edb_getCodeByAddress`.
+    ///
+    /// Returns [`Code::Source`] when the address resolved to a local artifact
+    /// (i.e. the foundry-style two-stage matcher in `LocalArtifactSet`
+    /// produced a hit), or [`Code::Opcode`] when only the raw deployed
+    /// bytecode is available.
+    ///
+    /// Returns an error if the engine has never seen the address (i.e. the
+    /// underlying RPC returned `CODE_NOT_FOUND`).
+    pub async fn fetch_code(&self, address: Address) -> Result<Code> {
+        let result = self.call_rpc("edb_getCodeByAddress", serde_json::json!([address])).await?;
+        let code: Code = serde_json::from_value(result)?;
+        Ok(code)
     }
 
     /// Shut down the RPC server associated with this session. Idempotent

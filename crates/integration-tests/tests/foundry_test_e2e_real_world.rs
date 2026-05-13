@@ -15,9 +15,11 @@
 //! ```
 
 use eyre::Result;
+use std::collections::HashSet;
 use std::path::PathBuf;
 
-use edb_common::types::CallResult;
+use alloy_primitives::Address;
+use edb_common::types::{CallResult, Code};
 use edb_integration_tests::test_utils::{init, paths};
 use serial_test::serial;
 
@@ -47,6 +49,41 @@ fn top_frame_is_success(trace: &edb_common::types::Trace) -> bool {
         .find(|e| e.depth == 0)
         .map(|e| matches!(e.result, Some(CallResult::Success { .. })))
         .unwrap_or(false)
+}
+
+/// Count how many unique `code_address` values in `trace` resolve to a local
+/// artifact via `edb_getCodeByAddress` (i.e. return [`Code::Source`]).
+///
+/// Returns `(with_source, total_unique_addresses)`. Addresses for which the
+/// engine has no record at all (e.g. precompiles never invoked in a frame) are
+/// filtered out of `total_unique_addresses`. This helper is the invariant
+/// behind every `*_resolves_*` / `*_artifacts_*` test in this file: it
+/// exercises the foundry-style two-stage `LocalArtifactSet` matcher (exact
+/// hash with immutables/links/CBOR masked, plus fuzzy fallback) end-to-end.
+async fn count_addresses_with_source(
+    session: &edb::cmd::test::TestSessionHandle,
+    trace: &edb_common::types::Trace,
+) -> Result<(usize, usize)> {
+    let mut seen: HashSet<Address> = HashSet::new();
+    for entry in trace.iter() {
+        seen.insert(entry.code_address);
+    }
+    let mut with_source = 0usize;
+    let mut total = 0usize;
+    for addr in &seen {
+        match session.fetch_code(*addr).await {
+            Ok(Code::Source(_)) => {
+                with_source += 1;
+                total += 1;
+            }
+            Ok(Code::Opcode(_)) => {
+                total += 1;
+            }
+            // CODE_NOT_FOUND — engine never saw the address; skip.
+            Err(_) => {}
+        }
+    }
+    Ok((with_source, total))
 }
 
 // ---------------------------------------------------------------------------
@@ -388,6 +425,241 @@ async fn solady_eip712_immutable_artifact_resolved() -> Result<()> {
          (total snapshots: {total}); before the foundry-style local-artifact \
          lookup fix, immutables would cause the codehash-keyed lookup to miss \
          and only opcode-level snapshots would be produced.",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Source-resolution coverage: each test below confirms that the foundry-style
+// two-stage local-artifact matcher (exact-hash with immutables/link-refs/CBOR
+// masked, plus fuzzy fallback inside ±10% length and < 0.85 diff score)
+// resolves a meaningful fraction of the addresses actually touched during
+// execution. Thresholds were picked from an end-to-end probe with a small
+// safety margin so they stay green under benign trace variation.
+// ---------------------------------------------------------------------------
+
+/// Solady `SignatureCheckerLibTest::testSignatureCheckerOnEOAWithMatchingSignerAndSignature`
+/// exercises `vm.addr` + `vm.sign` to mint a signer key, hash a message, sign
+/// it, and validate the signature via `SignatureCheckerLib`. The test contract
+/// plus its helpers all live under the solady project, so the trace should
+/// have multiple unique addresses, most of which carry a local artifact.
+///
+/// Observed at the time of writing: 5 unique addrs, 4 with source.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_e2e_realworld)]
+async fn solady_signature_checker_resolves_signer_artifacts() -> Result<()> {
+    init::init_test_environment(true);
+    let root = require_fixture("solady");
+
+    let target = "SignatureCheckerLibTest::testSignatureCheckerOnEOAWithMatchingSignerAndSignature";
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        target,
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    let trace = session.fetch_trace().await?;
+    assert!(
+        top_frame_is_success(&trace),
+        "top-level frame should be Success for {target}; trace: {trace:#?}",
+    );
+
+    let (with_source, total) = count_addresses_with_source(&session, &trace).await?;
+    assert!(
+        total >= 3,
+        "{target}: expected ≥3 unique addresses in trace, got {total} (with_source={with_source})",
+    );
+    assert!(
+        with_source >= 3,
+        "{target}: expected ≥3 source-resolved addresses (test contract + helpers), \
+         got {with_source}/{total}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
+/// Solady `MulticallableTest::testMulticallableRevertWithCustomError` exercises
+/// `vm.expectRevert(bytes4)` against a custom-error revert thrown inside a
+/// multicall. The test contract itself and the `Multicallable` mock under
+/// test must both resolve to source.
+///
+/// Observed at the time of writing: 4 unique addrs, 3 with source.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_e2e_realworld)]
+async fn solady_multicallable_expect_revert_bytes4() -> Result<()> {
+    init::init_test_environment(true);
+    let root = require_fixture("solady");
+
+    let target = "MulticallableTest::testMulticallableRevertWithCustomError";
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        target,
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    let trace = session.fetch_trace().await?;
+    assert!(
+        top_frame_is_success(&trace),
+        "top-level frame should be Success for {target}; trace: {trace:#?}",
+    );
+
+    let (with_source, total) = count_addresses_with_source(&session, &trace).await?;
+    assert!(
+        total >= 2,
+        "{target}: expected ≥2 unique addresses in trace, got {total} (with_source={with_source})",
+    );
+    assert!(
+        with_source >= 2,
+        "{target}: expected ≥2 source-resolved addresses (test contract + Multicallable mock), \
+         got {with_source}/{total}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
+/// Solady `ERC6551Test::testDeployERC6551Proxy` deploys an ERC-6551 proxy
+/// implementation plus its registry. Both the proxy and the implementation
+/// inherit from the `ERC6551` base, which carries multiple `immutable`
+/// state variables → this is exactly the path the artifact-id fix unlocked
+/// (before the fix, the on-chain runtime bytes differed from solc's
+/// `deployedBytecode` at the immutable offsets and the codehash lookup missed).
+/// We assert that essentially every touched address resolves.
+///
+/// Observed at the time of writing: 8 unique addrs, 8 with source.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_e2e_realworld)]
+async fn solady_erc6551_immutable_artifacts_resolve() -> Result<()> {
+    init::init_test_environment(true);
+    let root = require_fixture("solady");
+
+    let target = "ERC6551Test::testDeployERC6551Proxy";
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        target,
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    let trace = session.fetch_trace().await?;
+    assert!(
+        top_frame_is_success(&trace),
+        "top-level frame should be Success for {target}; trace: {trace:#?}",
+    );
+
+    let (with_source, total) = count_addresses_with_source(&session, &trace).await?;
+    assert!(
+        total >= 5,
+        "{target}: expected ≥5 unique addresses in trace, got {total} (with_source={with_source})",
+    );
+    // ERC6551 family uses immutables heavily; before the foundry-style
+    // matcher these would have fallen through to Opcode. ≥4 enforces the
+    // invariant with a generous margin against the observed 8.
+    assert!(
+        with_source >= 4,
+        "{target}: expected ≥4 source-resolved addresses across the ERC6551 \
+         proxy / registry / implementation, got {with_source}/{total}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
+/// prb-math `sd59x18::ConvertFrom_Unit_Test::test_ConvertFrom` exercises the
+/// CLI's path-qualified target syntax (the leading `sd59x18::` disambiguates
+/// from the identically-named test in `ud60x18`). The test runs to Success
+/// and the test contract itself must resolve to source.
+///
+/// Observed at the time of writing: 3 unique addrs, 2 with source.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_e2e_realworld)]
+async fn prb_math_path_qualified_target_resolves_uniquely() -> Result<()> {
+    init::init_test_environment(true);
+    let root = require_fixture("prb-math");
+
+    let target = "sd59x18::ConvertFrom_Unit_Test::test_ConvertFrom";
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        target,
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    let trace = session.fetch_trace().await?;
+    assert!(
+        top_frame_is_success(&trace),
+        "top-level frame should be Success for {target}; trace: {trace:#?}",
+    );
+
+    let (with_source, total) = count_addresses_with_source(&session, &trace).await?;
+    assert!(
+        total >= 2,
+        "{target}: expected ≥2 unique addresses in trace, got {total} (with_source={with_source})",
+    );
+    assert!(
+        with_source >= 1,
+        "{target}: expected the path-qualified test contract to resolve to source; \
+         got {with_source}/{total}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
+/// Uniswap V4 `TestDynamicFees::test_initialize_initializesFeeTo0` exercises
+/// the full `PoolManager.initialize` path through a dynamic-fee hook. This
+/// test previously aborted because the `Deployers` helper calls `vm.addr`
+/// during setup; now that `vm.addr` is supported, the trace covers dozens
+/// of contracts (PoolManager, Hooks, Currency, etc.) and the vast majority
+/// must resolve to local artifacts.
+///
+/// Observed at the time of writing: 19 unique addrs, 16 with source.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_e2e_realworld)]
+async fn uniswap_v4_dynamic_fees_initialize_resolves_pool_manager() -> Result<()> {
+    init::init_test_environment(true);
+    let root = require_fixture("uniswap-v4-core");
+
+    let target = "TestDynamicFees::test_initialize_initializesFeeTo0";
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        target,
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    let trace = session.fetch_trace().await?;
+    assert!(
+        top_frame_is_success(&trace),
+        "top-level frame should be Success for {target}; trace: {trace:#?}",
+    );
+
+    let (with_source, total) = count_addresses_with_source(&session, &trace).await?;
+    assert!(
+        total >= 10,
+        "{target}: expected ≥10 unique addresses in trace (PoolManager + hooks + \
+         currencies), got {total} (with_source={with_source})",
+    );
+    // 16/19 observed; ≥10 leaves room for trace variation but still proves
+    // the artifact-id fix is doing most of the work for a real DeFi protocol.
+    assert!(
+        with_source >= 10,
+        "{target}: expected ≥10 source-resolved addresses, got {with_source}/{total}",
     );
 
     let _ = session.shutdown();

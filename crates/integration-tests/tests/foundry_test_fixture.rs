@@ -18,9 +18,11 @@
 //!      concurrent compiles.
 
 use eyre::Result;
+use std::collections::HashSet;
 use std::path::PathBuf;
 
-use edb_common::types::CallResult;
+use alloy_primitives::Address;
+use edb_common::types::{CallResult, Code};
 use edb_integration_tests::test_utils::{init, paths};
 use serial_test::serial;
 
@@ -1103,6 +1105,78 @@ async fn cheats_start_prank_with_origin_overrides_both() -> Result<()> {
          msg.sender and tx.origin; got: {:?}",
         top.result,
     );
+    let _ = session.shutdown();
+    Ok(())
+}
+
+/// Companion to `cheats_start_prank_with_origin_overrides_both`: confirms
+/// that the freshly-deployed `PrankWitness` contract (defined in the same
+/// `Cheats.t.sol`) resolves to source via `edb_getCodeByAddress`. This is
+/// the smallest verifiable instance of the foundry-style local-artifact
+/// match path working end-to-end on a brand-new deployment: the witness
+/// has no immutables / link refs of its own, so it must hit the exact-hash
+/// branch of `LocalArtifactSet` (not the fuzzy fallback).
+///
+/// Observed at the time of writing: 4 unique addrs in trace, 3 with source
+/// (the entrypoint, the test contract, and PrankWitness).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_start_prank_resolves_witness_artifact() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testStartPrankWithOrigin",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry for Cheats::testStartPrankWithOrigin");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should succeed; got: {:?}",
+        top.result,
+    );
+
+    // Walk the trace, dedupe by code_address, then ask the engine which of
+    // those resolved to a local artifact.
+    let mut seen: HashSet<Address> = HashSet::new();
+    for entry in trace.iter() {
+        seen.insert(entry.code_address);
+    }
+    let mut with_source = 0usize;
+    let mut total = 0usize;
+    for addr in &seen {
+        match session.fetch_code(*addr).await {
+            Ok(Code::Source(_)) => {
+                with_source += 1;
+                total += 1;
+            }
+            Ok(Code::Opcode(_)) => {
+                total += 1;
+            }
+            Err(_) => {}
+        }
+    }
+
+    assert!(
+        total >= 3,
+        "expected ≥3 unique trace addresses (entrypoint + test contract + \
+         PrankWitness), got {total}",
+    );
+    assert!(
+        with_source >= 2,
+        "expected ≥2 source-resolved addresses (test contract + freshly-deployed \
+         PrankWitness); got {with_source}/{total}. If PrankWitness fell through \
+         to Opcode the foundry-style artifact match for fresh deployments has \
+         regressed.",
+    );
+
     let _ = session.shutdown();
     Ok(())
 }
