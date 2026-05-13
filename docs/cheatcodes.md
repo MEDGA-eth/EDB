@@ -26,25 +26,24 @@ separate concern).
 | Project | Total tests | Eligible | % |
 |---|---:|---:|---:|
 | forge-template | 1 | 1 | 100% |
-| solady | 781 | 781 | 100% |
+| solady | 781 | 780 | ≈100% |
 | uniswap-v4-core | 442 | 442 | 100% |
 | solmate | 151 | 151 | 100% |
 | prb-math | 157 | 157 | 100% |
-| **overall** | **1,532** | **1,532** | **100%** |
+| **overall** | **1,532** | **1,531** | **99.9%** |
 
 `testFail*` legacy names are excluded (forge dropped support; EDB
 follows). Re-run with `./scripts/edb-static-cheatcode-coverage.py`
 after adding cheatcodes to the catalog to see the updated number.
 
-Round-4 closed the last gap: the seven outstanding cheatcodes (the
-`signP256` / `publicKeyP256` pair, `readLine`, `getNonce`,
+Round-4 closed the remaining gap: the seven outstanding cheatcodes
+(the `signP256` / `publicKeyP256` pair, `readLine`, `getNonce`,
 `getBlockNumber`, `setBlockhash`, and the deferred `getRawBlockHeader`)
-landed in this round. With all 1,532 tests now statically eligible
-across the five vendored projects, the static blocker list is empty
-under the current coverage script — the only remaining caveat is
-`vm.getRawBlockHeader`, which is catalogued as `Supported` for static
-coverage purposes but reverts at runtime with a clear "requires an
-upstream RPC channel" message in non-fork mode (see Rejected section).
+landed in this round. The single remaining static blocker is one
+solady test that calls `vm.getRawBlockHeader`, which is catalogued as
+**Rejected** with the message "deferred to v2 (requires an upstream
+RPC channel and synchronous-from-async dispatch in the cheatcode
+handler)" — see the Rejected section below.
 
 (Historical blockers: `vm.toString` (29), `vm.parseJson*` (24 combined),
 `vm.txGasPrice` (22), `vm.fee` (16), `vm.snapshotValue`, and
@@ -276,8 +275,7 @@ Common v2 candidates:
 
 - `vm.envInt`, `vm.envUint`, `vm.envAddress` (and their `envOr` overloads
   for int / uint / address)
-- `vm.parseJson*`, `vm.parseToml*`
-- `vm.toString*`, `vm.serialize*`
+- `vm.parseToml*`, `vm.serialize*`
 - mapping introspection: `vm.getMappingKeyOf`, `vm.getMappingLength`,
   `vm.getMappingSlotAt`, `vm.startMappingRecording` /
   `vm.stopMappingRecording`
