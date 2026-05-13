@@ -141,6 +141,11 @@ const SEL_SNAPSHOT_GAS_LAST_CALL_2STR: [u8; 4] = [0x20, 0x0c, 0x67, 0x72]; // sn
 // `all_snapshot_value_selectors_match_canonical` unit test.
 const SEL_SNAPSHOT_VALUE_2: [u8; 4] = [0x51, 0xdb, 0x80, 0x5a]; // snapshotValue(string,uint256)
 const SEL_SNAPSHOT_VALUE_3: [u8; 4] = [0x6d, 0x2b, 0x27, 0xd8]; // snapshotValue(string,string,uint256)
+// Locally-compiled artifact lookup. Verified against keccak256(sig)[..4] in
+// `selector_get_deployed_code`. Foundry implements this by reading the
+// JSON artifact from `out/` keyed by the supplied path/name; EDB resolves
+// it against the in-memory `LocalArtifactSet` built before prepare().
+const SEL_GET_DEPLOYED_CODE: [u8; 4] = [0x3e, 0xbf, 0x73, 0xb4]; // getDeployedCode(string)
 
 // Explicitly rejected — multi-fork / state-snapshot / scripting / fs+ffi.
 const SEL_SNAPSHOT_STATE: [u8; 4] = [0x9c, 0xd2, 0x38, 0x35]; // snapshotState()
@@ -257,6 +262,12 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     // silently. Same approach as the gas-snapshot family above.
     (&[0x51, 0xdb, 0x80, 0x5a], "snapshotValue"), // snapshotValue(string,uint256)
     (&[0x6d, 0x2b, 0x27, 0xd8], "snapshotValue"), // snapshotValue(string,string,uint256)
+    // NOTE: `getDeployedCode(string)` is supported in v1 with a real impl
+    // (see SEL_GET_DEPLOYED_CODE + dispatch), but its catalog entry remains
+    // in the alphabetically-sorted "Not yet implemented" block below — the
+    // dispatch arm takes precedence and the catalog only gates fall-through
+    // wording. Don't duplicate the entry here; the
+    // `known_cheatcode_catalog_has_unique_selectors` invariant would trip.
     // --- Explicitly rejected in EDB v1 ---
     (&[0x2f, 0x10, 0x3f, 0x22], "activeFork"), // activeFork()
     (&[0xaf, 0xc9, 0x80, 0x40], "broadcast"),  // broadcast()
@@ -524,6 +535,13 @@ pub struct CheatsConfig {
     /// expectEmit soft-match). Keys are cheatcode names already warned about
     /// during this prepare cycle — second + subsequent hits stay silent.
     pub warnings_emitted: Arc<Mutex<HashSet<String>>>,
+    /// Locally-compiled artifact set indexed by contract name. Populated by
+    /// `run_foundry_test` before prepare; consumed by the
+    /// `vm.getDeployedCode(string)` handler. `None` only in unit tests that
+    /// stub `CheatsConfig::default()` (and that don't exercise the artifact
+    /// lookup path). Cloning is `Arc`-cheap so every inspector pass shares
+    /// the same set.
+    pub local_artifacts: Option<Arc<edb_engine::LocalArtifactSet>>,
 }
 
 impl Default for CheatsConfig {
@@ -532,6 +550,7 @@ impl Default for CheatsConfig {
             project_root: std::path::PathBuf::new(),
             unsupported_hits: Arc::new(Mutex::new(Vec::new())),
             warnings_emitted: Arc::new(Mutex::new(HashSet::new())),
+            local_artifacts: None,
         }
     }
 }
@@ -670,15 +689,19 @@ struct ExpectedRevert {
 /// satisfies the structural constraints recorded here.
 #[derive(Clone, Debug)]
 struct ExpectedEmit {
-    /// Whether each of the 4 topic slots must be present in the matched log.
-    /// Foundry's `(bool t1, bool t2, bool t3, bool t4)` overloads encode this
-    /// directly. In soft-match mode we only verify the matched log HAS the
-    /// requested topic at the requested index; we do not compare its value
-    /// against a template (we have no template).
+    /// Foundry's `(bool t1, bool t2, bool t3, bool t4)` overloads encode
+    /// per-topic byte-equality flags against the template emit between the
+    /// `vm.expectEmit` call and the next external call. Soft-match v1 has
+    /// no template, so these are recorded for future use but NOT enforced
+    /// — see `matches()`. We accept any log whose emitter (if constrained)
+    /// matches and whose topic vector is non-empty.
+    #[allow(dead_code)]
     check_topics: [bool; 4],
-    /// Whether data presence is required. In soft-match mode we only verify
-    /// the matched log carries non-empty data when this is true; we do not
-    /// compare data bytes against a template.
+    /// Foundry's `checkData` bool — "byte-equality against the template's
+    /// data". Recorded for future use; NOT enforced in soft-match v1
+    /// because events with only indexed args legitimately emit empty
+    /// data and we'd false-fail them. See `matches()`.
+    #[allow(dead_code)]
     check_data: bool,
     /// `None` = match any emitter, `Some(addr)` = only logs from this emitter.
     expected_emitter: Option<Address>,
@@ -1017,10 +1040,25 @@ where
 }
 
 impl ExpectedEmit {
-    /// Soft-match: accept the log if its emitter matches (when constrained),
-    /// and if the requested topic indices are PRESENT (not necessarily equal
-    /// to a template — we don't have a template in v1). When `check_data` is
-    /// true we additionally require non-empty data.
+    /// Soft-match: accept the log if its emitter matches (when constrained)
+    /// and the log carries a non-empty topic list (every event in Solidity
+    /// has at least the signature topic; `log0(...)` emissions are out of
+    /// scope for `vm.expectEmit`).
+    ///
+    /// We DON'T require `topics.len() >= 4` even when all four `check_topics`
+    /// bools are set: foundry's bools encode "byte-equality against the
+    /// template log's topic at this index" — when the template has fewer
+    /// topics than the bools enable, foundry simply doesn't compare the
+    /// missing topics. Soft-match v1 doesn't have a template, so we relax
+    /// to "any log from the right emitter with at least a signature topic".
+    ///
+    /// We ALSO don't enforce `check_data → data.len() > 0`: events with
+    /// only indexed parameters (e.g. `event Foo(address indexed bar)`)
+    /// emit an empty data payload, and forge still passes
+    /// `expectEmit(_, _, _, true)` for them because the template's data
+    /// is also empty. Without a template we can't enforce byte-equality
+    /// and any non-vacuous structural check would false-fail this class
+    /// of events. See `docs/cheatcodes.md` "Known caveats".
     fn matches(&self, log: &Log) -> bool {
         if let Some(want) = self.expected_emitter
             && log.address != want
@@ -1028,12 +1066,7 @@ impl ExpectedEmit {
             return false;
         }
         let topics = log.topics();
-        for (i, &check) in self.check_topics.iter().enumerate() {
-            if check && i >= topics.len() {
-                return false;
-            }
-        }
-        if self.check_data && log.data.data.is_empty() {
+        if topics.is_empty() {
             return false;
         }
         true
@@ -1312,6 +1345,12 @@ where
             // in v1; both `snapshotValue` overloads succeed as no-ops with a
             // one-time warning. Same pattern as the gas-snapshot family.
             SEL_SNAPSHOT_VALUE_2 | SEL_SNAPSHOT_VALUE_3 => self.cheat_snapshot_value_stub(inputs),
+
+            // Locally-compiled artifact lookup: return the deployed bytecode
+            // of a project contract by its artifact name. Foundry reads from
+            // `out/<file>.json`; EDB resolves against the in-memory
+            // `LocalArtifactSet` populated before prepare().
+            SEL_GET_DEPLOYED_CODE => self.cheat_get_deployed_code(inputs, args),
 
             _ => {
                 let hex = alloy_primitives::hex::encode(selector);
@@ -1896,8 +1935,9 @@ where
     ) -> CallOutcome {
         self.warn_once(
             "expectEmit",
-            "EDB ships soft-match v1 — checks emitter + topic-count + non-empty data, \
-             NOT byte-equality. False positives possible. See docs/cheatcodes.md.",
+            "EDB ships soft-match v1 — accepts any log from the (optionally) \
+             constrained emitter with a signature topic, NOT byte-equality. \
+             False positives possible. See docs/cheatcodes.md.",
         );
         let (check_topics, check_data, expected_emitter) = match mode {
             ExpectEmitMode::All => ([true; 4], true, None),
@@ -2521,6 +2561,75 @@ where
         );
         ok_return(inputs, Bytes::new())
     }
+
+    /// `vm.getDeployedCode(string artifact) returns (bytes runtimeBytecode)`.
+    ///
+    /// Foundry accepts three artifact-identifier shapes:
+    ///   - `"MyContract"` — bare contract name.
+    ///   - `"MyContract.sol"` — file name (we treat the basename's stem
+    ///     before the first `.` as the contract name; this matches the
+    ///     common case where filename == contract name).
+    ///   - `"path/MyContract.sol:MyContract"` (or `":Contract:version"`) —
+    ///     split on `:` and use the second segment as the contract name.
+    ///
+    /// We then look up the deployed-bytecode template that was inserted into
+    /// `CheatsConfig::local_artifacts` (built by
+    /// `crates/edb/src/cmd/test/artifacts.rs::build_local_artifact_set`) and
+    /// return it ABI-encoded as `bytes`. Lookup misses revert with a clear
+    /// message so users can tell at a glance whether they typed the artifact
+    /// name wrong vs. the contract isn't in the project.
+    fn cheat_get_deployed_code(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(arg) = read_string(args, 0) else {
+            return revert_with(
+                inputs,
+                encode_error_string("vm.getDeployedCode: failed to decode artifact name"),
+            );
+        };
+
+        let Some(local) = self.config.local_artifacts.as_ref() else {
+            return revert_with(
+                inputs,
+                encode_error_string(
+                    "vm.getDeployedCode: local artifact set unavailable \
+                     (EDB internal: cheats inspector not given a project context)",
+                ),
+            );
+        };
+
+        let name = artifact_lookup_name(&arg);
+        match local.deployed_bytecode_by_name(name) {
+            Some(code) => ok_return(inputs, encode_abi_bytes(code)),
+            None => {
+                let msg = format!(
+                    "vm.getDeployedCode: artifact {arg:?} not found in project \
+                     (contract name {name:?})"
+                );
+                revert_with(inputs, encode_error_string(&msg))
+            }
+        }
+    }
+}
+
+/// Extract the contract-name segment from a foundry-style artifact identifier.
+///
+/// Accepted shapes (in priority order):
+///   - `"path/Foo.sol:Foo[:version]"` → returns `"Foo"` (second `:`-segment).
+///   - `"Foo.sol"`                    → returns `"Foo"` (basename stem
+///     before the first `.`; matches the common 1-file-1-contract case).
+///   - `"Foo"`                        → returns `"Foo"`.
+///
+/// Returning a `&str` borrow keeps allocation off the hot path.
+fn artifact_lookup_name(arg: &str) -> &str {
+    if let Some(rest) = arg.split(':').nth(1) {
+        return rest;
+    }
+    let basename = arg.rsplit('/').next().unwrap_or(arg);
+    if let Some(stem) = basename.split('.').next()
+        && !stem.is_empty()
+    {
+        return stem;
+    }
+    arg
 }
 
 /// Argument-shape selector for the four supported `vm.expectEmit` overloads.
@@ -3083,6 +3192,27 @@ mod tests {
         }
     }
 
+    /// Pin `vm.getDeployedCode(string)` against `keccak256(sig)[..4]`.
+    #[test]
+    fn selector_get_deployed_code() {
+        assert_eq!(sel("getDeployedCode(string)"), SEL_GET_DEPLOYED_CODE);
+    }
+
+    /// `artifact_lookup_name` must reproduce foundry's resolution rules for
+    /// the three accepted artifact-identifier shapes.
+    #[test]
+    fn artifact_lookup_name_handles_all_three_shapes() {
+        // Bare name.
+        assert_eq!(artifact_lookup_name("MyContract"), "MyContract");
+        // `path:contract` (the most common foundry shape).
+        assert_eq!(artifact_lookup_name("src/Foo.sol:Foo"), "Foo", "second colon-segment must win");
+        // `path:contract:version`.
+        assert_eq!(artifact_lookup_name("src/Foo.sol:Foo:0.8.20"), "Foo");
+        // File-only shape: strip directory + first dot-segment.
+        assert_eq!(artifact_lookup_name("src/Foo.sol"), "Foo");
+        assert_eq!(artifact_lookup_name("Foo.sol"), "Foo");
+    }
+
     /// C2-3 (Round 2 audit): verify the freshly-cataloged dynamic/array/decimal
     /// assertion overloads keep their selector literals in lockstep with
     /// `keccak256(canonical_sig)[..4]`. Without this, a future "fix" that
@@ -3451,10 +3581,16 @@ mod tests {
             vec![B256::from([0xaa; 32]), B256::from([0xbb; 32]), B256::from([0xcc; 32])],
             Bytes::from_static(b"payload"),
         );
-        let log_empty_data = Log::new_unchecked(addr, vec![B256::from([0xaa; 32])], Bytes::new());
+        let log_only_sig = Log::new_unchecked(addr, vec![B256::from([0xaa; 32])], Bytes::new());
+        let log_no_topics = Log::new_unchecked(addr, vec![], Bytes::from_static(b"payload"));
 
-        // Default expectEmit() with all bits → must satisfy 4 topics and non-empty data.
-        // `log_full` has 3 topics but expectation asks for 4 → fail.
+        // Round-2 fix (OwnableTest::testHandoverOwnershipWithCancellation):
+        // `(true,true,true,true)` no longer demands the log carry 4 topics
+        // OR non-empty data. Foundry's bools encode byte-equality against
+        // the template; soft-match has no template, and events with only
+        // indexed args (`event Foo(address indexed)`) emit empty data
+        // payloads under forge with `expectEmit(_,_,_,true)` happily
+        // passing — refusing them here false-failed every such test.
         let all = ExpectedEmit {
             check_topics: [true; 4],
             check_data: true,
@@ -3462,12 +3598,14 @@ mod tests {
             matched: false,
             registered_at_call_depth: 0,
         };
-        assert!(!all.matches(&log_full), "all-topics expectation needs 4 topics");
+        assert!(all.matches(&log_full), "soft-match accepts < 4-topic logs (OwnableTest fix)");
+        assert!(all.matches(&log_only_sig), "indexed-only events emit empty data: accept");
+        assert!(!all.matches(&log_no_topics), "must require >= 1 topic (the event sig)");
 
-        // Relax: only require topic[0] (the event sig) + data.
+        // expect_emit_simple has check_data=true; under soft-match v1 it's a no-op now.
         let lax = expect_emit_simple();
         assert!(lax.matches(&log_full), "topic[0]+data must match a non-empty log");
-        assert!(!lax.matches(&log_empty_data), "check_data must reject empty data");
+        assert!(lax.matches(&log_only_sig), "empty-data logs no longer rejected");
 
         // Emitter filter
         let mut with_emitter = lax;

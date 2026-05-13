@@ -337,6 +337,56 @@ async fn cheats_env_or_returns_fallback() -> Result<()> {
     Ok(())
 }
 
+/// `vm.getDeployedCode(string)` resolves a contract's deployed bytecode
+/// against EDB's locally-built `LocalArtifactSet` and returns it as `bytes`.
+/// The fixture's `testGetDeployedCodeReturnsRuntimeTemplate` reverts (via
+/// `require`) if the returned bytes don't look like a Solidity runtime
+/// template, so a Success top-level frame is the proof-of-correctness here.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_get_deployed_code_returns_local_bytecode() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testGetDeployedCodeReturnsRuntimeTemplate",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+
+    assert!(
+        !trace.is_empty(),
+        "trace was empty for Cheats::testGetDeployedCodeReturnsRuntimeTemplate"
+    );
+
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry for Cheats::testGetDeployedCodeReturnsRuntimeTemplate");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should be Success — a revert here means \
+         vm.getDeployedCode returned bytes that don't look like a Solidity \
+         runtime template; got: {:?}",
+        top.result,
+    );
+    assert!(
+        !trace_revert_contains(&trace, "vm.getDeployedCode"),
+        "trace contained a vm.getDeployedCode failure message: {trace:#?}",
+    );
+    assert!(
+        !trace_revert_contains(&trace, "Solidity runtime prelude"),
+        "vm.getDeployedCode returned bytes that don't start with the \
+         standard Solidity dispatcher prelude (0x6080604052); trace = {trace:#?}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
+
 /// `vm.snapshotValue` (both 2-arg and 3-arg overloads) is a silent stub — EDB
 /// is not a benchmark recorder. The test must not abort during prepare (the
 /// cheatcode is catalogued as Supported) and the top-level frame must succeed.

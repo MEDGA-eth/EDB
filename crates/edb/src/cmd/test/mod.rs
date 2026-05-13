@@ -292,6 +292,13 @@ where
     let engine_config = edb_engine::EngineConfig::default().with_quick_mode(cli.quick);
     let engine = edb_engine::Engine::new(engine_config);
 
+    // Wrap the artifact set in an Arc so it can be shared with the cheats
+    // inspector (for `vm.getDeployedCode`) AND moved into the engine without
+    // a deep clone. We hand the engine `(*Arc).clone()` (full owned clone, as
+    // the engine signature demands), but the cheats handlers only read from
+    // the shared Arc — same data, two views.
+    let local_artifacts_arc = std::sync::Arc::new(local_artifacts.clone());
+
     // Bind the cheats config to a name so the Arc-shared hit/warning trackers
     // remain accessible AFTER `prepare_with_router_and_cheats` returns. Each
     // factory invocation captures a clone of the config, but the inner Arcs
@@ -299,6 +306,7 @@ where
     // into the same `unsupported_hits` list.
     let cheats_config = cheats::CheatsConfig {
         project_root: project_ctx.root.clone(),
+        local_artifacts: Some(local_artifacts_arc.clone()),
         ..cheats::CheatsConfig::default()
     };
     let cheats_factory: Box<dyn Fn() -> cheats::EdbCheatcodes<DB> + Send + Sync> =

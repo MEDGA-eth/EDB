@@ -185,11 +185,18 @@ pub async fn run_foundry_test_for_test(
     let engine_config = EngineConfig::default();
     let engine = Engine::new(engine_config);
 
+    // Wrap the artifact set in an Arc for sharing with the cheats inspector
+    // (specifically the `vm.getDeployedCode` handler) — same pattern as in
+    // `run_foundry_test`. The engine still receives a full owned clone via
+    // `(*Arc).clone()`; the cheats handlers read through the Arc.
+    let local_artifacts_arc = std::sync::Arc::new(local_artifacts.clone());
+
     // Same Arc-share pattern as `run_foundry_test`: keep a binding to
     // `cheats_config` alive so we can inspect the shared hit tracker post-
     // prepare. Each `.clone()` here shares the inner Arcs, NOT a deep copy.
     let cheats_config = cheats::CheatsConfig {
         project_root: project_ctx.root.clone(),
+        local_artifacts: Some(local_artifacts_arc.clone()),
         ..cheats::CheatsConfig::default()
     };
 

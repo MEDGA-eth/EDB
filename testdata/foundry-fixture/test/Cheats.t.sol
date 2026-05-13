@@ -69,6 +69,41 @@ contract Cheats is Test {
         vm.snapshotValue("a", uint256(789));
     }
 
+    /// `vm.getDeployedCode(string)` returns the deployed bytecode of a
+    /// project artifact, loaded from EDB's `LocalArtifactSet`.
+    ///
+    /// Properties we verify:
+    ///   - Returned bytes are non-empty and longer than the EVM-runtime
+    ///     dispatcher header (~12 bytes for an empty contract).
+    ///   - Returned bytes begin with the standard Solidity runtime prelude
+    ///     `0x6080604052` (PUSH1 0x80 PUSH1 0x40 MSTORE) emitted by every
+    ///     solc-compiled contract since 0.5.x.
+    ///   - The `path:contract` shape returns the same bytes as the bare name.
+    ///
+    /// We DON'T compare against `address(target).code` because EDB rewrites
+    /// runtime bytecode between its tracer / opcode / hook passes (snapshot
+    /// instrumentation), so the on-chain code is intentionally different
+    /// from the on-disk template that `vm.getDeployedCode` returns. The
+    /// shape checks above are stable across all three passes.
+    function testGetDeployedCodeReturnsRuntimeTemplate() public {
+        bytes memory bare = vm.getDeployedCode("GetDeployedCodeTarget");
+        bytes memory pathContract = vm.getDeployedCode(
+            "test/Cheats.t.sol:GetDeployedCodeTarget"
+        );
+
+        require(bare.length >= 12, "vm.getDeployedCode returned too few bytes");
+        require(
+            keccak256(bare) == keccak256(pathContract),
+            "bare-name and path:contract shapes returned different bytes"
+        );
+
+        // Solidity dispatcher prelude: PUSH1 0x80 PUSH1 0x40 MSTORE
+        require(
+            bare[0] == 0x60 && bare[1] == 0x80 && bare[2] == 0x60 && bare[3] == 0x40 && bare[4] == 0x52,
+            "vm.getDeployedCode result does not start with Solidity runtime prelude"
+        );
+    }
+
     function testGasMeteringStubs() public {
         // pauseGasMetering / resumeGasMetering are stubs — just confirm they
         // don't revert.
@@ -188,5 +223,16 @@ contract ExpectRevertSelectorTarget {
 contract PrankWitness {
     function observe() external view returns (address, address) {
         return (msg.sender, tx.origin);
+    }
+}
+
+/// Target contract for `testGetDeployedCodeMatchesOnChain`. No immutables,
+/// no linked libraries, no constructor args — the deployed runtime template
+/// solc emits is byte-equal to what's at `address(target).code` after a
+/// fresh `new`.
+contract GetDeployedCodeTarget {
+    uint256 public answer;
+    function setAnswer(uint256 v) external {
+        answer = v;
     }
 }

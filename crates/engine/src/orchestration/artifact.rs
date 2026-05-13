@@ -182,6 +182,13 @@ pub struct LocalArtifactSet {
     /// Codehash-keyed shortcut. Populated by [`Self::insert`] (no mask) so
     /// that callers with a true exact-match codehash skip the linear scan.
     by_codehash: HashMap<alloy_primitives::B256, usize>,
+    /// Contract-name → entry index. Populated alongside `by_codehash` so that
+    /// callers (e.g. the `vm.getDeployedCode` cheatcode handler) can look up
+    /// an artifact by the name foundry exposes in test code without needing a
+    /// codehash. If two artifacts share a contract name (rare; would only
+    /// happen across different source files with identical contract names),
+    /// the last-inserted wins — which matches foundry's own resolution order.
+    by_name: HashMap<String, usize>,
     /// True when `entries` has been mutated since the last sort. Lookups call
     /// [`Self::finalize_order`] under `&self` via interior-mutation cannot be
     /// expressed without a `Mutex`, so we instead sort eagerly inside the
@@ -213,8 +220,12 @@ impl LocalArtifactSet {
         let codehash = alloy_primitives::keccak256(template);
         let mask = compute_mask(template, immutable_refs, link_refs, is_library);
         let idx = self.entries.len();
+        let contract_name = artifact.contract_name().to_string();
         self.entries.push(LocalEntry { artifact, template: template.to_vec(), mask });
         self.by_codehash.insert(codehash, idx);
+        if !contract_name.is_empty() {
+            self.by_name.insert(contract_name, idx);
+        }
         self.sorted = false;
         self.finalize_order();
     }
@@ -224,6 +235,29 @@ impl LocalArtifactSet {
     /// patched between solc's output and on-chain deployment.
     pub fn get(&self, codehash: &alloy_primitives::B256) -> Option<&crate::Artifact> {
         self.by_codehash.get(codehash).map(|i| &self.entries[*i].artifact)
+    }
+
+    /// Look up an artifact by its contract name (as produced by `solc` — the
+    /// last segment of foundry's `<path>:<contract>` artifact identifier).
+    /// Returns `None` if no artifact with that name was inserted.
+    ///
+    /// Used by the `vm.getDeployedCode(string)` cheatcode handler.
+    pub fn get_by_name(&self, name: &str) -> Option<&crate::Artifact> {
+        self.by_name.get(name).map(|i| &self.entries[*i].artifact)
+    }
+
+    /// Return the deployed-bytecode template solc emitted for the artifact
+    /// inserted under `name`. This is the same `template` slice that
+    /// [`Self::insert_with_template`] received — i.e. the unmasked
+    /// deployed bytecode, with library/immutable placeholders zeroed in solc's
+    /// output but otherwise byte-identical to what would have been on chain
+    /// after a fresh deployment.
+    ///
+    /// Used by `vm.getDeployedCode(string)` so the cheatcode can return the
+    /// raw deployed bytecode without going through `Artifact::contract()` (the
+    /// latter walks a nested `BTreeMap` and re-decodes the hex on every call).
+    pub fn deployed_bytecode_by_name(&self, name: &str) -> Option<&[u8]> {
+        self.by_name.get(name).map(|i| self.entries[*i].template.as_slice())
     }
 
     /// Foundry-style two-stage lookup against an observed on-chain runtime
@@ -290,12 +324,18 @@ impl LocalArtifactSet {
         if self.sorted {
             return;
         }
-        // Sorting invalidates the codehash → index map; rebuild it.
+        // Sorting invalidates both `by_codehash` and `by_name` (both store
+        // indices into `entries`); rebuild them in lockstep with the sort.
         self.entries.sort_by_key(|e| e.template.len());
         self.by_codehash.clear();
+        self.by_name.clear();
         for (i, e) in self.entries.iter().enumerate() {
             if !e.template.is_empty() {
                 self.by_codehash.insert(alloy_primitives::keccak256(&e.template), i);
+            }
+            let cname = e.artifact.contract_name();
+            if !cname.is_empty() {
+                self.by_name.insert(cname.to_string(), i);
             }
         }
         self.sorted = true;
@@ -609,6 +649,44 @@ mod local_artifact_tests {
         let local = LocalArtifactSet::default();
         let result = load_local_artifacts(&touched, &local);
         assert!(result.is_empty());
+    }
+
+    /// `get_by_name` / `deployed_bytecode_by_name`: name-keyed access path
+    /// used by the `vm.getDeployedCode(string)` cheatcode. The index survives
+    /// `finalize_order`'s sort (which renumbers `entries`), so a lookup after
+    /// inserting two artifacts of different lengths must still return the
+    /// right template for each.
+    #[test]
+    fn name_lookup_survives_finalize_sort() {
+        let mut local = LocalArtifactSet::default();
+        // Insert a "long" template under "Long" first, then a "short" one
+        // under "Short" — finalize_order will sort by length, so "Short"
+        // ends up at index 0 and "Long" at index 1 even though insertion
+        // order was the opposite. The name map MUST track the swap.
+        let long_template: Vec<u8> = (0u16..200).map(|b| b as u8).collect();
+        let short_template: Vec<u8> = vec![0xaa, 0xbb, 0xcc, 0xdd];
+
+        local.insert_with_template(
+            &long_template,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            false,
+            sample_artifact_for_test("Long"),
+        );
+        local.insert_with_template(
+            &short_template,
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+            false,
+            sample_artifact_for_test("Short"),
+        );
+
+        assert_eq!(local.get_by_name("Long").map(|a| a.contract_name()), Some("Long"));
+        assert_eq!(local.get_by_name("Short").map(|a| a.contract_name()), Some("Short"));
+        assert_eq!(local.deployed_bytecode_by_name("Long"), Some(long_template.as_slice()));
+        assert_eq!(local.deployed_bytecode_by_name("Short"), Some(short_template.as_slice()));
+        assert!(local.get_by_name("Missing").is_none());
+        assert!(local.deployed_bytecode_by_name("Missing").is_none());
     }
 
     #[test]

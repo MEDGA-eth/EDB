@@ -27,10 +27,10 @@ separate concern).
 |---|---:|---:|---:|
 | forge-template | 1 | 1 | 100% |
 | solady | 781 | 735 | 94% |
-| uniswap-v4-core | 442 | 333 | 75% |
+| uniswap-v4-core | 442 | 413 | 93% |
 | solmate | 151 | 151 | 100% |
 | prb-math | 157 | 157 | 100% |
-| **overall** | **1,532** | **1,377** | **90%** |
+| **overall** | **1,532** | **1,457** | **95%** |
 
 `testFail*` legacy names are excluded (forge dropped support; EDB
 follows). Re-run with `./scripts/edb-static-cheatcode-coverage.py`
@@ -41,13 +41,18 @@ cheatcode at least once) are:
 
 | Cheatcode | Blocks # tests |
 |---|---:|
-| `vm.snapshotValue` | 77 |
-| `vm.getDeployedCode` | 72 |
 | `vm.toString` | 29 |
 | `vm.txGasPrice` | 22 |
 | `vm.fee` | 16 |
 | `vm.parseJson*` (4 overloads) | 24 (combined) |
 | `vm.signP256` / `vm.publicKeyP256` | 12 (combined) |
+| `vm.readLine` | 6 |
+| `vm.getNonce` | 3 |
+
+(`vm.snapshotValue` and `vm.getDeployedCode` previously topped this
+list — the first as a no-op stub, the second as a real implementation
+backed by EDB's `LocalArtifactSet`. Together they unblocked ~80
+real-world tests.)
 
 ## Quick start
 
@@ -113,6 +118,7 @@ cheatcode) before retrying.
 | `vm.deleteStateSnapshots()` | Drop all snapshots. |
 | `vm.addr(uint256) returns (address)` | Derive an Ethereum address from a secp256k1 secret key (k256-backed via `alloy-signer-local`). Reverts on a zero / out-of-range key. |
 | `vm.sign(uint256, bytes32) returns (uint8 v, bytes32 r, bytes32 s)` | ECDSA-sign the pre-hashed digest with the secret key (no EIP-191 prefix added). `v` is normalized to the legacy 27/28 encoding so the output is directly usable as `ecrecover` input. |
+| `vm.getDeployedCode(string artifact) returns (bytes runtimeBytecode)` | Return the deployed bytecode of a project contract by artifact name. Accepts `"Foo"`, `"Foo.sol"`, or `"path/Foo.sol:Foo[:version]"`. Resolved against EDB's in-memory `LocalArtifactSet` (built from the project's solc output before prepare). Reverts with `"vm.getDeployedCode: artifact {name:?} not found in project"` when nothing matches. |
 
 ### Assertions
 
