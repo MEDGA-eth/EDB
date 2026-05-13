@@ -191,21 +191,6 @@ pub struct LocalArtifactSet {
 }
 
 impl LocalArtifactSet {
-    /// Insert an artifact whose deployed-bytecode template has no known
-    /// immutable / link references and no CBOR metadata trailer to ignore
-    /// (e.g. the synthesized entrypoint contract). The artifact is also
-    /// indexed by `keccak256(template)` so codehash lookups stay O(1).
-    pub fn insert(&mut self, codehash: alloy_primitives::B256, artifact: crate::Artifact) {
-        // For a no-mask insert we still need a template for the length-sorted
-        // search to consider this entry. Callers that want full-template
-        // masking should use `insert_with_template` instead.
-        let idx = self.entries.len();
-        self.entries.push(LocalEntry { artifact, template: Vec::new(), mask: Vec::new() });
-        self.by_codehash.insert(codehash, idx);
-        self.sorted = false;
-        self.finalize_order();
-    }
-
     /// Insert an artifact along with its deployed-bytecode template and the
     /// `immutableReferences` / `linkReferences` extracted from solc's output.
     /// Set `is_library` when the contract is a Solidity library so the

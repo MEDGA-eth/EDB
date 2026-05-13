@@ -1302,13 +1302,13 @@ where
                 let known = KNOWN_CHEATCODES.iter().find(|(sel, _)| **sel == selector);
                 if let Some((_, name)) = known {
                     // Distinguish rejected vs not-yet-implemented purely by name.
-                    let category = if is_explicitly_rejected_name(name) {
-                        UnsupportedCategory::Rejected
+                    let (category, phrase) = if is_explicitly_rejected_name(name) {
+                        (UnsupportedCategory::Rejected, "rejected in v1")
                     } else {
-                        UnsupportedCategory::NotYetImplemented
+                        (UnsupportedCategory::NotYetImplemented, "not yet implemented in v1")
                     };
                     let msg = format!(
-                        "EDB: cheatcode vm.{name} not yet implemented in v1 \
+                        "EDB: cheatcode vm.{name} {phrase} \
                          (selector 0x{hex}). See docs/cheatcodes.md"
                     );
                     self.record_and_revert(inputs, name, selector, category, &msg)
