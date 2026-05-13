@@ -55,4 +55,21 @@ clone_at_commit "https://github.com/transmissions11/solmate" "main" \
 clone_at_commit "https://github.com/PaulRBerg/prb-math" "main" \
     "82e5ed5561d0a1c43a3a59edbf4291c8de26479e" "prb-math"
 
+# prb-math fetches forge-std via npm (see package.json), not git submodules.
+# Materialize `node_modules/` so foundry-compilers can resolve
+# `forge-std/src/StdAssertions.sol`. We prefer `bun install` (already on CI)
+# and fall back to `npm install --omit=dev` so devs without bun can still
+# run this script.
+if [[ -f "$DEST/prb-math/package.json" && ! -d "$DEST/prb-math/node_modules/forge-std" ]]; then
+    echo "[npm] populating prb-math node_modules (forge-std dep)"
+    if command -v bun >/dev/null 2>&1; then
+        (cd "$DEST/prb-math" && bun install --frozen-lockfile 2>/dev/null \
+            || bun install)
+    elif command -v npm >/dev/null 2>&1; then
+        (cd "$DEST/prb-math" && npm install --omit=dev --silent)
+    else
+        echo "[warn] neither bun nor npm available — prb-math tests will fail to compile"
+    fi
+fi
+
 echo "Done. Projects in: $DEST"
