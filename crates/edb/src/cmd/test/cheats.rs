@@ -94,6 +94,19 @@ const SEL_TO_STRING_BYTES32: [u8; 4] = [0xb1, 0x1a, 0x19, 0xe8]; // toString(byt
 const SEL_TO_STRING_INT256: [u8; 4] = [0xa3, 0x22, 0xc4, 0x0e]; // toString(int256)
 const SEL_TO_STRING_UINT256: [u8; 4] = [0x69, 0x00, 0xa3, 0xae]; // toString(uint256)
 
+// vm.parseJson family — minimal JSONPath-like access against a serde_json
+// tree. Supported accessor grammar (subset of foundry's jsonpath_lib): leading
+// `$` optional, then a sequence of `.<ident>` and/or `[<index>]` tokens. The
+// path `"$"` or `""` selects the root.
+const SEL_PARSE_JSON_1: [u8; 4] = [0x6a, 0x82, 0x60, 0x0a]; // parseJson(string)
+const SEL_PARSE_JSON_2: [u8; 4] = [0x85, 0x94, 0x0e, 0xf1]; // parseJson(string,string)
+const SEL_PARSE_JSON_BOOL: [u8; 4] = [0x9f, 0x86, 0xdc, 0x91]; // parseJsonBool(string,string)
+const SEL_PARSE_JSON_STRING: [u8; 4] = [0x49, 0xc4, 0xfa, 0xc8]; // parseJsonString(string,string)
+const SEL_PARSE_JSON_BYTES32: [u8; 4] = [0x17, 0x77, 0xe5, 0x9d]; // parseJsonBytes32(string,string)
+const SEL_PARSE_JSON_UINT: [u8; 4] = [0xad, 0xdd, 0xe2, 0xb6]; // parseJsonUint(string,string)
+const SEL_PARSE_JSON_INT: [u8; 4] = [0x7b, 0x04, 0x8c, 0xcd]; // parseJsonInt(string,string)
+const SEL_PARSE_JSON_ADDRESS: [u8; 4] = [0x1e, 0x19, 0xe6, 0x57]; // parseJsonAddress(string,string)
+
 // Crypto cheatcodes (secp256k1 — backed by k256 via alloy-signer-local).
 const SEL_ADDR: [u8; 4] = [0xff, 0xa1, 0x86, 0x49]; // addr(uint256)
 const SEL_SIGN: [u8; 4] = [0xe3, 0x41, 0xea, 0xa4]; // sign(uint256,bytes32)
@@ -242,7 +255,16 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0xb9, 0x62, 0x13, 0xe4], "mockCall"), // mockCall(address,bytes,bytes)
     (&[0xdb, 0xaa, 0xd1, 0x47], "mockCallRevert"), // mockCallRevert(address,bytes,bytes)
     (&[0xd1, 0xa5, 0xb3, 0x6f], "pauseGasMetering"), // pauseGasMetering()
-    (&[0xca, 0x66, 0x9f, 0xa7], "prank"), // prank(address)
+    // vm.parseJson family — minimal JSONPath-like access for primitive leaves.
+    (&[0x6a, 0x82, 0x60, 0x0a], "parseJson"), // parseJson(string)
+    (&[0x85, 0x94, 0x0e, 0xf1], "parseJson"), // parseJson(string,string)
+    (&[0x1e, 0x19, 0xe6, 0x57], "parseJsonAddress"), // parseJsonAddress(string,string)
+    (&[0x9f, 0x86, 0xdc, 0x91], "parseJsonBool"), // parseJsonBool(string,string)
+    (&[0x17, 0x77, 0xe5, 0x9d], "parseJsonBytes32"), // parseJsonBytes32(string,string)
+    (&[0x7b, 0x04, 0x8c, 0xcd], "parseJsonInt"), // parseJsonInt(string,string)
+    (&[0x49, 0xc4, 0xfa, 0xc8], "parseJsonString"), // parseJsonString(string,string)
+    (&[0xad, 0xdd, 0xe2, 0xb6], "parseJsonUint"), // parseJsonUint(string,string)
+    (&[0xca, 0x66, 0x9f, 0xa7], "prank"),     // prank(address)
     (&[0x41, 0xaf, 0x2f, 0x52], "recordLogs"), // recordLogs()
     (&[0x2b, 0xcd, 0x50, 0xe0], "resumeGasMetering"), // resumeGasMetering()
     (&[0x08, 0xd6, 0xb3, 0x7a], "deleteStateSnapshot"), // deleteStateSnapshot(uint256)
@@ -463,8 +485,6 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0xb3, 0xa0, 0x56, 0xd7], "loadAllocs"), // loadAllocs(string)
     (&[0xad, 0xf8, 0x4d, 0x21], "mockFunction"), // mockFunction(address,address,bytes)
     (&[0x42, 0x34, 0x6c, 0x5e], "parseInt"), // parseInt(string)
-    (&[0x6a, 0x82, 0x60, 0x0a], "parseJson"), // parseJson(string)
-    (&[0x85, 0x94, 0x0e, 0xf1], "parseJson"), // parseJson(string,string)
     (&[0x21, 0x3e, 0x41, 0x98], "parseJsonKeys"), // parseJsonKeys(string,string)
     (&[0xc6, 0xce, 0x05, 0x9d], "parseAddress"), // parseAddress(string)
     (&[0x97, 0x4e, 0xf9, 0x24], "parseBool"), // parseBool(string)
@@ -1167,6 +1187,14 @@ where
             SEL_TO_STRING_BYTES32 => self.cheat_to_string_bytes32(inputs, args),
             SEL_TO_STRING_INT256 => self.cheat_to_string_int256(inputs, args),
             SEL_TO_STRING_UINT256 => self.cheat_to_string_uint256(inputs, args),
+            SEL_PARSE_JSON_1 => self.cheat_parse_json_root(inputs, args),
+            SEL_PARSE_JSON_2 => self.cheat_parse_json_path(inputs, args),
+            SEL_PARSE_JSON_BOOL => self.cheat_parse_json_bool(inputs, args),
+            SEL_PARSE_JSON_STRING => self.cheat_parse_json_string(inputs, args),
+            SEL_PARSE_JSON_BYTES32 => self.cheat_parse_json_bytes32(inputs, args),
+            SEL_PARSE_JSON_UINT => self.cheat_parse_json_uint(inputs, args),
+            SEL_PARSE_JSON_INT => self.cheat_parse_json_int(inputs, args),
+            SEL_PARSE_JSON_ADDRESS => self.cheat_parse_json_address(inputs, args),
             SEL_DEAL => self.cheat_deal(ctx, inputs, args),
             SEL_ETCH => self.cheat_etch(ctx, inputs, args),
             SEL_STORE => self.cheat_store(ctx, inputs, args),
@@ -1684,6 +1712,216 @@ where
             return revert_with(inputs, encode_error_string("vm.toString(uint256): bad calldata"));
         };
         ok_return(inputs, encode_abi_string(&v.to_string()))
+    }
+
+    // --- vm.parseJson family -------------------------------------------------
+    //
+    // We support the typed accessors (parseJsonBool, parseJsonString,
+    // parseJsonBytes32, parseJsonUint, parseJsonInt, parseJsonAddress) plus
+    // the bare parseJson(string) and parseJson(string,string) overloads.
+    //
+    // The JSONPath accessor is a minimal subset of foundry's
+    // jsonpath_lib-backed syntax: leading `$` is optional, then a sequence of
+    // `.<ident>` and/or `[<index>]` tokens. This covers every parseJson*
+    // invocation in the static-coverage projects (`.x`, `.foo`, `.foo.bar`,
+    // `.foo[0]`, `.foo[0].bar`). The fall-through returns a clean error if a
+    // requested token isn't found or the leaf type doesn't match.
+
+    fn cheat_parse_json_root(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(json) = read_string(args, 0) else {
+            return revert_with(
+                inputs,
+                encode_error_string("vm.parseJson(string): malformed calldata"),
+            );
+        };
+        match parse_json_to_abi_bytes(&json, "$") {
+            Ok(b) => ok_return(inputs, b),
+            Err(msg) => revert_with(inputs, encode_error_string(&msg)),
+        }
+    }
+
+    fn cheat_parse_json_path(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let Some(json) = read_string(args, 0) else {
+            return revert_with(
+                inputs,
+                encode_error_string("vm.parseJson(string,string): malformed calldata"),
+            );
+        };
+        let Some(path) = read_string(args, 1) else {
+            return revert_with(
+                inputs,
+                encode_error_string("vm.parseJson(string,string): malformed path arg"),
+            );
+        };
+        match parse_json_to_abi_bytes(&json, &path) {
+            Ok(b) => ok_return(inputs, b),
+            Err(msg) => revert_with(inputs, encode_error_string(&msg)),
+        }
+    }
+
+    fn cheat_parse_json_bool(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let (json, path) = match read_json_path_pair(args, "vm.parseJsonBool") {
+            Ok(v) => v,
+            Err(msg) => return revert_with(inputs, encode_error_string(&msg)),
+        };
+        match navigate_json(&json, &path).and_then(|v| v.as_bool()) {
+            Some(b) => {
+                let mut out = [0u8; 32];
+                out[31] = u8::from(b);
+                ok_return(inputs, Bytes::copy_from_slice(&out))
+            }
+            None => revert_with(
+                inputs,
+                encode_error_string(&format!(
+                    "EDB: vm.parseJsonBool: path {path:?} did not resolve to a JSON bool"
+                )),
+            ),
+        }
+    }
+
+    fn cheat_parse_json_string(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let (json, path) = match read_json_path_pair(args, "vm.parseJsonString") {
+            Ok(v) => v,
+            Err(msg) => return revert_with(inputs, encode_error_string(&msg)),
+        };
+        match navigate_json(&json, &path).and_then(|v| v.as_str()) {
+            Some(s) => ok_return(inputs, encode_abi_string(s)),
+            None => revert_with(
+                inputs,
+                encode_error_string(&format!(
+                    "EDB: vm.parseJsonString: path {path:?} did not resolve to a JSON string"
+                )),
+            ),
+        }
+    }
+
+    fn cheat_parse_json_bytes32(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let (json, path) = match read_json_path_pair(args, "vm.parseJsonBytes32") {
+            Ok(v) => v,
+            Err(msg) => return revert_with(inputs, encode_error_string(&msg)),
+        };
+        let Some(leaf) = navigate_json(&json, &path) else {
+            return revert_with(
+                inputs,
+                encode_error_string(&format!(
+                    "EDB: vm.parseJsonBytes32: path {path:?} did not resolve"
+                )),
+            );
+        };
+        let Some(s) = leaf.as_str() else {
+            return revert_with(
+                inputs,
+                encode_error_string(&format!(
+                    "EDB: vm.parseJsonBytes32: path {path:?} is not a string leaf"
+                )),
+            );
+        };
+        let trimmed = s.trim();
+        let hex_body = trimmed.strip_prefix("0x").unwrap_or(trimmed);
+        let decoded = match alloy_primitives::hex::decode(hex_body) {
+            Ok(v) => v,
+            Err(_) => {
+                return revert_with(
+                    inputs,
+                    encode_error_string(&format!(
+                        "EDB: vm.parseJsonBytes32: leaf at {path:?} is not valid hex"
+                    )),
+                );
+            }
+        };
+        if decoded.len() > 32 {
+            return revert_with(
+                inputs,
+                encode_error_string(&format!(
+                    "EDB: vm.parseJsonBytes32: leaf at {path:?} is longer than 32 bytes"
+                )),
+            );
+        }
+        // Right-pad to 32 bytes (matches foundry's FixedBytes(32) coercion).
+        let mut out = [0u8; 32];
+        out[..decoded.len()].copy_from_slice(&decoded);
+        ok_return(inputs, Bytes::copy_from_slice(&out))
+    }
+
+    fn cheat_parse_json_uint(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let (json, path) = match read_json_path_pair(args, "vm.parseJsonUint") {
+            Ok(v) => v,
+            Err(msg) => return revert_with(inputs, encode_error_string(&msg)),
+        };
+        let Some(leaf) = navigate_json(&json, &path) else {
+            return revert_with(
+                inputs,
+                encode_error_string(&format!(
+                    "EDB: vm.parseJsonUint: path {path:?} did not resolve"
+                )),
+            );
+        };
+        match parse_uint256_from_json(leaf) {
+            Ok(u) => ok_return(inputs, Bytes::copy_from_slice(&u.to_be_bytes::<32>())),
+            Err(e) => revert_with(
+                inputs,
+                encode_error_string(&format!("EDB: vm.parseJsonUint: path {path:?}: {e}")),
+            ),
+        }
+    }
+
+    fn cheat_parse_json_int(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let (json, path) = match read_json_path_pair(args, "vm.parseJsonInt") {
+            Ok(v) => v,
+            Err(msg) => return revert_with(inputs, encode_error_string(&msg)),
+        };
+        let Some(leaf) = navigate_json(&json, &path) else {
+            return revert_with(
+                inputs,
+                encode_error_string(&format!(
+                    "EDB: vm.parseJsonInt: path {path:?} did not resolve"
+                )),
+            );
+        };
+        match parse_int256_from_json(leaf) {
+            Ok(i) => ok_return(inputs, Bytes::copy_from_slice(&i.to_be_bytes::<32>())),
+            Err(e) => revert_with(
+                inputs,
+                encode_error_string(&format!("EDB: vm.parseJsonInt: path {path:?}: {e}")),
+            ),
+        }
+    }
+
+    fn cheat_parse_json_address(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        let (json, path) = match read_json_path_pair(args, "vm.parseJsonAddress") {
+            Ok(v) => v,
+            Err(msg) => return revert_with(inputs, encode_error_string(&msg)),
+        };
+        let Some(leaf) = navigate_json(&json, &path) else {
+            return revert_with(
+                inputs,
+                encode_error_string(&format!(
+                    "EDB: vm.parseJsonAddress: path {path:?} did not resolve"
+                )),
+            );
+        };
+        let Some(s) = leaf.as_str() else {
+            return revert_with(
+                inputs,
+                encode_error_string(&format!(
+                    "EDB: vm.parseJsonAddress: path {path:?} is not a string leaf"
+                )),
+            );
+        };
+        let addr: Address = match s.parse() {
+            Ok(a) => a,
+            Err(_) => {
+                return revert_with(
+                    inputs,
+                    encode_error_string(&format!(
+                        "EDB: vm.parseJsonAddress: leaf at {path:?} is not a hex address"
+                    )),
+                );
+            }
+        };
+        let mut out = [0u8; 32];
+        out[12..].copy_from_slice(addr.as_slice());
+        ok_return(inputs, Bytes::copy_from_slice(&out))
     }
 
     // --- Account state mutators ---------------------------------------------
@@ -2975,6 +3213,200 @@ fn read_string(args: &[u8], head_index: usize) -> Option<String> {
 }
 
 // ----------------------------------------------------------------------------
+// JSON helpers for `vm.parseJson*`
+//
+// We implement a minimal subset of jsonpath_lib's grammar — leading `$`
+// optional, then a sequence of `.<ident>` and `[<index>]` tokens. This covers
+// every parseJson* invocation in the static-coverage fixtures (`.x`, `.foo`,
+// `.foo.bar`, `.foo[0]`, `.foo[0].bar`). The fall-through returns `None` if
+// any token misses, which the per-type handlers translate into a revert with
+// a descriptive message.
+// ----------------------------------------------------------------------------
+
+/// Walk a `serde_json::Value` along a foundry-style JSONPath accessor.
+///
+/// Returns `None` if the path is malformed or any segment doesn't resolve.
+/// The empty path (`""`) or `"$"` selects the root. Leading whitespace and
+/// trailing whitespace are NOT trimmed — match foundry's literal behavior.
+fn navigate_json<'a>(root: &'a serde_json::Value, path: &str) -> Option<&'a serde_json::Value> {
+    // Strip the optional leading `$`. Foundry's `canonicalize_json_path`
+    // re-prefixes `$` automatically — we just accept either form.
+    let mut cur = root;
+    let mut rest = path.strip_prefix('$').unwrap_or(path);
+    // Trim a single leading `.` so that `".foo"` and `"foo"` and `"$.foo"`
+    // all walk the same way.
+    if rest.starts_with('.') {
+        rest = &rest[1..];
+    }
+    // Empty path resolves to the root.
+    if rest.is_empty() {
+        return Some(cur);
+    }
+    while !rest.is_empty() {
+        // Bracket index: `[N]`.
+        if let Some(after_lb) = rest.strip_prefix('[') {
+            let close = after_lb.find(']')?;
+            let idx_str = &after_lb[..close];
+            let idx: usize = idx_str.parse().ok()?;
+            let arr = cur.as_array()?;
+            cur = arr.get(idx)?;
+            rest = &after_lb[close + 1..];
+            // Optional `.` separator after bracket (`[0].foo`).
+            rest = rest.strip_prefix('.').unwrap_or(rest);
+            continue;
+        }
+        // Dot-key segment: consume up to the next `.` or `[`.
+        let end = rest.find(['.', '[']).unwrap_or(rest.len());
+        let key = &rest[..end];
+        let obj = cur.as_object()?;
+        cur = obj.get(key)?;
+        rest = &rest[end..];
+        // Optional `.` between segments.
+        rest = rest.strip_prefix('.').unwrap_or(rest);
+    }
+    Some(cur)
+}
+
+/// Decode the two `string` args of a `vm.parseJson*(string,string)` cheatcode
+/// and parse the first as JSON.
+fn read_json_path_pair(args: &[u8], who: &str) -> Result<(serde_json::Value, String), String> {
+    let json_str =
+        read_string(args, 0).ok_or_else(|| format!("{who}(string,string): malformed JSON arg"))?;
+    let path =
+        read_string(args, 1).ok_or_else(|| format!("{who}(string,string): malformed path arg"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(&json_str).map_err(|e| format!("{who}: failed to parse JSON: {e}"))?;
+    Ok((value, path))
+}
+
+/// Parse a `serde_json::Value` as an unsigned 256-bit integer. Accepts:
+/// - a JSON number (must be non-negative)
+/// - a JSON string of decimal digits, or `"0x"`-prefixed hex.
+fn parse_uint256_from_json(v: &serde_json::Value) -> Result<U256, String> {
+    match v {
+        serde_json::Value::Number(n) => {
+            if let Some(u) = n.as_u64() {
+                return Ok(U256::from(u));
+            }
+            // Reject negatives explicitly.
+            if let Some(i) = n.as_i64()
+                && i < 0
+            {
+                return Err(format!("negative JSON number {i} cannot decode as uint256"));
+            }
+            // Fall back to string parsing for arbitrary-precision JSON numbers.
+            U256::from_str_radix(n.to_string().trim(), 10)
+                .map_err(|e| format!("number {n} not parseable as uint256: {e}"))
+        }
+        serde_json::Value::String(s) => {
+            let t = s.trim();
+            if let Some(hex) = t.strip_prefix("0x") {
+                U256::from_str_radix(hex, 16).map_err(|e| format!("hex string not uint256: {e}"))
+            } else {
+                U256::from_str_radix(t, 10).map_err(|e| format!("decimal string not uint256: {e}"))
+            }
+        }
+        other => Err(format!("expected a uint256 leaf, got JSON value {other}")),
+    }
+}
+
+/// Parse a `serde_json::Value` as a signed 256-bit integer (two's complement
+/// representation returned as 32 BE bytes). Accepts a JSON number or a
+/// decimal-string leaf with an optional leading `-`.
+fn parse_int256_from_json(v: &serde_json::Value) -> Result<alloy_primitives::I256, String> {
+    use alloy_primitives::I256;
+    use std::str::FromStr;
+    match v {
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                return I256::try_from(i).map_err(|e| e.to_string());
+            }
+            // Arbitrary-precision: route through string form.
+            I256::from_dec_str(n.to_string().trim()).map_err(|e| format!("number not int256: {e}"))
+        }
+        serde_json::Value::String(s) => {
+            let t = s.trim();
+            I256::from_str(t).map_err(|e| format!("string not int256: {e}"))
+        }
+        other => Err(format!("expected an int256 leaf, got JSON value {other}")),
+    }
+}
+
+/// Implementation of `vm.parseJson(string)` and `vm.parseJson(string,string)`:
+/// parse the JSON, resolve the path, and produce an ABI-encoded value
+/// suitable for `abi.decode(ret, (T))` where `T` is the leaf's natural type.
+///
+/// We support primitive leaves (bool, number, string) and primitive arrays —
+/// enough for the real-world tests these unblock. For complex (object) leaves
+/// we return a clean error rather than attempting foundry's type-guess
+/// machinery.
+fn parse_json_to_abi_bytes(json: &str, path: &str) -> Result<Bytes, String> {
+    let root: serde_json::Value = serde_json::from_str(json)
+        .map_err(|e| format!("EDB: vm.parseJson: failed to parse JSON: {e}"))?;
+    let leaf = navigate_json(&root, path)
+        .ok_or_else(|| format!("EDB: vm.parseJson: path {path:?} did not resolve"))?;
+    encode_json_leaf_as_bytes(leaf, path)
+}
+
+/// Encode a primitive JSON leaf as an ABI-encoded value matching the type
+/// foundry's `parseJson` returns for that JSON shape.
+fn encode_json_leaf_as_bytes(leaf: &serde_json::Value, path: &str) -> Result<Bytes, String> {
+    match leaf {
+        serde_json::Value::Bool(b) => {
+            let mut out = [0u8; 32];
+            out[31] = u8::from(*b);
+            Ok(Bytes::copy_from_slice(&out))
+        }
+        serde_json::Value::String(s) => {
+            // Two cases foundry's `_json_value_to_token` distinguishes:
+            //   1. hex-looking strings ("0x..." with even-length lowercase hex
+            //      that decodes cleanly) -> bytes.
+            //   2. otherwise -> a UTF-8 `string`.
+            // We follow the same heuristic. Tests that need the strict typed
+            // form should use the per-type `vm.parseJsonBytes32` /
+            // `vm.parseJsonString` overloads.
+            let t = s.trim();
+            if let Some(hex) = t.strip_prefix("0x")
+                && !hex.is_empty()
+                && hex.len() % 2 == 0
+                && hex.chars().all(|c| c.is_ascii_hexdigit())
+                && let Ok(decoded) = alloy_primitives::hex::decode(hex)
+            {
+                if decoded.len() == 32 {
+                    return Ok(Bytes::copy_from_slice(&decoded));
+                }
+                if decoded.len() == 20 {
+                    let mut out = [0u8; 32];
+                    out[12..].copy_from_slice(&decoded);
+                    return Ok(Bytes::copy_from_slice(&out));
+                }
+                // Generic `bytes` payload.
+                return Ok(encode_abi_bytes(&decoded));
+            }
+            Ok(encode_abi_string(s))
+        }
+        serde_json::Value::Number(_) => {
+            // Foundry guesses uint256 first; integer numbers in test JSON are
+            // always non-negative (forge-std doesn't emit negative numbers
+            // via parseJson without explicit typed overloads), so we follow
+            // suit. Negative numbers re-route through `parseJsonInt`.
+            let u = parse_uint256_from_json(leaf)
+                .map_err(|e| format!("EDB: vm.parseJson: leaf at {path:?}: {e}"))?;
+            Ok(Bytes::copy_from_slice(&u.to_be_bytes::<32>()))
+        }
+        serde_json::Value::Null => Ok(Bytes::copy_from_slice(&[0u8; 32])),
+        // Complex shapes (objects, arrays) aren't supported in v1 — they
+        // require foundry's full `parse_json_array` / `parse_json_map`
+        // recursion. Test authors who need them should use the typed
+        // per-leaf overloads (parseJsonUint/Bool/String/etc.).
+        _ => Err(format!(
+            "EDB: vm.parseJson: leaf at {path:?} is a complex JSON value; \
+             use vm.parseJson<Type>(json, path) for typed access in v1"
+        )),
+    }
+}
+
+// ----------------------------------------------------------------------------
 // ABI encoding for `Vm.Log[]`
 //
 // Foundry's `Vm.Log`:
@@ -3122,6 +3554,17 @@ mod tests {
         assert_eq!(sel("toString(bytes32)"), SEL_TO_STRING_BYTES32);
         assert_eq!(sel("toString(int256)"), SEL_TO_STRING_INT256);
         assert_eq!(sel("toString(uint256)"), SEL_TO_STRING_UINT256);
+    }
+    #[test]
+    fn selectors_parse_json_family() {
+        assert_eq!(sel("parseJson(string)"), SEL_PARSE_JSON_1);
+        assert_eq!(sel("parseJson(string,string)"), SEL_PARSE_JSON_2);
+        assert_eq!(sel("parseJsonBool(string,string)"), SEL_PARSE_JSON_BOOL);
+        assert_eq!(sel("parseJsonString(string,string)"), SEL_PARSE_JSON_STRING);
+        assert_eq!(sel("parseJsonBytes32(string,string)"), SEL_PARSE_JSON_BYTES32);
+        assert_eq!(sel("parseJsonUint(string,string)"), SEL_PARSE_JSON_UINT);
+        assert_eq!(sel("parseJsonInt(string,string)"), SEL_PARSE_JSON_INT);
+        assert_eq!(sel("parseJsonAddress(string,string)"), SEL_PARSE_JSON_ADDRESS);
     }
     #[test]
     fn selector_deal() {
@@ -3925,6 +4368,176 @@ mod tests {
         let out = cheats.cheat_to_string_bytes32(&inputs, &arg);
         let s = decode_abi_string(out.result.output.as_ref()).expect("decoded string");
         assert_eq!(s, "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+    }
+
+    // --- vm.parseJson behavior tests ----------------------------------------
+
+    /// Build calldata for a two-`string` cheatcode: `(string a, string b)`.
+    /// Head section is two offsets (both pointing past the head into the
+    /// concatenated tails), then `(length, padded data)` for each.
+    fn two_string_args(a: &str, b: &str) -> Vec<u8> {
+        let a_b = a.as_bytes();
+        let b_b = b.as_bytes();
+        let a_pad = (32 - a_b.len() % 32) % 32;
+        let b_pad = (32 - b_b.len() % 32) % 32;
+        // Both string tails live after the two head words (offset starts at 0x40).
+        let a_off = 0x40usize;
+        // The B tail is at A's tail start + (length-word + padded payload).
+        let b_off = a_off + 32 + a_b.len() + a_pad;
+
+        let mut out = Vec::with_capacity(b_off + 32 + b_b.len() + b_pad);
+        // head[0] = offset to A
+        let mut w = [0u8; 32];
+        w[24..].copy_from_slice(&(a_off as u64).to_be_bytes());
+        out.extend_from_slice(&w);
+        // head[1] = offset to B
+        let mut w = [0u8; 32];
+        w[24..].copy_from_slice(&(b_off as u64).to_be_bytes());
+        out.extend_from_slice(&w);
+        // A: length + padded data
+        let mut w = [0u8; 32];
+        w[24..].copy_from_slice(&(a_b.len() as u64).to_be_bytes());
+        out.extend_from_slice(&w);
+        out.extend_from_slice(a_b);
+        out.extend(std::iter::repeat_n(0u8, a_pad));
+        // B: length + padded data
+        let mut w = [0u8; 32];
+        w[24..].copy_from_slice(&(b_b.len() as u64).to_be_bytes());
+        out.extend_from_slice(&w);
+        out.extend_from_slice(b_b);
+        out.extend(std::iter::repeat_n(0u8, b_pad));
+        out
+    }
+
+    #[test]
+    fn navigate_json_walks_dot_keys_and_brackets() {
+        let v: serde_json::Value =
+            serde_json::from_str(r#"{"a": {"b": [10, 20, 30]}, "x": true}"#).unwrap();
+        // Root.
+        assert!(navigate_json(&v, "$").is_some());
+        assert!(navigate_json(&v, "").is_some());
+        // Simple key.
+        assert_eq!(navigate_json(&v, ".x").and_then(|n| n.as_bool()), Some(true));
+        assert_eq!(navigate_json(&v, "$.x").and_then(|n| n.as_bool()), Some(true));
+        // Nested key.
+        assert!(navigate_json(&v, ".a.b").and_then(|n| n.as_array()).is_some());
+        // Bracket index.
+        assert_eq!(navigate_json(&v, ".a.b[1]").and_then(|n| n.as_i64()), Some(20));
+        assert_eq!(navigate_json(&v, "$.a.b[2]").and_then(|n| n.as_i64()), Some(30));
+        // Missing key returns None.
+        assert!(navigate_json(&v, ".nope").is_none());
+        // Out-of-range index returns None.
+        assert!(navigate_json(&v, ".a.b[99]").is_none());
+    }
+
+    #[test]
+    fn parse_json_bool_extracts_leaf() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+        let args = two_string_args(r#"{"x": true}"#, ".x");
+        let out = cheats.cheat_parse_json_bool(&inputs, &args);
+        assert!(matches!(out.result.result, InstructionResult::Return));
+        assert_eq!(out.result.output.len(), 32);
+        assert_eq!(out.result.output[31], 1);
+
+        // false leaf
+        let args = two_string_args(r#"{"x": false}"#, ".x");
+        let out = cheats.cheat_parse_json_bool(&inputs, &args);
+        assert!(matches!(out.result.result, InstructionResult::Return));
+        assert_eq!(out.result.output[31], 0);
+    }
+
+    #[test]
+    fn parse_json_string_extracts_leaf() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+        let args = two_string_args(r#"{"n": "hello"}"#, ".n");
+        let out = cheats.cheat_parse_json_string(&inputs, &args);
+        assert!(matches!(out.result.result, InstructionResult::Return));
+        assert_eq!(decode_abi_string(out.result.output.as_ref()).as_deref(), Some("hello"));
+    }
+
+    #[test]
+    fn parse_json_uint_handles_decimal_and_hex_strings() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+        // Plain JSON number.
+        let args = two_string_args(r#"{"n": 12345}"#, ".n");
+        let out = cheats.cheat_parse_json_uint(&inputs, &args);
+        assert!(matches!(out.result.result, InstructionResult::Return));
+        let v = U256::from_be_slice(out.result.output.as_ref());
+        assert_eq!(v, U256::from(12345u64));
+
+        // String form ("0x..." hex)
+        let args = two_string_args(r#"{"n": "0x100"}"#, ".n");
+        let out = cheats.cheat_parse_json_uint(&inputs, &args);
+        let v = U256::from_be_slice(out.result.output.as_ref());
+        assert_eq!(v, U256::from(256u64));
+    }
+
+    #[test]
+    fn parse_json_int_handles_negative() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+        // JSON-number negative.
+        let args = two_string_args(r#"{"n": -42}"#, ".n");
+        let out = cheats.cheat_parse_json_int(&inputs, &args);
+        assert!(matches!(out.result.result, InstructionResult::Return));
+        let bytes: [u8; 32] = out.result.output.as_ref().try_into().unwrap();
+        let signed = alloy_primitives::I256::from_be_bytes::<32>(bytes);
+        assert_eq!(signed.to_string(), "-42");
+    }
+
+    #[test]
+    fn parse_json_bytes32_decodes_hex_string() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+        let raw = "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+        let args = two_string_args(&format!(r#"{{"k": "{raw}"}}"#), ".k");
+        let out = cheats.cheat_parse_json_bytes32(&inputs, &args);
+        assert!(matches!(out.result.result, InstructionResult::Return));
+        let actual: [u8; 32] = out.result.output.as_ref().try_into().unwrap();
+        let expected = alloy_primitives::hex::decode(raw.strip_prefix("0x").unwrap()).unwrap();
+        assert_eq!(&actual[..], &expected[..]);
+    }
+
+    #[test]
+    fn parse_json_address_decodes_eip55() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+        let raw = "0x52908400098527886E0F7030069857D2E4169EE7";
+        let args = two_string_args(&format!(r#"{{"who": "{raw}"}}"#), ".who");
+        let out = cheats.cheat_parse_json_address(&inputs, &args);
+        assert!(matches!(out.result.result, InstructionResult::Return));
+        // Address is right-aligned in the 32-byte slot.
+        let parsed = Address::from_slice(&out.result.output.as_ref()[12..]);
+        let expected: Address = raw.parse().unwrap();
+        assert_eq!(parsed, expected);
+    }
+
+    #[test]
+    fn parse_json_missing_path_reverts_cleanly() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(CheatsConfig::default());
+        let inputs = mock_call_inputs(123_000, 0..0);
+        let args = two_string_args(r#"{"a": 1}"#, ".b");
+        let out = cheats.cheat_parse_json_bool(&inputs, &args);
+        assert!(matches!(out.result.result, InstructionResult::Revert));
+        let msg = decode_error_payload(out.result.output.as_ref()).expect("Error(string)");
+        assert!(msg.contains("vm.parseJsonBool"), "got: {msg}");
     }
 
     #[test]

@@ -28,6 +28,63 @@ contract Cheats is Test {
         require(tx.gasprice == 123_456_789, "vm.txGasPrice did not apply");
     }
 
+    /// `vm.parseJsonBool(json, ".x")` — minimal JSONPath access to extract a
+    /// bool leaf. `Cheats::testParseJsonBool` exercises both `true` and
+    /// `false` leaves.
+    function testParseJsonBool() public {
+        bool t = vm.parseJsonBool('{"x": true}', ".x");
+        require(t, "vm.parseJsonBool true leaf wrong");
+        bool f = vm.parseJsonBool('{"x": false}', ".x");
+        require(!f, "vm.parseJsonBool false leaf wrong");
+    }
+
+    /// `vm.parseJsonString` — extract a JSON string leaf.
+    function testParseJsonString() public {
+        string memory s = vm.parseJsonString('{"k": "hello"}', ".k");
+        require(
+            keccak256(bytes(s)) == keccak256(bytes("hello")),
+            "vm.parseJsonString wrong"
+        );
+    }
+
+    /// `vm.parseJsonUint` — accept both number and `"0x"`-prefixed hex string.
+    function testParseJsonUint() public {
+        uint256 a = vm.parseJsonUint('{"n": 12345}', ".n");
+        require(a == 12345, "vm.parseJsonUint number wrong");
+        uint256 b = vm.parseJsonUint('{"n": "0x100"}', ".n");
+        require(b == 256, "vm.parseJsonUint hex string wrong");
+    }
+
+    /// `vm.parseJsonInt` — signed leaf.
+    function testParseJsonInt() public {
+        int256 v = vm.parseJsonInt('{"n": -42}', ".n");
+        require(v == -42, "vm.parseJsonInt negative wrong");
+    }
+
+    /// `vm.parseJsonBytes32` — hex-encoded leaf decoded to 32 bytes.
+    function testParseJsonBytes32() public {
+        bytes32 b = vm.parseJsonBytes32(
+            '{"k": "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"}',
+            ".k"
+        );
+        require(
+            b == bytes32(hex"000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+            "vm.parseJsonBytes32 wrong"
+        );
+    }
+
+    /// `vm.parseJsonAddress` — EIP-55 / lowercase hex string leaf decoded to address.
+    function testParseJsonAddress() public {
+        address a = vm.parseJsonAddress(
+            '{"who": "0x52908400098527886E0F7030069857D2E4169EE7"}',
+            ".who"
+        );
+        require(
+            a == address(0x52908400098527886E0F7030069857D2E4169EE7),
+            "vm.parseJsonAddress wrong"
+        );
+    }
+
     /// `vm.toString` — six overloads converting primitive types to their
     /// Solidity-canonical string form. Each branch hashes the result against
     /// the expected literal so a regression surfaces as a clean require

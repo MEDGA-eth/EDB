@@ -88,6 +88,8 @@ cheatcode) before retrying.
 | `vm.fee(uint256)` | Mutates `block.basefee` (saturating to `u64::MAX` since REVM's `BlockEnv.basefee` is `u64`). Subsequent `BASEFEE` opcodes read the new value. |
 | `vm.txGasPrice(uint256)` | Mutates `tx.gas_price` (saturating to `u128::MAX` since REVM's `TxEnv.gas_price` is `u128`). Subsequent `GASPRICE` opcodes read the new value. |
 | `vm.toString(address)` / `(bool)` / `(bytes)` / `(bytes32)` / `(int256)` / `(uint256)` | Format the value as the Solidity-canonical string. `address` -> EIP-55 checksum; `bool` -> `"true"` / `"false"`; `bytes` / `bytes32` -> `"0x"` + lowercase hex; `uint256` / `int256` -> decimal (signed for `int256`). |
+| `vm.parseJson(string)` / `(string,string)` | Parse JSON; if a path is given, walk to the leaf. Returns an ABI-encoded primitive guess (bool / number / string / 20-byte address / 32-byte hex). Complex (object / mixed array) leaves are not supported in v1 — use the typed `vm.parseJson<Type>` overload instead. |
+| `vm.parseJsonBool(json, path)` / `parseJsonString` / `parseJsonBytes32` / `parseJsonUint` / `parseJsonInt` / `parseJsonAddress` | Walk a foundry-style JSONPath subset (`.foo.bar[0]`, leading `$` optional) to a primitive leaf and return the ABI-encoded typed value. The walker supports `.key` and `[index]` tokens; complex JSONPath filters (`?(@...)`, wildcards) are NOT supported. |
 | `vm.deal(address, uint256)` | Sets the account's balance. |
 | `vm.etch(address, bytes)` | Sets the account's deployed code via `journal.set_code`. |
 | `vm.store(address, bytes32, bytes32)` | Writes a storage slot via `journal.sstore`. |

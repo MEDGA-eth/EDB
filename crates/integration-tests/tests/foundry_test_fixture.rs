@@ -211,6 +211,52 @@ async fn cheats_tx_gas_price_actually_intercepts() -> Result<()> {
     Ok(())
 }
 
+/// `vm.parseJsonBool` and the typed-leaf parseJson siblings — extract a
+/// primitive value from a JSON string via a JSONPath-like accessor.
+/// Each fixture test (`testParseJsonBool` / `…String` / `…Uint` / `…Int` /
+/// `…Bytes32` / `…Address`) `require`s the decoded value matches the
+/// expected literal, so a regression surfaces as a clean revert.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_parse_json_family_actually_intercepts() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    for case in [
+        (
+            "Cheats::testParseJsonBool",
+            &["vm.parseJsonBool true leaf wrong", "vm.parseJsonBool false leaf wrong"][..],
+        ),
+        ("Cheats::testParseJsonString", &["vm.parseJsonString wrong"][..]),
+        (
+            "Cheats::testParseJsonUint",
+            &["vm.parseJsonUint number wrong", "vm.parseJsonUint hex string wrong"][..],
+        ),
+        ("Cheats::testParseJsonInt", &["vm.parseJsonInt negative wrong"][..]),
+        ("Cheats::testParseJsonBytes32", &["vm.parseJsonBytes32 wrong"][..]),
+        ("Cheats::testParseJsonAddress", &["vm.parseJsonAddress wrong"][..]),
+    ] {
+        let (target, needles) = case;
+        let session = edb::cmd::test::run_foundry_test_for_test(
+            target,
+            Some(root.to_str().unwrap()),
+            None,
+            None,
+            None,
+        )
+        .await?;
+        let trace = session.fetch_trace().await?;
+        assert!(!trace_has_revert(&trace), "{target}: cheat produced a revert; trace = {trace:#?}",);
+        for needle in needles {
+            assert!(
+                !trace_revert_contains(&trace, needle),
+                "{target}: regression {needle}; trace = {trace:#?}",
+            );
+        }
+        let _ = session.shutdown();
+    }
+    Ok(())
+}
+
 /// `vm.toString` — six type overloads producing the Solidity-canonical
 /// string for each primitive (decimal for ints, EIP-55 checksum for
 /// address, `0x...` lowercase hex for `bytes` / `bytes32`, `"true"` /
