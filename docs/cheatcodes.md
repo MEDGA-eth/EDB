@@ -183,7 +183,7 @@ called per `edb test` run. Re-invocations stay silent.
 | `vm.rollFork(uint256)` | Updates `block.number` only; `block.timestamp` / `basefee` unchanged; CacheDB not invalidated. | Pair with `vm.warp(t)` for the timestamp you need; for state at a specific block, restart with `--fork-block-number` at the CLI. |
 | `vm.pauseGasMetering()` / `vm.resumeGasMetering()` | Stub. Flag is tracked but REVM gas accounting is NOT paused. | If your test asserts specific gas behavior between paused/running phases, EDB will give different results than `forge test`. Re-run under `forge` for gas-precise assertions. |
 | `vm.lastCallGas()` | Stub. Returns all-zero `Gas{}` for determinism across multi-pass instrumentation. | Same caveat as the gas-metering stubs — don't assert specific gas values under EDB. |
-| `vm.expectEmit*` (all 4 overloads) | Soft-match v1: checks emitter + topic-count + non-empty data; NOT byte-equality against a template. False positives possible. | Combine with explicit checks on the recorded log via `vm.recordLogs()` / `vm.getRecordedLogs()` if you need precise event verification. |
+| `vm.expectEmit*` (all 4 overloads) | Soft-match v1: matches any log from the (optionally constrained) emitter with at least a signature topic; NOT byte-equality against a template. False positives possible. | Combine with explicit checks on the recorded log via `vm.recordLogs()` / `vm.getRecordedLogs()` if you need precise event verification. |
 
 ### `vm.expectEmit` soft-match — detail
 
@@ -195,15 +195,23 @@ external call, then byte-compares each captured log against the template
 EDB's v1 soft-match is approximate:
 
 - The expectation matches the first log whose emitter is correct (when
-  supplied) and whose topic slot count is at least the highest index marked
-  `true` in the bool mask. When `checkData` is `true` we additionally
-  require non-empty data.
+  supplied) and whose topic vector is non-empty (every Solidity `emit`
+  contributes at least the event-signature topic).
 - We do NOT compare topic values or data bytes against any template — EDB
-  doesn't capture a template.
+  doesn't capture a template, and we deliberately ignore the
+  `(bool t1, bool t2, bool t3, bool checkData)` mask because:
+  - Topic-count enforcement (`tN=true ⇒ topics.len() ≥ N+1`) false-fails
+    events with fewer indexed args than the user happens to mask, where
+    forge would pass because the template carries the same shape.
+  - `checkData=true ⇒ data.len() > 0` false-fails events whose only args
+    are indexed (empty data payload), which forge accepts for the same
+    template-shape reason.
+- The mask is still recorded on the expectation for future use when v2
+  brings template capture.
 
-This covers the "did the contract emit any qualifying event?" smoke
-pattern at the cost of false positives on byte-equality checks. Faithful
-template matching is tracked for v2.
+This covers "did the contract emit any qualifying event?" at the cost
+of false positives on byte-equality checks. Faithful template matching
+is tracked for v2.
 
 ## Not supported
 
@@ -335,6 +343,42 @@ the trace will show the call but its body cannot be stepped through in
 the debugger UI. The call/return semantics are still faithful (we
 execute the actual runtime bytecode); only the source-level view is
 missing.
+
+### Instrumented-bytecode test-reverts (a small handful of known cases)
+
+A few real-world tests pass under `forge test` but revert under EDB.
+The round-2 coverage audit (`docs/superpowers/audits/2026-05-12-coverage-round2.md`)
+found 6 such cases out of ~18 tracked failure-mode regressions. After
+the round-2 `vm.expectEmit` soft-match relaxation
+(`OwnableTest::testHandoverOwnershipWithCancellation` was unblocked by
+no longer demanding `topics.len() ≥ 4` or `data.len() > 0` from the
+mask bits — see "soft-match — detail" above), the remaining cases
+trace to instrumentation divergences in the recompiled contract, not
+to cheatcode stubs:
+
+- `solady` `ERC4337Test::testDepositFunctions` — `vm.etch`'s installed
+  MockEntryPoint runs the instrumented runtime bytecode at the canonical
+  ERC-4337 entrypoint address, and the second-pass `account.addDeposit`
+  call reverts mid-execution. Root cause is in the engine
+  (instrumentation pipeline) — `crates/engine/src/instrumentation/`.
+- `uniswap-v4-core` `CustomAccountingTest::test_swap_afterSwapFeeOnUnspecified_exactOutput`
+  — second-pass CREATE outcome diverges from the first-pass trace at
+  one of the ~14 contract CREATEs in `_setUpFeeTakingPool()`, which
+  cascades into the final `swapRouter.swap` reverting. Diagnostic
+  surfaces as `"Create outcome mismatch at frame N: expected Some(Success ...), got CreateOutcome { result: Revert ... }"`
+  in `crates/engine/src/inspector/hook_snapshot_inspector.rs:861`.
+- `solmate` `WETHTest::testFallbackDeposit` (and the whole WETHTest
+  suite — `testDeposit`, `testWithdraw`, etc.) — every WETH-direct
+  test reverts under EDB but passes under forge. WETH derives from
+  ERC20 which uses `immutable INITIAL_CHAIN_ID / INITIAL_DOMAIN_SEPARATOR`;
+  this likely interacts with the same MSTORE-patch class as the
+  immutable-codehash issue above, but in the instrumentation phase
+  rather than the artifact-lookup phase.
+
+These are tracked as v1.x engine bugs, not cheatcode limitations.
+Run `forge test` against the same fixtures when you hit a "test-revert"
+status on EDB and want to verify whether the test is supposed to
+pass.
 
 ## Error messages
 
