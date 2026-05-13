@@ -355,6 +355,21 @@ contract Cheats is Test {
         vm.setBlockhash(target, sentinel);
         require(blockhash(target) == sentinel, "vm.setBlockhash did not apply");
     }
+
+    /// `vm.readLine(path)` returns the next line of the file each call (no
+    /// trailing newline) and an empty string at EOF. The fixture under
+    /// `test/fixtures/readline_lines.txt` is a 3-line file: alpha / beta / gamma.
+    function testReadLineSequentialAndEof() public {
+        string memory path = "test/fixtures/readline_lines.txt";
+        string memory l1 = vm.readLine(path);
+        string memory l2 = vm.readLine(path);
+        string memory l3 = vm.readLine(path);
+        string memory l4 = vm.readLine(path);
+        require(keccak256(bytes(l1)) == keccak256(bytes("alpha")), "vm.readLine line 1 wrong");
+        require(keccak256(bytes(l2)) == keccak256(bytes("beta")), "vm.readLine line 2 wrong");
+        require(keccak256(bytes(l3)) == keccak256(bytes("gamma")), "vm.readLine line 3 wrong");
+        require(bytes(l4).length == 0, "vm.readLine EOF should be empty");
+    }
 }
 
 /// External callee used by `testExpectCall` so the `increment()` invocation

@@ -94,6 +94,7 @@ cheatcode) before retrying.
 | `vm.getNonce(address) returns (uint64)` | Reads the account's nonce via the journal. Mirror of `vm.setNonce`. |
 | `vm.getBlockNumber() returns (uint256)` | Returns the current `block.number`. Useful after `vm.roll` since solc caches `block.number` as a constant within a single transaction body. |
 | `vm.setBlockhash(uint256 blockNumber, bytes32 blockHash)` | Installs a `BLOCKHASH` override at `blockNumber` by writing into CacheDB's `block_hashes` cache. Rejects `blockNumber > u64::MAX` and `blockNumber > block.number` (matching foundry's `<=` semantics). |
+| `vm.readLine(string path) returns (string)` | Opens the file (lazily, cached per-path), advances by one line per call, strips the trailing `\n` / `\r\n`, and returns `""` at EOF. Subsequent calls to the same path continue from the previous cursor. Paths are canonicalized against `project_root`; absolute paths and `..` escapes are rejected. |
 | `vm.prank(address)` | The next out-of-test call uses the given `msg.sender`. |
 | `vm.startPrank(address)` | All subsequent calls at this depth use the given `msg.sender` until `stopPrank`. |
 | `vm.startPrank(address, address)` | Like the 1-arg form, but also overrides `tx.origin` for the prank scope. The original `tx.origin` is restored on `stopPrank`. |
@@ -238,6 +239,7 @@ selector and reproduced verbatim from that catalog.
 |---|---|---|
 | `0x0f29772b` | `vm.rollFork(bytes32)` | Cross-fork variant. (Single-arg `vm.rollFork(uint256)` is partial — see Partial support above.) |
 | `0x08e4e116` | `vm.expectCallMinGas(address,uint256,uint64,bytes)` | Gas accounting under EDB's instrumented bytecode needs separate design. |
+| `0x2c667606` | `vm.getRawBlockHeader(uint256)` | Deferred to v2: requires an upstream RPC channel and synchronous-from-async dispatch in the cheatcode handler. |
 | `0x1d9e269e` | `vm.makePersistent(address[])` | No multi-fork backend in v1. |
 | `0x2f103f22` | `vm.activeFork()` | Same. |
 | `0x31ba3498` | `vm.createFork(string)` | Same. |

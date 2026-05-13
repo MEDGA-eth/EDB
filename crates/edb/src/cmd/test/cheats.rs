@@ -53,6 +53,8 @@ const SEL_SET_NONCE: [u8; 4] = [0xf8, 0xe1, 0x8b, 0x57]; // setNonce(address,uin
 const SEL_GET_NONCE: [u8; 4] = [0x2d, 0x03, 0x35, 0xab]; // getNonce(address)
 const SEL_GET_BLOCK_NUMBER: [u8; 4] = [0x42, 0xcb, 0xb1, 0x5c]; // getBlockNumber()
 const SEL_SET_BLOCKHASH: [u8; 4] = [0x53, 0x14, 0xb5, 0x4a]; // setBlockhash(uint256,bytes32)
+const SEL_GET_RAW_BLOCK_HEADER: [u8; 4] = [0x2c, 0x66, 0x76, 0x06]; // getRawBlockHeader(uint256)
+const SEL_READ_LINE: [u8; 4] = [0x70, 0xf5, 0x57, 0x28]; // readLine(string)
 const SEL_PRANK: [u8; 4] = [0xca, 0x66, 0x9f, 0xa7]; // prank(address)
 const SEL_START_PRANK: [u8; 4] = [0x06, 0x44, 0x7d, 0x56]; // startPrank(address)
 const SEL_START_PRANK_2: [u8; 4] = [0x45, 0xb5, 0x60, 0x78]; // startPrank(address,address)
@@ -317,6 +319,8 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0x42, 0xcb, 0xb1, 0x5c], "getBlockNumber"), // getBlockNumber()
     (&[0x2d, 0x03, 0x35, 0xab], "getNonce"),       // getNonce(address)
     (&[0x53, 0x14, 0xb5, 0x4a], "setBlockhash"),   // setBlockhash(uint256,bytes32)
+    // --- Supported: filesystem read (sandboxed to project_root) ----------
+    (&[0x70, 0xf5, 0x57, 0x28], "readLine"), // readLine(string)
     // --- Explicitly rejected in EDB v1 ---
     (&[0x2f, 0x10, 0x3f, 0x22], "activeFork"), // activeFork()
     (&[0xaf, 0xc9, 0x80, 0x40], "broadcast"),  // broadcast()
@@ -343,6 +347,7 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0x76, 0xea, 0xdd, 0x36], "stopBroadcast"), // stopBroadcast()
     (&[0xbe, 0x64, 0x6d, 0xa1], "transact"), // transact(bytes32)
     (&[0x4d, 0x8a, 0xbc, 0x4b], "transact"), // transact(uint256,bytes32)
+    (&[0x2c, 0x66, 0x76, 0x06], "getRawBlockHeader"), // getRawBlockHeader(uint256) — deferred (RPC)
     (&[0x89, 0x7e, 0x0a, 0x97], "writeFile"), // writeFile(string,string)
     // --- Assertion cheatcodes (assertEq / assertNe / assertTrue / assertFalse / etc.) ---
     (&[0x98, 0x29, 0x6c, 0x54], "assertEq"), // assertEq(uint256,uint256)
@@ -500,9 +505,9 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0xfa, 0x91, 0x45, 0x4d], "parseUint"),    // parseUint(string)
     (&[0xd9, 0x30, 0xa0, 0xe6], "projectRoot"),  // projectRoot()
     (&[0xc4, 0xbc, 0x59, 0xe0], "readDir"),      // readDir(string)
-    (&[0x70, 0xf5, 0x57, 0x28], "readLine"),     // readLine(string)
-    (&[0x9f, 0x56, 0x84, 0xa2], "readLink"),     // readLink(string)
-    (&[0x22, 0x10, 0x00, 0x64], "rememberKey"),  // rememberKey(uint256)
+    // NOTE: readLine(string) moved up to the supported section.
+    (&[0x9f, 0x56, 0x84, 0xa2], "readLink"), // readLink(string)
+    (&[0x22, 0x10, 0x00, 0x64], "rememberKey"), // rememberKey(uint256)
     (&[0x3c, 0xe9, 0x69, 0xe6], "revokePersistent"), // revokePersistent(address[])
     (&[0x99, 0x7a, 0x02, 0x22], "revokePersistent"), // revokePersistent(address)
     (&[0x97, 0x2c, 0x60, 0x62], "serializeAddress"), // serializeAddress(string,string,address)
@@ -516,12 +521,12 @@ const KNOWN_CHEATCODES: &[(&[u8; 4], &str)] = &[
     (&[0xcf, 0x22, 0xe3, 0xc9], "startStateDiffRecording"), // startStateDiffRecording()
     (&[0xaa, 0x5c, 0xf9, 0x0e], "stopAndReturnStateDiff"), // stopAndReturnStateDiff()
     (&[0x0d, 0x4a, 0xae, 0x9b], "stopMappingRecording"), // stopMappingRecording()
-    (&[0xe6, 0x96, 0x2c, 0xdb], "broadcast"),    // broadcast(address)
-    (&[0x61, 0x9d, 0x89, 0x7f], "writeLine"),    // writeLine(string,string)
-    (&[0xe2, 0x3c, 0xd1, 0x9f], "writeJson"),    // writeJson(string,string)
-    (&[0x35, 0xd6, 0xad, 0x46], "writeJson"),    // writeJson(string,string,string)
-    (&[0xc0, 0x86, 0x5b, 0xa7], "writeToml"),    // writeToml(string,string)
-    (&[0x51, 0xac, 0x6a, 0x33], "writeToml"),    // writeToml(string,string,string)
+    (&[0xe6, 0x96, 0x2c, 0xdb], "broadcast"), // broadcast(address)
+    (&[0x61, 0x9d, 0x89, 0x7f], "writeLine"), // writeLine(string,string)
+    (&[0xe2, 0x3c, 0xd1, 0x9f], "writeJson"), // writeJson(string,string)
+    (&[0x35, 0xd6, 0xad, 0x46], "writeJson"), // writeJson(string,string,string)
+    (&[0xc0, 0x86, 0x5b, 0xa7], "writeToml"), // writeToml(string,string)
+    (&[0x51, 0xac, 0x6a, 0x33], "writeToml"), // writeToml(string,string,string)
 ];
 
 // ----------------------------------------------------------------------------
@@ -565,8 +570,11 @@ pub struct UnsupportedHit {
 /// hits/warnings deduplicated across passes.
 #[derive(Clone, Debug)]
 pub struct CheatsConfig {
-    /// Project root (used for future fs-allowlist; currently unused).
-    #[allow(dead_code)] // reserved for fs-allowlist in a future phase
+    /// Project root used to sandbox filesystem cheatcodes (`vm.readLine`).
+    /// Paths are canonicalized against this root; any path that resolves
+    /// outside it (via absolute paths, symlink, or `..` traversal) is
+    /// rejected. Empty `PathBuf` (used in unit tests) falls back to the
+    /// process's current working directory.
     pub project_root: std::path::PathBuf,
     /// Shared list of unsupported-cheatcode invocations observed across all
     /// inspector instances created from this config. Drained post-prepare in
@@ -627,7 +635,8 @@ where
     <CacheDB<DB> as Database>::Error: Clone,
     <DB as Database>::Error: Clone,
 {
-    #[allow(dead_code)] // reserved for future fs-allowlist
+    /// Active config (project_root used by `vm.readLine`, artifact set used
+    /// by `vm.getDeployedCode`, shared trackers used by every pass).
     config: CheatsConfig,
     /// Pranks keyed by call depth (the depth at which the prank was installed).
     pranks: HashMap<usize, Prank>,
@@ -684,6 +693,11 @@ where
     /// Next snapshot id to assign. Starts at 1 (id 0 reserved as sentinel).
     #[allow(dead_code)] // written/read by snapshot handlers in Tasks 3+
     pub(crate) next_snapshot_id: u64,
+    /// Stateful read cursors for `vm.readLine(path)`. The first call to a
+    /// path opens the file; subsequent calls advance the cursor and return
+    /// the next line. EOF returns an empty string. Keyed by the canonicalized
+    /// path so different lexical spellings of the same file share a cursor.
+    file_cursors: HashMap<std::path::PathBuf, std::io::BufReader<std::fs::File>>,
 }
 
 #[derive(Clone, Debug)]
@@ -806,6 +820,7 @@ where
             last_call_gas: None,
             snapshots: HashMap::new(),
             next_snapshot_id: 1,
+            file_cursors: HashMap::new(),
         }
     }
 
@@ -1208,6 +1223,20 @@ where
             SEL_GET_NONCE => self.cheat_get_nonce(ctx, inputs, args),
             SEL_GET_BLOCK_NUMBER => self.cheat_get_block_number(ctx, inputs),
             SEL_SET_BLOCKHASH => self.cheat_set_blockhash(ctx, inputs, args),
+            SEL_READ_LINE => self.cheat_read_line(inputs, args),
+            // vm.getRawBlockHeader(uint256) — deferred: requires an upstream
+            // RPC channel + synchronous-from-async dispatch inside the
+            // cheatcode handler. We catalog it as Rejected so the abort
+            // surfaces a useful message instead of "unknown selector".
+            SEL_GET_RAW_BLOCK_HEADER => self.record_and_revert(
+                inputs,
+                "getRawBlockHeader",
+                selector,
+                UnsupportedCategory::Rejected,
+                "EDB: cheatcode vm.getRawBlockHeader: deferred to v2 \
+                 (requires an upstream RPC channel and synchronous-from-async \
+                 dispatch in the cheatcode handler). See docs/cheatcodes.md",
+            ),
             SEL_PRANK => self.cheat_prank(ctx, inputs, args, true),
             SEL_START_PRANK => self.cheat_prank(ctx, inputs, args, false),
             SEL_START_PRANK_2 => self.cheat_start_prank_2(ctx, inputs, args),
@@ -2142,6 +2171,60 @@ where
         // lookups within the current run.
         ctx.journaled_state.database.cache.block_hashes.insert(block_number, block_hash);
         ok_return(inputs, Bytes::new())
+    }
+
+    /// `vm.readLine(string path) returns (string)` — open the file (cached
+    /// across calls), advance the cursor by one line, and return the line
+    /// content (without the trailing `\n` / `\r\n`). EOF returns an empty
+    /// string. Subsequent calls to the same path continue from where the
+    /// previous call stopped.
+    ///
+    /// Sandbox: only paths that resolve under `config.project_root` (or under
+    /// the current working directory, if `project_root` is empty — used by
+    /// unit tests) are accepted. Resolution is via `canonicalize()` on both
+    /// sides so symlink escapes are caught.
+    fn cheat_read_line(&mut self, inputs: &CallInputs, args: &[u8]) -> CallOutcome {
+        use std::io::BufRead;
+
+        let Some(raw_path) = read_string(args, 0) else {
+            return revert_with(inputs, encode_error_string("vm.readLine: bad string arg"));
+        };
+        let path = match resolve_sandboxed_path(&self.config.project_root, &raw_path) {
+            Ok(p) => p,
+            Err(msg) => return revert_with(inputs, encode_error_string(&msg)),
+        };
+        // Open lazily and cache so repeated calls advance the cursor.
+        let reader = match self.file_cursors.entry(path.clone()) {
+            std::collections::hash_map::Entry::Occupied(e) => e.into_mut(),
+            std::collections::hash_map::Entry::Vacant(e) => {
+                let f = match std::fs::File::open(&path) {
+                    Ok(f) => f,
+                    Err(err) => {
+                        return revert_with(
+                            inputs,
+                            encode_error_string(&format!("vm.readLine: open failed: {err}")),
+                        );
+                    }
+                };
+                e.insert(std::io::BufReader::new(f))
+            }
+        };
+        let mut line = String::new();
+        if let Err(err) = reader.read_line(&mut line) {
+            return revert_with(
+                inputs,
+                encode_error_string(&format!("vm.readLine: read failed: {err}")),
+            );
+        }
+        // Strip the trailing newline (LF or CRLF). EOF leaves `line` empty,
+        // which is the value we want to return.
+        if line.ends_with('\n') {
+            line.pop();
+            if line.ends_with('\r') {
+                line.pop();
+            }
+        }
+        ok_return(inputs, encode_abi_string(&line))
     }
 
     // --- Pranks --------------------------------------------------------------
@@ -3184,6 +3267,11 @@ fn is_explicitly_rejected_name(name: &str) -> bool {
             | "writeFile"
             | "removeFile"
             | "expectCallMinGas"
+            // getRawBlockHeader is deferred to v2 — needs an upstream RPC
+            // channel + sync-from-async dispatch inside the cheatcode
+            // handler. Catalogued as Rejected so abort surfaces a useful
+            // message rather than "unknown selector".
+            | "getRawBlockHeader"
     ) || (
         // Cross-fork rollFork overloads (bytes32 / uint256,uint256 / uint256,bytes32)
         // are rejected; the single-arg uint256 overload is supported and dispatched
@@ -3235,6 +3323,43 @@ fn encode_abi_bytes(b: &[u8]) -> Bytes {
     out.extend_from_slice(b);
     out.extend(std::iter::repeat_n(0u8, pad));
     Bytes::from(out)
+}
+
+/// Resolve `raw_path` against the sandbox root, rejecting any path that
+/// escapes the root via `..`/symlinks/absolute paths.
+///
+/// Strategy:
+/// - If `project_root` is empty (test scaffolding), fall back to the
+///   current working directory.
+/// - Canonicalize both the root and the candidate; the candidate must start
+///   with the root prefix component-wise after canonicalization (so a leading
+///   symlink at `root/..` doesn't slip out).
+/// - The candidate must exist (canonicalize requires it). For `readLine` this
+///   is fine — there's nothing to read from a nonexistent file.
+fn resolve_sandboxed_path(
+    project_root: &std::path::Path,
+    raw_path: &str,
+) -> Result<std::path::PathBuf, String> {
+    use std::path::{Path, PathBuf};
+    let root_buf: PathBuf = if project_root.as_os_str().is_empty() {
+        std::env::current_dir().map_err(|e| format!("vm.readLine: no project root: {e}"))?
+    } else {
+        project_root.to_path_buf()
+    };
+    let root_canon = root_buf
+        .canonicalize()
+        .map_err(|e| format!("vm.readLine: project root canonicalize failed: {e}"))?;
+
+    let candidate = Path::new(raw_path);
+    let joined: PathBuf =
+        if candidate.is_absolute() { candidate.to_path_buf() } else { root_canon.join(candidate) };
+    let canon = joined
+        .canonicalize()
+        .map_err(|e| format!("vm.readLine: cannot resolve path {raw_path:?}: {e}"))?;
+    if !canon.starts_with(&root_canon) {
+        return Err(format!("vm.readLine: path {raw_path:?} escapes the project root sandbox"));
+    }
+    Ok(canon)
 }
 
 // ----------------------------------------------------------------------------
@@ -3687,6 +3812,14 @@ mod tests {
     #[test]
     fn selector_set_blockhash() {
         assert_eq!(sel("setBlockhash(uint256,bytes32)"), SEL_SET_BLOCKHASH);
+    }
+    #[test]
+    fn selector_read_line() {
+        assert_eq!(sel("readLine(string)"), SEL_READ_LINE);
+    }
+    #[test]
+    fn selector_get_raw_block_header() {
+        assert_eq!(sel("getRawBlockHeader(uint256)"), SEL_GET_RAW_BLOCK_HEADER);
     }
     #[test]
     fn selector_prank() {
@@ -5269,5 +5402,116 @@ mod tests {
         assert!(msg.contains("vm.selectFork"), "expected cheatcode name in error: {msg}");
         assert!(msg.contains("rejected"), "expected category in error: {msg}");
         assert!(msg.contains("called 1x"), "expected call count in error: {msg}");
+    }
+
+    // --- vm.readLine behavior -----------------------------------------------
+
+    /// `vm.readLine(path)` opens the file, advances the cursor by one line on
+    /// each call, strips the trailing newline (LF or CRLF), and returns an
+    /// empty string at EOF. This test wires the project_root sandbox to a
+    /// temp dir, writes a 3-line file, and checks the cursor advances
+    /// across calls (lines a, b, c, then "" at EOF).
+    #[test]
+    fn cheat_read_line_advances_across_calls_and_returns_empty_at_eof() {
+        use revm::database::{CacheDB, EmptyDB};
+        use std::io::Write;
+        type TestDB = CacheDB<EmptyDB>;
+
+        // Set up sandbox with a tempdir as project_root.
+        let dir = std::env::temp_dir().join(format!("edb-readline-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("lines.txt");
+        let mut f = std::fs::File::create(&path).unwrap();
+        // Mix LF and CRLF to exercise both strip branches.
+        write!(f, "first\nsecond\r\nthird\n").unwrap();
+        drop(f);
+
+        let config = CheatsConfig { project_root: dir.clone(), ..CheatsConfig::default() };
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(config);
+        let inputs = mock_call_inputs(123_000, 0..96);
+
+        // ABI-encode calldata: string at offset 0x20 + length + data.
+        let make_calldata = |s: &str| -> Vec<u8> {
+            let mut out = Vec::new();
+            // head[0] = offset to (length, data) = 0x20
+            let mut off = [0u8; 32];
+            off[31] = 0x20;
+            out.extend_from_slice(&off);
+            // length
+            let mut len = [0u8; 32];
+            len[24..].copy_from_slice(&(s.len() as u64).to_be_bytes());
+            out.extend_from_slice(&len);
+            // data
+            out.extend_from_slice(s.as_bytes());
+            let pad = (32 - s.len() % 32) % 32;
+            out.extend(std::iter::repeat_n(0u8, pad));
+            out
+        };
+        let calldata = make_calldata("lines.txt");
+
+        // Helper: ABI-decode the returned string from `output`.
+        let decode_string = |bytes: &[u8]| -> String {
+            // Layout: [offset (0x20)][length (be)][data padded]
+            assert!(bytes.len() >= 64);
+            let len = U256::from_be_slice(&bytes[32..64]).try_into().unwrap_or(0usize);
+            String::from_utf8_lossy(&bytes[64..64 + len]).into_owned()
+        };
+
+        let out1 = cheats.cheat_read_line(&inputs, &calldata);
+        assert!(matches!(out1.result.result, InstructionResult::Return));
+        assert_eq!(decode_string(&out1.result.output), "first");
+
+        let out2 = cheats.cheat_read_line(&inputs, &calldata);
+        assert!(matches!(out2.result.result, InstructionResult::Return));
+        assert_eq!(decode_string(&out2.result.output), "second");
+
+        let out3 = cheats.cheat_read_line(&inputs, &calldata);
+        assert!(matches!(out3.result.result, InstructionResult::Return));
+        assert_eq!(decode_string(&out3.result.output), "third");
+
+        let out_eof = cheats.cheat_read_line(&inputs, &calldata);
+        assert!(matches!(out_eof.result.result, InstructionResult::Return));
+        assert_eq!(decode_string(&out_eof.result.output), "");
+
+        // Cleanup.
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// `vm.readLine` rejects paths that escape the project_root sandbox.
+    #[test]
+    fn cheat_read_line_rejects_path_outside_sandbox() {
+        use revm::database::{CacheDB, EmptyDB};
+        type TestDB = CacheDB<EmptyDB>;
+
+        let dir = std::env::temp_dir().join(format!("edb-readline-esc-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let config = CheatsConfig { project_root: dir.clone(), ..CheatsConfig::default() };
+        let mut cheats: EdbCheatcodes<TestDB> = EdbCheatcodes::new(config);
+        let inputs = mock_call_inputs(123_000, 0..96);
+
+        // Calldata for "/etc/passwd" — absolute, outside the sandbox.
+        let s = "/etc/passwd";
+        let mut calldata = Vec::new();
+        let mut off = [0u8; 32];
+        off[31] = 0x20;
+        calldata.extend_from_slice(&off);
+        let mut len = [0u8; 32];
+        len[24..].copy_from_slice(&(s.len() as u64).to_be_bytes());
+        calldata.extend_from_slice(&len);
+        calldata.extend_from_slice(s.as_bytes());
+        let pad = (32 - s.len() % 32) % 32;
+        calldata.extend(std::iter::repeat_n(0u8, pad));
+
+        let out = cheats.cheat_read_line(&inputs, &calldata);
+        assert!(matches!(out.result.result, InstructionResult::Revert));
+        let msg = decode_error_payload(&out.result.output).expect("Error(string) payload");
+        assert!(
+            msg.contains("escapes") || msg.contains("cannot resolve"),
+            "expected sandbox-violation message, got: {msg}",
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

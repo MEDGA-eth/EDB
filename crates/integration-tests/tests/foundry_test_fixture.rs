@@ -1523,3 +1523,36 @@ async fn cheats_set_blockhash_overrides_blockhash_opcode() -> Result<()> {
     let _ = session.shutdown();
     Ok(())
 }
+
+/// `vm.readLine(path)` reads sequential lines, stripping the trailing
+/// newline, and returns an empty string at EOF. The fixture file
+/// `test/fixtures/readline_lines.txt` is a 3-line file: alpha / beta / gamma.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_read_line_sequential_and_eof() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "Cheats::testReadLineSequentialAndEof",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    assert!(
+        !trace_has_revert(&trace),
+        "vm.readLine sequence didn't return expected lines: {trace:#?}"
+    );
+    for needle in [
+        "vm.readLine line 1 wrong",
+        "vm.readLine line 2 wrong",
+        "vm.readLine line 3 wrong",
+        "vm.readLine EOF should be empty",
+    ] {
+        assert!(!trace_revert_contains(&trace, needle), "{needle} require fired: {trace:#?}",);
+    }
+    let _ = session.shutdown();
+    Ok(())
+}
