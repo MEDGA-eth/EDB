@@ -59,11 +59,25 @@ pub fn disable_nonce_check<DB: Database + DatabaseRef>(context: &mut EdbContext<
     context.cfg.disable_nonce_check = true;
 }
 
-/// Relax the constraints for EVM execution in the given transaction
+/// Relax the constraints for EVM execution in the given transaction.
+///
+/// Used by EDB's derived-EVM execution path (`call_in_derived_evm` and
+/// friends in `engine::context::evm`) to construct synthetic transactions
+/// for state-variable getter reads, expression evaluation, etc. EDB does
+/// not model gas faithfully and does not enforce chain-id pinning on
+/// internally-generated transactions, so the synthetic tx should pass
+/// EVM validation regardless of what the actual cfg has set.
 pub fn relax_evm_tx_constraints(tx: &mut TxEnv) {
     tx.gas_limit = u64::MAX; // Relax gas limit for execution
     tx.gas_price = 0; // Relax gas price for execution
     tx.gas_priority_fee = Some(0); // Relax gas priority fee for execution
+    // Synthetic transactions don't need EIP-155 chain-id pinning — they're
+    // never broadcast, only run inside the derived EVM. Leaving the default
+    // `TxEnvBuilder` chain_id (mainnet 1) in place caused REVM to reject
+    // synthetic state-variable reads with "invalid chain ID" whenever the
+    // cfg's chain_id differed (e.g. after `vm.chainId(...)` or in forked mode
+    // against a non-mainnet chain).
+    tx.chain_id = None;
 }
 
 /// A cloneable error type for EdbDB
