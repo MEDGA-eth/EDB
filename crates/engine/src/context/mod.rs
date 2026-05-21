@@ -400,3 +400,206 @@ where
         })
     }
 }
+
+#[cfg(test)]
+mod codehash_resolver_tests {
+    //! Unit tests for the codehash-aliased canonical-address resolver
+    //! exposed on [`EngineContext`].
+    //!
+    //! These tests exercise [`EngineContext::resolve_canonical_via_codehash`]
+    //! and its standard wrapper [`EngineContext::resolve_analysis_via_codehash`]
+    //! against a hand-built [`EngineContext`] populated with just enough trace
+    //! and index data to drive the fallback. They don't go through
+    //! `EngineContext::build`, which would also run trace/snapshot
+    //! finalization that isn't relevant here.
+    use super::*;
+    use alloy_primitives::{Address, B256, Bytes, address, keccak256};
+    use edb_common::{
+        ForkInfo,
+        types::{CallType, TraceEntry},
+    };
+    use revm::{
+        context::{BlockEnv, CfgEnv, TxEnv},
+        database::CacheDB,
+        database_interface::EmptyDB,
+        interpreter::CallScheme,
+        primitives::{TxKind, U256, hardfork::SpecId},
+    };
+    use std::collections::HashMap;
+
+    use crate::analysis::AnalysisResult;
+    use crate::snapshot::Snapshots;
+
+    type TestDB = CacheDB<EmptyDB>;
+
+    /// Build a single-entry [`Trace`] whose only `TraceEntry` records the
+    /// supplied `(code_address, bytecode)` pair. The other fields are filled
+    /// with deterministic placeholders sufficient for `bytecode_at` to find
+    /// the entry by `code_address`.
+    fn trace_with_entry(code_address: Address, bytecode: Option<Bytes>) -> Trace {
+        let mut trace = Trace::default();
+        trace.push(TraceEntry {
+            id: 0,
+            parent_id: None,
+            depth: 0,
+            call_type: CallType::Call(CallScheme::Call),
+            caller: Address::ZERO,
+            target: code_address,
+            code_address,
+            input: Bytes::new(),
+            value: U256::ZERO,
+            result: None,
+            created_contract: false,
+            create_scheme: None,
+            bytecode,
+            target_label: None,
+            self_destruct: None,
+            events: vec![],
+            first_snapshot_id: None,
+        });
+        trace
+    }
+
+    /// Build an [`EngineContext`] with the supplied codehash index and trace,
+    /// and otherwise-empty/default fields. This intentionally bypasses
+    /// [`EngineContext::build`] (and therefore `finalize`) — those paths do
+    /// EVM-side work that is irrelevant to the codehash-resolver logic under
+    /// test here.
+    fn make_context(
+        codehash_to_canonical: HashMap<B256, Address>,
+        trace: Trace,
+        analysis_results: HashMap<Address, AnalysisResult>,
+    ) -> EngineContext<TestDB> {
+        EngineContext::<TestDB> {
+            fork_info: ForkInfo {
+                block_number: 0,
+                block_hash: B256::ZERO,
+                timestamp: 0,
+                chain_id: 1,
+                spec_id: SpecId::default(),
+            },
+            cfg: CfgEnv::default(),
+            block: BlockEnv::default(),
+            tx: TxEnv {
+                tx_type: 0,
+                caller: Address::ZERO,
+                gas_limit: 0,
+                gas_price: 0,
+                kind: TxKind::Call(Address::ZERO),
+                value: U256::ZERO,
+                data: Bytes::new(),
+                nonce: 0,
+                chain_id: Some(1),
+                access_list: Default::default(),
+                gas_priority_fee: None,
+                blob_hashes: Vec::new(),
+                max_fee_per_blob_gas: 0,
+                authorization_list: Vec::new(),
+            },
+            tx_hash: B256::ZERO,
+            snapshots: Snapshots::<TestDB>::default(),
+            artifacts: HashMap::new(),
+            recompiled_artifacts: HashMap::new(),
+            analysis_results,
+            codehash_to_canonical,
+            trace,
+            address_code_address_map: OnceCell::new(),
+        }
+    }
+
+    #[test]
+    fn resolve_canonical_via_codehash_resolves_etched_address() {
+        let canonical_addr = address!("0000000000000000000000000000000000000A1A");
+        let etched_addr = address!("6342000000000000000000000000000000000006");
+        let runtime: &[u8] = &[0xfe, 0xed, 0xbe, 0xef, 0x60, 0x80];
+        let runtime_hash = keccak256(runtime);
+
+        let mut codehash_to_canonical = HashMap::new();
+        codehash_to_canonical.insert(runtime_hash, canonical_addr);
+        let trace = trace_with_entry(etched_addr, Some(Bytes::copy_from_slice(runtime)));
+        let context = make_context(codehash_to_canonical, trace, HashMap::new());
+
+        assert_eq!(
+            context.resolve_canonical_via_codehash(etched_addr),
+            Some(canonical_addr),
+            "fallback should resolve etched_addr via codehash"
+        );
+    }
+
+    #[test]
+    fn resolve_canonical_via_codehash_returns_none_on_unknown_codehash() {
+        let etched_addr = address!("6342000000000000000000000000000000000006");
+        let unknown_runtime: &[u8] = &[0x00, 0x01, 0x02];
+
+        // codehash_to_canonical is intentionally empty — the etched address's
+        // bytecode hash has no entry, so the lookup must miss.
+        let trace = trace_with_entry(etched_addr, Some(Bytes::copy_from_slice(unknown_runtime)));
+        let context = make_context(HashMap::new(), trace, HashMap::new());
+
+        assert_eq!(context.resolve_canonical_via_codehash(etched_addr), None);
+    }
+
+    #[test]
+    fn resolve_canonical_via_codehash_returns_none_on_empty_bytecode() {
+        let eoa_addr = address!("0000000000000000000000000000000000001111");
+
+        // Seed the index with a real entry so a mismatch on _bytecode_ (not on
+        // index emptiness) is what causes the None result.
+        let other_hash = keccak256(b"some other bytecode");
+        let mut codehash_to_canonical = HashMap::new();
+        codehash_to_canonical
+            .insert(other_hash, address!("0000000000000000000000000000000000002222"));
+
+        let trace = trace_with_entry(eoa_addr, Some(Bytes::new()));
+        let context = make_context(codehash_to_canonical, trace, HashMap::new());
+
+        assert_eq!(context.resolve_canonical_via_codehash(eoa_addr), None);
+    }
+
+    #[test]
+    fn resolve_canonical_via_codehash_returns_none_when_no_trace_entry() {
+        // Address never appeared in the trace, so `bytecode_at` returns None
+        // and the wrapper must propagate None without panicking.
+        let absent_addr = address!("0000000000000000000000000000000000003333");
+        let context = make_context(HashMap::new(), Trace::default(), HashMap::new());
+
+        assert_eq!(context.resolve_canonical_via_codehash(absent_addr), None);
+    }
+
+    #[test]
+    fn resolve_analysis_via_codehash_falls_back_to_canonical() {
+        let canonical_addr = address!("0000000000000000000000000000000000000A1A");
+        let etched_addr = address!("6342000000000000000000000000000000000006");
+        let runtime: &[u8] = &[0xfe, 0xed, 0xbe, 0xef, 0x60, 0x80];
+        let runtime_hash = keccak256(runtime);
+
+        let mut codehash_to_canonical = HashMap::new();
+        codehash_to_canonical.insert(runtime_hash, canonical_addr);
+
+        // Only the canonical address has an analysis entry — the etched
+        // address must transparently resolve to it through the codehash
+        // wrapper.
+        let mut analysis_results: HashMap<Address, AnalysisResult> = HashMap::new();
+        analysis_results.insert(canonical_addr, AnalysisResult::default());
+
+        let trace = trace_with_entry(etched_addr, Some(Bytes::copy_from_slice(runtime)));
+        let context = make_context(codehash_to_canonical, trace, analysis_results);
+
+        // Direct hit at the canonical address still works.
+        assert!(
+            context.resolve_analysis_via_codehash(canonical_addr).is_some(),
+            "direct lookup at canonical address must succeed"
+        );
+
+        // Etched address resolves through the codehash fallback to the
+        // canonical address's analysis entry.
+        assert!(
+            context.resolve_analysis_via_codehash(etched_addr).is_some(),
+            "etched address must resolve to canonical analysis via codehash"
+        );
+
+        // Unrelated address with no codehash match yields None.
+        let unrelated = address!("0000000000000000000000000000000000004444");
+        assert!(context.resolve_analysis_via_codehash(unrelated).is_none());
+    }
+}
