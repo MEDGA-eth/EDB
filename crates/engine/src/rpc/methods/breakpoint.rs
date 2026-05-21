@@ -240,20 +240,24 @@ where
                 // alias index so etched addresses (no direct entry) still
                 // match, then reuse the same key for the artifact lookup
                 // below — analysis_results and artifacts must agree on
-                // which canonical address backs this snapshot.
-                let resolved_addr = if context.analysis_results.contains_key(bytecode_address) {
-                    *bytecode_address
-                } else if let Some(canonical) =
-                    context.resolve_canonical_via_codehash(*bytecode_address)
-                {
-                    canonical
-                } else {
-                    return false;
-                };
-
-                let Some(analysis_result) = context.analysis_results.get(&resolved_addr) else {
-                    return false;
-                };
+                // which canonical address backs this snapshot. Use a
+                // single `.get()` on the fast path; only fall through to
+                // the codehash index when the direct lookup misses.
+                let (resolved_addr, analysis_result) =
+                    match context.analysis_results.get(bytecode_address) {
+                        Some(a) => (*bytecode_address, a),
+                        None => {
+                            let Some(canonical) =
+                                context.resolve_canonical_via_codehash(*bytecode_address)
+                            else {
+                                return false;
+                            };
+                            let Some(a) = context.analysis_results.get(&canonical) else {
+                                return false;
+                            };
+                            (canonical, a)
+                        }
+                    };
 
                 let Some(step_src) =
                     analysis_result.usid_to_step.get(&detail.usid).map(|step| step.src())
