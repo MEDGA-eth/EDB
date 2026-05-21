@@ -62,7 +62,7 @@ use std::{
     sync::Arc,
 };
 
-use alloy_primitives::{Address, TxHash};
+use alloy_primitives::{Address, B256, TxHash};
 use edb_common::{
     ForkInfo,
     types::{Trace, parse_callable_abi_entries},
@@ -111,6 +111,18 @@ where
     pub recompiled_artifacts: HashMap<Address, Artifact>,
     /// Analysis results identifying instrumentation points
     pub analysis_results: HashMap<Address, AnalysisResult>,
+    /// Codehash → canonical address index. Built once at engine-prepare time
+    /// by hashing each `recompiled_artifacts` entry's instrumented runtime
+    /// bytecode. Used by readers (hook inspector + RPC handlers) to resolve
+    /// an unknown address to a known artifact when the bytecode at the
+    /// unknown address matches a known artifact's instrumented runtime
+    /// (typically the result of `vm.etch(target, address(impl).code)`).
+    ///
+    /// First-walk wins on collision. If two addresses legitimately share the
+    /// same instrumented runtime, either canonical address gives a correct
+    /// analysis lookup since analysis is source-driven (USID-keyed) and
+    /// independent of the deploy address.
+    pub codehash_to_canonical: HashMap<B256, Address>,
     /// Execution trace showing call hierarchy and frame structure
     pub trace: Trace,
     /// Relation between target addresses and their (delegated) code addresses
@@ -140,6 +152,7 @@ where
     /// * `artifacts` - Original contract artifacts with source code
     /// * `recompiled_artifacts` - Recompiled artifacts with instrumentation
     /// * `analysis_results` - Analysis results identifying instrumentation points
+    /// * `codehash_to_canonical` - Codehash → canonical address index built from recompiled artifacts
     /// * `trace` - Execution trace showing call hierarchy
     ///
     /// # Returns
@@ -156,6 +169,7 @@ where
         artifacts: HashMap<Address, Artifact>,
         recompiled_artifacts: HashMap<Address, Artifact>,
         analysis_results: HashMap<Address, AnalysisResult>,
+        codehash_to_canonical: HashMap<B256, Address>,
         trace: Trace,
     ) -> Result<Self> {
         let mut context = Self {
@@ -168,6 +182,7 @@ where
             artifacts,
             recompiled_artifacts,
             analysis_results,
+            codehash_to_canonical,
             trace,
             address_code_address_map: OnceCell::new(),
         };

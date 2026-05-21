@@ -46,7 +46,7 @@
 //! - **Instrumentation**: Automatic debugging hook injection
 //! - **Comprehensive inspection**: Opcode and source-level snapshot collection
 
-use alloy_primitives::{Address, Bytes, TxHash};
+use alloy_primitives::{Address, B256, Bytes, TxHash, keccak256};
 use dashmap::DashMap;
 use edb_common::ForkResult;
 use eyre::Result;
@@ -364,6 +364,33 @@ impl Engine {
         let recompiled_artifacts =
             orchestration::instrument_and_recompile_source_code(&artifacts, &analysis_results)?;
 
+        // Build the codehash → canonical-address index used by the hook inspector
+        // and the RPC layer to resolve `vm.etch`-aliased addresses to their source
+        // artifact. We key by the keccak256 of each instrumented runtime template;
+        // when execution lands at an etched address whose live bytecode matches
+        // one of these hashes, the alias resolver redirects the lookup to the
+        // canonical address.
+        //
+        // First-walk wins via `.entry(...).or_insert(*addr)`. If two addresses
+        // share the same instrumented runtime, the analysis is correct from either
+        // — analysis is source-driven (USID-keyed), not address-keyed beyond
+        // per-address lookup.
+        let mut codehash_to_canonical: HashMap<B256, Address> = HashMap::new();
+        for (addr, art) in &recompiled_artifacts {
+            let Some(contract) = art.contract() else { continue };
+            let Some(evm) = contract.evm.as_ref() else { continue };
+            let Some(deployed) = evm.deployed_bytecode.as_ref() else { continue };
+            let Some(bytes) = deployed.bytes() else { continue };
+            if bytes.is_empty() {
+                continue;
+            }
+            codehash_to_canonical.entry(keccak256(bytes.as_ref())).or_insert(*addr);
+        }
+        tracing::debug!(
+            "codehash_to_canonical index built with {} entries",
+            codehash_to_canonical.len()
+        );
+
         // Step 5: Collect opcode-level step execution results
         send_progress!(5, 8, "Collecting opcode-level step execution results...");
         let mut cheats2 = cheats_factory.as_ref().map(|f| f());
@@ -506,6 +533,7 @@ impl Engine {
             artifacts,
             recompiled_artifacts,
             analysis_results,
+            codehash_to_canonical,
             replay_result.execution_trace,
         )?;
 
