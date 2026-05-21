@@ -322,8 +322,12 @@ where
         for (frame_id, snapshot_opt) in hook_snapshots {
             match snapshot_opt {
                 Some(snapshot) => {
-                    // We have a valid hook snapshot - this takes priority
+                    // We have a valid hook snapshot - this takes priority over
+                    // any opcode snapshots recorded for the same frame. Drop
+                    // them so the post-loop sanity check only fires for frames
+                    // the hook inspector never saw.
                     inner.push((frame_id, Snapshot::new_hook(inner.len(), frame_id, snapshot)));
+                    opcode_snapshots.remove(&frame_id);
                 }
                 None => {
                     // No hook snapshot for this frame - try to use opcode snapshots
