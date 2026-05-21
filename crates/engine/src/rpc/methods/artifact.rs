@@ -18,7 +18,7 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use alloy_primitives::{Address, Bytes};
+use alloy_primitives::{Address, Bytes, keccak256};
 use edb_common::types::{Code, OpcodeInfo, SourceInfo};
 use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 use serde_json::Value;
@@ -90,12 +90,23 @@ where
             Code::Opcode(OpcodeInfo { bytecode_address, codes })
         }
         SnapshotDetail::Hook(..) => {
-            // Get the artifact for this address
-            let artifact = context.artifacts.get(&bytecode_address).ok_or_else(|| RpcError {
-                code: error_codes::INVALID_ADDRESS,
-                message: format!("No artifact found for address {bytecode_address}"),
-                data: None,
-            })?;
+            // Get the artifact for this address. If there is no direct
+            // entry, the address may have been etched (e.g. via `vm.etch`)
+            // with another contract's instrumented runtime; in that case
+            // the codehash-alias index maps the live bytecode back to a
+            // canonical address whose artifact we do have.
+            let artifact = context
+                .artifacts
+                .get(&bytecode_address)
+                .or_else(|| {
+                    let canonical = resolve_canonical_via_codehash(context, bytecode_address)?;
+                    context.artifacts.get(&canonical)
+                })
+                .ok_or_else(|| RpcError {
+                    code: error_codes::INVALID_ADDRESS,
+                    message: format!("No artifact found for address {bytecode_address}"),
+                    data: None,
+                })?;
 
             // Extract sources from the SolcInput
             let mut sources = HashMap::new();
@@ -150,7 +161,18 @@ where
             data: None,
         })?;
 
-    let code = match context.artifacts.get(&address) {
+    // Resolve an artifact, trying the direct address first and then
+    // falling back through the codehash alias index. The fallback covers
+    // the case where `vm.etch(target, address(impl).code)` installs the
+    // instrumented runtime of `impl` at `target`: `target` has no
+    // artifact of its own, but its live bytecode hashes to a key the
+    // engine built from `impl`'s recompiled artifact.
+    let artifact = context.artifacts.get(&address).or_else(|| {
+        let canonical = resolve_canonical_via_codehash(context, address)?;
+        context.artifacts.get(&canonical)
+    });
+
+    let code = match artifact {
         Some(artifact) => {
             // Extract sources from the SolcInput
             let mut sources = HashMap::new();
@@ -228,6 +250,59 @@ where
 
     debug!("Retrieved contract ABI for address {}", address);
     Ok(json_value)
+}
+
+/// Look up the runtime bytecode observed at `address` during Pass 1.
+///
+/// Walks the recorded execution trace for the first entry whose
+/// `code_address` matches and returns its captured `bytecode`. Returns
+/// `None` when no trace entry recorded code for that address (e.g. the
+/// address was never executed, or its frame was elided).
+///
+/// The trace is the canonical Pass-3 source for "what bytes were
+/// actually executing at this address" — the same bytes the engine
+/// keccak'd when building `codehash_to_canonical` in `prepare`.
+fn bytecode_at<DB>(context: &EngineContext<DB>, address: Address) -> Option<Bytes>
+where
+    DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
+    <CacheDB<DB> as Database>::Error: Clone + Send + Sync,
+    <DB as Database>::Error: Clone + Send + Sync,
+{
+    context
+        .trace
+        .iter()
+        .find(|entry| entry.code_address == address)
+        .and_then(|entry| entry.bytecode.clone())
+}
+
+/// Try to resolve a canonical artifact address for `address` via the
+/// codehash alias index.
+///
+/// Returns the canonical address whose recompiled instrumented runtime
+/// hashes to the same digest as the bytecode at `address`. Returns
+/// `None` when there is no recorded bytecode for `address`, the
+/// bytecode is empty, or no alias entry exists for that hash.
+///
+/// This mirrors the fallback already wired into `HookSnapshotInspector`
+/// (see `resolve_analysis`) so RPC code lookups stay consistent with
+/// the snapshot data the inspector produced.
+fn resolve_canonical_via_codehash<DB>(
+    context: &EngineContext<DB>,
+    address: Address,
+) -> Option<Address>
+where
+    DB: Database + DatabaseCommit + DatabaseRef + Clone + Send + Sync + 'static,
+    <CacheDB<DB> as Database>::Error: Clone + Send + Sync,
+    <DB as Database>::Error: Clone + Send + Sync,
+{
+    let raw_code = bytecode_at(context, address)?;
+    if raw_code.is_empty() {
+        return None;
+    }
+    let hash = keccak256(raw_code.as_ref());
+    let canonical = context.codehash_to_canonical.get(&hash).copied()?;
+    debug!(?address, ?canonical, ?hash, "rpc artifact handler resolved address via codehash alias");
+    Some(canonical)
 }
 
 fn get_disassembled_code(bytecode: &Bytes) -> HashMap<usize, String> {

@@ -56,7 +56,7 @@ use revm::{
 };
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use tokio::sync::{Mutex, mpsc};
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::{
     EngineContext, SnapshotAnalysis, orchestration,
@@ -386,10 +386,7 @@ impl Engine {
             }
             codehash_to_canonical.entry(keccak256(bytes.as_ref())).or_insert(*addr);
         }
-        tracing::debug!(
-            "codehash_to_canonical index built with {} entries",
-            codehash_to_canonical.len()
-        );
+        debug!("codehash_to_canonical index built with {} entries", codehash_to_canonical.len());
 
         // Step 5: Collect opcode-level step execution results
         send_progress!(5, 8, "Collecting opcode-level step execution results...");
