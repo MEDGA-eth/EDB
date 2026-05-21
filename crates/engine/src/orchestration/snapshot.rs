@@ -18,7 +18,7 @@
 //! transaction execution to enable time travel debugging.
 use std::collections::{HashMap, HashSet};
 
-use alloy_primitives::{Address, Bytes};
+use alloy_primitives::{Address, B256, Bytes};
 use edb_common::{EdbContext, relax_evm_constraints, types::Trace};
 use eyre::Result;
 use foundry_compilers::artifacts::Contract;
@@ -119,6 +119,7 @@ pub fn capture_hook_snapshots<'a, DB, Cheats>(
     creation_by_address: HashMap<Address, (Bytes, usize)>,
     trace: &Trace,
     analysis_results: &HashMap<Address, AnalysisResult>,
+    codehash_to_canonical: &HashMap<B256, Address>,
     cheats: Option<&mut Cheats>,
 ) -> Result<HookSnapshots<DB>>
 where
@@ -134,7 +135,8 @@ where
 
     info!("Collecting hook snapshots for source code contracts");
 
-    let mut inspector = HookSnapshotInspector::new(&ctx, trace, analysis_results);
+    let mut inspector =
+        HookSnapshotInspector::new(&ctx, trace, analysis_results, codehash_to_canonical);
     inspector.with_creation_hooks(creation_hooks)?;
     inspector.with_creation_by_address(creation_by_address);
     {

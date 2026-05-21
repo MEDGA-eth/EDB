@@ -26,7 +26,7 @@
 //! making it more efficient for tracking specific execution states.
 
 use alloy_dyn_abi::{DynSolType, DynSolValue};
-use alloy_primitives::{Address, Bytes, U256};
+use alloy_primitives::{Address, B256, Bytes, U256, keccak256};
 use edb_common::{
     EdbContext, OpcodeTr,
     types::{CallResult, EdbSolValue, ExecutionFrameId, Trace},
@@ -254,6 +254,18 @@ where
     /// Source code analysis results
     analysis: &'a HashMap<Address, AnalysisResult>,
 
+    /// Codehash → canonical-address index, borrowed from `EngineContext`.
+    /// Used to resolve addresses with no direct `analysis` entry by
+    /// matching their live runtime bytecode against known artifacts.
+    codehash_to_canonical: &'a HashMap<B256, Address>,
+
+    /// Per-run cache: address with no direct `analysis` entry → canonical
+    /// address whose analysis applies (resolved via codehash equality).
+    /// Populated lazily on first miss; subsequent lookups at the same
+    /// address are O(1). Cleared at the end of the run when the inspector
+    /// is dropped.
+    aliased_to: HashMap<Address, Address>,
+
     /// Collection of hook snapshots
     pub snapshots: HookSnapshots<DB>,
 
@@ -303,10 +315,13 @@ where
         ctx: &EdbContext<DB>,
         trace: &'a Trace,
         analysis: &'a HashMap<Address, AnalysisResult>,
+        codehash_to_canonical: &'a HashMap<B256, Address>,
     ) -> Self {
         Self {
             trace,
             analysis,
+            codehash_to_canonical,
+            aliased_to: HashMap::new(),
             snapshots: HookSnapshots::default(),
             frame_stack: Vec::new(),
             current_trace_id: 0,
@@ -449,12 +464,22 @@ where
             return;
         };
 
-        // Check variables that are valid at this point
-        let Some(step) = self.analysis.get(&address).and_then(|a| a.usid_to_step.get(&usid)) else {
+        // Resolve the analysis result for this address. Falls back through the
+        // codehash alias index when the address itself isn't registered (the
+        // `vm.etch(target, address(impl).code)` case).
+        let Some(analysis) = self.resolve_analysis(address, interp) else {
             error!(
                 address=?address,
                 usid=?usid,
-                "No analysis step found for address and USID, skipping hook snapshot",
+                "No analysis found for address (direct or via codehash alias), skipping hook snapshot",
+            );
+            return;
+        };
+        let Some(step) = analysis.usid_to_step.get(&usid) else {
+            error!(
+                address=?address,
+                usid=?usid,
+                "No analysis step found for USID, skipping hook snapshot",
             );
             return;
         };
@@ -554,11 +579,12 @@ where
 
         let decoded_data = &data[96..96 + length_usize];
 
-        let Some(analysis) = self.analysis.get(&address) else {
+        let Some(analysis) = self.resolve_analysis(address, interp) else {
             error!(
                 address=?address,
                 uvid=?uvid,
-                "No analysis found for address, skipping variable update recording",
+                "No analysis found for address (direct or via codehash alias), \
+                 skipping variable update recording",
             );
             return;
         };
@@ -722,6 +748,50 @@ where
         self.snapshots.snapshots.clear();
         self.frame_stack.clear();
         self.current_trace_id = 0;
+    }
+
+    /// Resolve an `AnalysisResult` for the given address.
+    ///
+    /// Tries three sources in order:
+    ///   1. Cached redirect from a previous codehash-fallback hit.
+    ///   2. Direct `analysis[address]` lookup (the common case).
+    ///   3. Codehash fallback: hash the live runtime bytecode currently
+    ///      executing in `interp` and look up `codehash_to_canonical[hash]`.
+    ///      On hit, cache the redirect so future calls are O(1).
+    ///
+    /// Returns `None` when no resolution is possible (genuinely-unknown
+    /// bytecode — the current "no analysis found" path).
+    fn resolve_analysis(
+        &mut self,
+        address: Address,
+        interp: &Interpreter,
+    ) -> Option<&'a AnalysisResult> {
+        // Step 1: cached redirect.
+        if let Some(canonical) = self.aliased_to.get(&address) {
+            return self.analysis.get(canonical);
+        }
+        // Step 2: direct hit.
+        if let Some(a) = self.analysis.get(&address) {
+            return Some(a);
+        }
+        // Step 3: codehash fallback. The bytes currently executing in
+        // `interp` at `address` are the etched / instrumented runtime
+        // bytecode in Pass 3 — exactly what we keccak'd when building
+        // the `codehash_to_canonical` index in `prepare`.
+        let raw_code = interp.bytecode.original_byte_slice();
+        if raw_code.is_empty() {
+            return None;
+        }
+        let code_hash = keccak256(raw_code);
+        let canonical = *self.codehash_to_canonical.get(&code_hash)?;
+        self.aliased_to.insert(address, canonical);
+        debug!(
+            ?address,
+            ?canonical,
+            ?code_hash,
+            "hook inspector resolved address via codehash alias"
+        );
+        self.analysis.get(&canonical)
     }
 }
 

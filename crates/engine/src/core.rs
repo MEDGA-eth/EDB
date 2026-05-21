@@ -513,6 +513,7 @@ impl Engine {
             creation_by_address,
             &replay_result.execution_trace,
             &analysis_results,
+            &codehash_to_canonical,
             cheats3.as_mut(),
         )?;
 
