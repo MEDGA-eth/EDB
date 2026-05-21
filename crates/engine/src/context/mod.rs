@@ -62,7 +62,7 @@ use std::{
     sync::Arc,
 };
 
-use alloy_primitives::{Address, B256, TxHash};
+use alloy_primitives::{Address, B256, Bytes, TxHash, keccak256};
 use edb_common::{
     ForkInfo,
     types::{Trace, parse_callable_abi_entries},
@@ -308,5 +308,45 @@ where
         ));
 
         Ok(())
+    }
+
+    /// Look up the runtime bytecode observed at `address` during Pass 1.
+    ///
+    /// Walks the recorded execution trace for the first entry whose
+    /// `code_address` matches and returns its captured `bytecode`. Returns
+    /// `None` when no trace entry recorded code for that address (e.g. the
+    /// address was never executed, or its frame was elided).
+    ///
+    /// The trace is the canonical Pass-3 source for "what bytes were
+    /// actually executing at this address" — the same bytes the engine
+    /// keccak'd when building [`Self::codehash_to_canonical`] in `prepare`.
+    pub(crate) fn bytecode_at(&self, address: Address) -> Option<Bytes> {
+        self.trace
+            .iter()
+            .find(|entry| entry.code_address == address)
+            .and_then(|entry| entry.bytecode.clone())
+    }
+
+    /// Try to resolve a canonical artifact address for `address` via the
+    /// codehash alias index.
+    ///
+    /// Returns the canonical address whose recompiled instrumented runtime
+    /// hashes to the same digest as the bytecode at `address`. Returns
+    /// `None` when there is no recorded bytecode for `address`, the
+    /// bytecode is empty, or no alias entry exists for that hash.
+    ///
+    /// This mirrors the fallback wired into `HookSnapshotInspector` (see
+    /// `resolve_analysis`) so RPC readers stay consistent with the
+    /// snapshot data the inspector produced for `vm.etch`-aliased
+    /// addresses.
+    pub(crate) fn resolve_canonical_via_codehash(&self, address: Address) -> Option<Address> {
+        let raw_code = self.bytecode_at(address)?;
+        if raw_code.is_empty() {
+            return None;
+        }
+        let hash = keccak256(raw_code.as_ref());
+        let canonical = self.codehash_to_canonical.get(&hash).copied()?;
+        debug!(?address, ?canonical, ?hash, "engine context resolved address via codehash alias");
+        Some(canonical)
     }
 }
