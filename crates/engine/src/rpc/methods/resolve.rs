@@ -149,9 +149,10 @@ where
             // Direct lookup first; fall back through the codehash alias
             // index so a related address whose code was installed by
             // `vm.etch` still resolves to the canonical recompiled
-            // artifact. The `addr` returned to the UI is preserved
-            // (not the canonical one) so callers can target the live
-            // address they actually queried.
+            // artifact. `addr` is the live etched address;
+            // `parse_callable_abi_info` embeds it as the call target in
+            // the returned info so the UI routes simulated calls to the
+            // right on-chain address, not the canonical deploy address.
             context.resolve_recompiled_artifact_via_codehash(addr).and_then(|artifact| {
                 artifact.contract().map(|contract| parse_callable_abi_info(addr, contract, ty))
             })
