@@ -280,7 +280,12 @@ where
                     .and_then(|artifact| artifact.input.sources.get(file_path))
                     .zip(Some(step_src.start))
                     .is_some_and(|(source, offset)| {
-                        source.content[..offset + 1].lines().count() == *line_number
+                        // Bounds-check: `offset + 1` may exceed `content.len()`
+                        // for offsets at or past EOF. Clamp so the slice stays
+                        // in range; the line count is then "all lines through
+                        // EOF", which is the closest meaningful answer.
+                        let end = (offset + 1).min(source.content.len());
+                        source.content[..end].lines().count() == *line_number
                     })
             }
         }
