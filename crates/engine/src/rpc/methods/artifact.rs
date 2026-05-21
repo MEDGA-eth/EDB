@@ -95,17 +95,13 @@ where
             // with another contract's instrumented runtime; in that case
             // the codehash-alias index maps the live bytecode back to a
             // canonical address whose artifact we do have.
-            let artifact = context
-                .artifacts
-                .get(&bytecode_address)
-                .or_else(|| {
-                    let canonical = context.resolve_canonical_via_codehash(bytecode_address)?;
-                    context.artifacts.get(&canonical)
-                })
-                .ok_or_else(|| RpcError {
-                    code: error_codes::INVALID_ADDRESS,
-                    message: format!("No artifact found for address {bytecode_address}"),
-                    data: None,
+            let artifact =
+                context.resolve_artifact_via_codehash(bytecode_address).ok_or_else(|| {
+                    RpcError {
+                        code: error_codes::INVALID_ADDRESS,
+                        message: format!("No artifact found for address {bytecode_address}"),
+                        data: None,
+                    }
                 })?;
 
             // Extract sources from the SolcInput
@@ -167,10 +163,7 @@ where
     // instrumented runtime of `impl` at `target`: `target` has no
     // artifact of its own, but its live bytecode hashes to a key the
     // engine built from `impl`'s recompiled artifact.
-    let artifact = context.artifacts.get(&address).or_else(|| {
-        let canonical = context.resolve_canonical_via_codehash(address)?;
-        context.artifacts.get(&canonical)
-    });
+    let artifact = context.resolve_artifact_via_codehash(address);
 
     let code = match artifact {
         Some(artifact) => {

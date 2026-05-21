@@ -65,23 +65,13 @@ where
     // (see `HookSnapshotInspector::resolve_analysis`).
     let abi = if recompiled {
         context
-            .recompiled_artifacts
-            .get(&address)
-            .or_else(|| {
-                let canonical = context.resolve_canonical_via_codehash(address)?;
-                context.recompiled_artifacts.get(&canonical)
-            })
+            .resolve_recompiled_artifact_via_codehash(address)
             .and_then(|artifact| artifact.contract())
             .and_then(|contract| contract.abi.as_ref())
             .cloned()
     } else {
         context
-            .artifacts
-            .get(&address)
-            .or_else(|| {
-                let canonical = context.resolve_canonical_via_codehash(address)?;
-                context.artifacts.get(&canonical)
-            })
+            .resolve_artifact_via_codehash(address)
             .and_then(|artifact| artifact.contract())
             .and_then(|contract| contract.abi.as_ref())
             .cloned()
@@ -162,16 +152,9 @@ where
             // artifact. The `addr` returned to the UI is preserved
             // (not the canonical one) so callers can target the live
             // address they actually queried.
-            context
-                .recompiled_artifacts
-                .get(&addr)
-                .or_else(|| {
-                    let canonical = context.resolve_canonical_via_codehash(addr)?;
-                    context.recompiled_artifacts.get(&canonical)
-                })
-                .and_then(|artifact| {
-                    artifact.contract().map(|contract| parse_callable_abi_info(addr, contract, ty))
-                })
+            context.resolve_recompiled_artifact_via_codehash(addr).and_then(|artifact| {
+                artifact.contract().map(|contract| parse_callable_abi_info(addr, contract, ty))
+            })
         })
         .collect::<Vec<CallableAbiInfo>>();
 

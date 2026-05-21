@@ -146,8 +146,13 @@ where
                 data: None,
             })?;
 
+            // Fall back through the codehash alias index so etched
+            // addresses (`vm.etch(target, address(impl).code)`) resolve
+            // to the canonical artifact's analysis; the hook snapshot
+            // stores the etched address as its `bytecode_address`, but
+            // `analysis_results` is keyed by the canonical address.
             let analysis_result =
-                context.analysis_results.get(&address).ok_or_else(|| RpcError {
+                context.resolve_analysis_via_codehash(address).ok_or_else(|| RpcError {
                     code: error_codes::INVALID_ADDRESS,
                     message: format!("Analysis result for address {address} not found"),
                     data: None,

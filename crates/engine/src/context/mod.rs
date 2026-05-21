@@ -349,4 +349,54 @@ where
         debug!(?address, ?canonical, ?hash, "engine context resolved address via codehash alias");
         Some(canonical)
     }
+
+    /// Look up the analysis result for `address`, falling back to the
+    /// codehash-aliased canonical address on miss.
+    ///
+    /// Behaves like `self.analysis_results.get(&address)` for direct hits,
+    /// then for misses retries at the canonical address returned by
+    /// [`Self::resolve_canonical_via_codehash`]. This is the standard
+    /// reader-side fallback for handlers that consume
+    /// `analysis_results` keyed by a user-supplied or trace-derived
+    /// address (notably the etched address recorded on a hook snapshot's
+    /// `bytecode_address` after `vm.etch`).
+    pub(crate) fn resolve_analysis_via_codehash(
+        &self,
+        address: Address,
+    ) -> Option<&AnalysisResult> {
+        self.analysis_results.get(&address).or_else(|| {
+            self.resolve_canonical_via_codehash(address)
+                .and_then(|canonical| self.analysis_results.get(&canonical))
+        })
+    }
+
+    /// Look up the original artifact for `address`, falling back to the
+    /// codehash-aliased canonical address on miss.
+    ///
+    /// Symmetric to [`Self::resolve_analysis_via_codehash`] but for the
+    /// `artifacts` map. Used by code/abi RPC handlers so a `vm.etch`-aliased
+    /// address surfaces the canonical artifact's sources and metadata
+    /// instead of an `INVALID_ADDRESS` or `null`.
+    pub(crate) fn resolve_artifact_via_codehash(&self, address: Address) -> Option<&Artifact> {
+        self.artifacts.get(&address).or_else(|| {
+            self.resolve_canonical_via_codehash(address)
+                .and_then(|canonical| self.artifacts.get(&canonical))
+        })
+    }
+
+    /// Look up the recompiled (instrumented) artifact for `address`,
+    /// falling back to the codehash-aliased canonical address on miss.
+    ///
+    /// Symmetric to [`Self::resolve_artifact_via_codehash`] but for the
+    /// `recompiled_artifacts` map. Backs the ABI handlers, where the
+    /// instrumented artifact's contract ABI is the source of truth.
+    pub(crate) fn resolve_recompiled_artifact_via_codehash(
+        &self,
+        address: Address,
+    ) -> Option<&Artifact> {
+        self.recompiled_artifacts.get(&address).or_else(|| {
+            self.resolve_canonical_via_codehash(address)
+                .and_then(|canonical| self.recompiled_artifacts.get(&canonical))
+        })
+    }
 }

@@ -236,7 +236,22 @@ where
             if detail.bytecode_address != *bytecode_address {
                 false
             } else {
-                let Some(analysis_result) = context.analysis_results.get(bytecode_address) else {
+                // Resolve the analysis-keyed address once via the codehash
+                // alias index so etched addresses (no direct entry) still
+                // match, then reuse the same key for the artifact lookup
+                // below — analysis_results and artifacts must agree on
+                // which canonical address backs this snapshot.
+                let resolved_addr = if context.analysis_results.contains_key(bytecode_address) {
+                    *bytecode_address
+                } else if let Some(canonical) =
+                    context.resolve_canonical_via_codehash(*bytecode_address)
+                {
+                    canonical
+                } else {
+                    return false;
+                };
+
+                let Some(analysis_result) = context.analysis_results.get(&resolved_addr) else {
                     return false;
                 };
 
@@ -257,7 +272,7 @@ where
 
                 context
                     .artifacts
-                    .get(bytecode_address)
+                    .get(&resolved_addr)
                     .and_then(|artifact| artifact.input.sources.get(file_path))
                     .zip(Some(step_src.start))
                     .is_some_and(|(source, offset)| {
