@@ -51,7 +51,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use alloy_primitives::Address;
+use alloy_primitives::{Address, B256, keccak256};
 use edb_common::types::{ExecutionFrameId, Trace};
 use eyre::Result;
 use itertools::Itertools;
@@ -73,8 +73,18 @@ pub trait SnapshotAnalysis {
     /// This method processes the snapshot collection to establish navigation relationships,
     /// call stack hierarchies, and execution flow patterns based on the execution trace
     /// and source code analysis results.
-    fn analyze(&mut self, trace: &Trace, analysis: &HashMap<Address, AnalysisResult>)
-    -> Result<()>;
+    ///
+    /// `codehash_to_canonical` is the index built during engine prepare that maps the
+    /// keccak hash of deployed bytecode back to the canonical address known to
+    /// `analysis`. It is consulted as a fallback when the trace entry's
+    /// `code_address` is a `vm.etch`-aliased address with no direct entry in
+    /// `analysis`.
+    fn analyze(
+        &mut self,
+        trace: &Trace,
+        analysis: &HashMap<Address, AnalysisResult>,
+        codehash_to_canonical: &HashMap<B256, Address>,
+    ) -> Result<()>;
 }
 
 impl<DB> SnapshotAnalysis for Snapshots<DB>
@@ -87,8 +97,9 @@ where
         &mut self,
         trace: &Trace,
         analysis: &HashMap<Address, AnalysisResult>,
+        codehash_to_canonical: &HashMap<B256, Address>,
     ) -> Result<()> {
-        self.analyze_next_steps(trace, analysis)
+        self.analyze_next_steps(trace, analysis, codehash_to_canonical)
     }
 }
 
@@ -107,6 +118,7 @@ where
         &mut self,
         trace: &Trace,
         analysis: &HashMap<Address, AnalysisResult>,
+        codehash_to_canonical: &HashMap<B256, Address>,
     ) -> Result<()> {
         let mut holed_snapshots: HashSet<usize> = HashSet::new();
 
@@ -126,18 +138,34 @@ where
             if last_snapshot.is_opcode() {
                 Self::analyze_next_steps_for_opcode(snapshots_vec)?;
             } else {
-                let bytecode_address = trace
-                    .get(entry_id)
-                    .ok_or_else(|| {
-                        eyre::eyre!("Trace entry {} not found for snapshot analysis", entry_id)
-                    })?
-                    .code_address;
-                let analysis_result = analysis.get(&bytecode_address).ok_or_else(|| {
-                    eyre::eyre!(
-                        "Analysis result not found for bytecode address {}",
-                        bytecode_address
-                    )
+                let trace_entry = trace.get(entry_id).ok_or_else(|| {
+                    eyre::eyre!("Trace entry {} not found for snapshot analysis", entry_id)
                 })?;
+                let bytecode_address = trace_entry.code_address;
+
+                // Direct hit, then codehash fallback for vm.etch-aliased contracts:
+                // the snapshot's `code_address` may be an etched address with no
+                // direct entry in `analysis`. Hash the trace entry's bytecode and
+                // look up the canonical address through `codehash_to_canonical`
+                // (which the engine populates with both the instrumented Pass-3
+                // runtime hash *and* the original Pass-1 runtime hash for every
+                // canonical artifact — see `core.rs`).
+                let analysis_result = analysis
+                    .get(&bytecode_address)
+                    .or_else(|| {
+                        let bytecode = trace_entry.bytecode.as_ref()?;
+                        if bytecode.is_empty() {
+                            return None;
+                        }
+                        let codehash = keccak256(bytecode.as_ref());
+                        codehash_to_canonical.get(&codehash).and_then(|c| analysis.get(c))
+                    })
+                    .ok_or_else(|| {
+                        eyre::eyre!(
+                            "Analysis result not found for bytecode address {} (direct or via codehash alias)",
+                            bytecode_address
+                        )
+                    })?;
                 Self::analyze_next_steps_for_source(
                     snapshots_vec,
                     &mut holed_snapshots,

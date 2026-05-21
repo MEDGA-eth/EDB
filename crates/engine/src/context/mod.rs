@@ -112,16 +112,23 @@ where
     /// Analysis results identifying instrumentation points
     pub analysis_results: HashMap<Address, AnalysisResult>,
     /// Codehash → canonical address index. Built once at engine-prepare time
-    /// by hashing each `recompiled_artifacts` entry's instrumented runtime
-    /// bytecode. Used by readers (hook inspector + RPC handlers) to resolve
-    /// an unknown address to a known artifact when the bytecode at the
-    /// unknown address matches a known artifact's instrumented runtime
+    /// from **two** sources so the same map serves every reader:
+    ///   * the keccak of each `recompiled_artifacts` entry's *instrumented*
+    ///     (Pass 3) runtime bytecode — what the hook inspector sees live in
+    ///     `interp.bytecode`, and
+    ///   * the keccak of each `artifacts` entry's *original* (Pass 1) runtime
+    ///     bytecode — what the call tracer captured into `trace.bytecode`
+    ///     before instrumentation.
+    ///
+    /// Used by readers (hook inspector, RPC handlers, prepare-time snapshot
+    /// analysis) to resolve an unknown address to a known artifact when the
+    /// bytecode at the unknown address matches a known artifact's runtime
     /// (typically the result of `vm.etch(target, address(impl).code)`).
     ///
     /// First-walk wins on collision. If two addresses legitimately share the
-    /// same instrumented runtime, either canonical address gives a correct
-    /// analysis lookup since analysis is source-driven (USID-keyed) and
-    /// independent of the deploy address.
+    /// same runtime (instrumented or original), either canonical address
+    /// gives a correct analysis lookup since analysis is source-driven
+    /// (USID-keyed) and independent of the deploy address.
     pub codehash_to_canonical: HashMap<B256, Address>,
     /// Execution trace showing call hierarchy and frame structure
     pub trace: Trace,
@@ -263,8 +270,13 @@ where
             }
 
             let code_address = snapshot.bytecode_address();
-            let Some(contract) =
-                self.recompiled_artifacts.get(&code_address).and_then(|a| a.contract())
+            // Direct hit, then codehash fallback for vm.etch-aliased contracts:
+            // the snapshot's `bytecode_address` may be an etched address with no
+            // direct entry in `recompiled_artifacts`. Reuse the standard
+            // alias-aware resolver so we land on the canonical artifact.
+            let Some(contract) = self
+                .resolve_recompiled_artifact_via_codehash(code_address)
+                .and_then(|a| a.contract())
             else {
                 return Err(eyre!("No contract found for address {}", code_address));
             };

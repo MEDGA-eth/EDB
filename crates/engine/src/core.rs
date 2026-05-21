@@ -364,19 +364,40 @@ impl Engine {
         let recompiled_artifacts =
             orchestration::instrument_and_recompile_source_code(&artifacts, &analysis_results)?;
 
-        // Build the codehash → canonical-address index used by the hook inspector
-        // and the RPC layer to resolve `vm.etch`-aliased addresses to their source
-        // artifact. We key by the keccak256 of each instrumented runtime template;
-        // when execution lands at an etched address whose live bytecode matches
-        // one of these hashes, the alias resolver redirects the lookup to the
-        // canonical address.
+        // Build the codehash → canonical-address index used by the hook inspector,
+        // the RPC layer, and the prepare-time snapshot analysis to resolve
+        // `vm.etch`-aliased addresses to their source artifact.
+        //
+        // The index carries **two flavors of key per canonical artifact**:
+        //   * the keccak of the *instrumented* (Pass 3 / recompiled) runtime
+        //     bytecode — what the hook inspector sees live in `interp`, and
+        //   * the keccak of the *original* (Pass 1 / on-chain) runtime bytecode
+        //     — what the call tracer recorded into `trace.bytecode`, which
+        //     trace-driven readers (`Snapshots::analyze`, the RPC code/abi
+        //     handlers) hash when resolving an aliased address.
+        //
+        // Both flavors map to the same canonical address, so a single lookup
+        // works from either bytecode source.
         //
         // First-walk wins via `.entry(...).or_insert(*addr)`. If two addresses
-        // share the same instrumented runtime, the analysis is correct from either
-        // — analysis is source-driven (USID-keyed), not address-keyed beyond
-        // per-address lookup.
+        // share the same runtime (instrumented or original), the analysis is
+        // correct from either — analysis is source-driven (USID-keyed) and
+        // independent of the deploy address beyond per-address lookup.
         let mut codehash_to_canonical: HashMap<B256, Address> = HashMap::new();
         for (addr, art) in &recompiled_artifacts {
+            let Some(contract) = art.contract() else { continue };
+            let Some(evm) = contract.evm.as_ref() else { continue };
+            let Some(deployed) = evm.deployed_bytecode.as_ref() else { continue };
+            let Some(bytes) = deployed.bytes() else { continue };
+            if bytes.is_empty() {
+                continue;
+            }
+            codehash_to_canonical.entry(keccak256(bytes.as_ref())).or_insert(*addr);
+        }
+        // Index the original (Pass 1) runtime too so trace-driven fallbacks
+        // (which read `trace_entry.bytecode`, captured before instrumentation)
+        // can resolve the same canonical address.
+        for (addr, art) in &artifacts {
             let Some(contract) = art.contract() else { continue };
             let Some(evm) = contract.evm.as_ref() else { continue };
             let Some(deployed) = evm.deployed_bytecode.as_ref() else { continue };
@@ -518,7 +539,11 @@ impl Engine {
         send_progress!(8, 8, "Collecting opcode-level and hook-level snapshots...");
         let mut snapshots =
             orchestration::get_time_travel_snapshots(opcode_snapshots, hook_snapshots)?;
-        snapshots.analyze(&replay_result.execution_trace, &analysis_results)?;
+        snapshots.analyze(
+            &replay_result.execution_trace,
+            &analysis_results,
+            &codehash_to_canonical,
+        )?;
 
         // Let's pack the debug context
         let context = EngineContext::build(
