@@ -239,17 +239,12 @@ where
             data: None,
         })?;
 
-    // Resolve via direct address first; fall back through the codehash
-    // alias index so `vm.etch`-aliased addresses surface the canonical
-    // artifact's constructor arguments instead of `null`.
-    let args = context
-        .artifacts
-        .get(&address)
-        .or_else(|| {
-            let canonical = context.resolve_canonical_via_codehash(address)?;
-            context.artifacts.get(&canonical)
-        })
-        .map(|artifact| artifact.meta.constructor_arguments.clone());
+    // No codehash fallback: `vm.etch` does not run a constructor, so an
+    // etched address has no constructor arguments. Falling back to a
+    // canonical artifact's constructor args would silently misrepresent
+    // the etched contract's deployment.
+    let args =
+        context.artifacts.get(&address).map(|artifact| artifact.meta.constructor_arguments.clone());
 
     let json_value = serde_json::to_value(args).map_err(|e| RpcError {
         code: error_codes::INTERNAL_ERROR,
