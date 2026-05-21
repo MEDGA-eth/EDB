@@ -1612,3 +1612,74 @@ async fn crypto_sign_p256_returns_canonical_low_s_signature() -> Result<()> {
     let _ = session.shutdown();
     Ok(())
 }
+
+/// Codehash-alias regression: when a test does
+/// `vm.etch(target, address(impl).code)`, EDB must (a) fire source-level
+/// hook snapshots at `target` and (b) return `Code::Source` from
+/// `edb_getCodeByAddress(target)`. Without the codehash-fallback resolver,
+/// both fail: hooks are silently dropped (the UI sees only opcode
+/// snapshots) and the RPC returns `Code::Opcode` (the UI shows
+/// disassembly). With the fix, both produce source-level output.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn cheats_etch_aliased_address_resolves_source() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "EtchTest::testEtchedAddressProducesHookSnapshots",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    let trace = session.fetch_trace().await?;
+    // Top-level entrypoint frame must be Success (no revert in any frame).
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry for EtchTest::testEtchedAddressProducesHookSnapshots");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should succeed; got: {:?}; trace: {trace:#?}",
+        top.result,
+    );
+    assert!(
+        !trace_has_revert(&trace),
+        "etched-counter test should not revert anywhere; trace: {trace:#?}",
+    );
+
+    // Confirm the etched address is in the trace's code_address set.
+    // Solidity `address(0xCAFEC0DE)` is the uint160 value 0xCAFEC0DE, i.e.
+    // the 20-byte left-zero-padded address 0x00..CAFEC0DE.
+    let aliased: Address =
+        alloy_primitives::address!("00000000000000000000000000000000CAFEC0DE");
+    let saw_etched = trace.iter().any(|e| e.code_address == aliased);
+    assert!(saw_etched, "trace should include the etched address {aliased:?}; trace: {trace:#?}");
+
+    // The etched address must resolve to source via the codehash alias.
+    let code = session.fetch_code(aliased).await?;
+    match code {
+        Code::Source(info) => {
+            // The Counter source (defined in Etch.t.sol) must be present.
+            let has_counter = info
+                .sources
+                .keys()
+                .any(|p| p.to_string_lossy().ends_with("Etch.t.sol"));
+            assert!(
+                has_counter,
+                "expected Etch.t.sol in resolved sources, got {:?}",
+                info.sources.keys().collect::<Vec<_>>()
+            );
+        }
+        Code::Opcode(_) => {
+            panic!(
+                "etched address {aliased:?} resolved to Opcode — codehash alias did not fire"
+            );
+        }
+    }
+
+    let _ = session.shutdown();
+    Ok(())
+}
