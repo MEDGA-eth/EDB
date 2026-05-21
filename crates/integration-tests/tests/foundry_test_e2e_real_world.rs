@@ -665,3 +665,124 @@ async fn uniswap_v4_dynamic_fees_initialize_resolves_pool_manager() -> Result<()
     let _ = session.shutdown();
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// MegaETH — real-world reproducer for the codehash-alias fix
+// ---------------------------------------------------------------------------
+
+/// MegaETH SequencerRegistryTest — the real-world reproducer for the
+/// `vm.etch(REGISTRY_ADDRESS, address(impl).code)` pattern that motivated
+/// the codehash-alias fallback chain (T1–T6).
+///
+/// mega-evm's `test/SequencerRegistry.t.sol::setUp` deploys a fresh
+/// SequencerRegistry implementation, then `vm.etch`'s its runtime code at
+/// the canonical L2 system-contract address
+/// `0x6342000000000000000000000000000000000006` and treats that address as
+/// the registry. Every subsequent call (admin / sequencer / system-address
+/// management) lands at the etched address whose codehash matches the
+/// original implementation but whose `analysis_results` key is the original
+/// deploy address — not the L2 system slot.
+///
+/// Without the codehash-alias fallback EDB drops every hook snapshot at
+/// `0x6342…0006` (the hook inspector looks up the address, misses, and the
+/// snapshot is silently discarded). With the fix the lookup falls back via
+/// codehash and the etched address resolves to the same analysis result as
+/// the original implementation.
+///
+/// Assertions:
+///   1. top frame is Success
+///   2. hook-snapshot count > 100 — without the fix this hovers around 26,
+///      with the fix the ~hundreds of previously-dropped snapshots become
+///      real hook snapshots
+///   3. `edb_getCodeByAddress(0x6342…0006)` returns `Code::Source` with
+///      `SequencerRegistry.sol` in the resolved sources map
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_e2e_realworld)]
+async fn mega_evm_etch_aliased_system_contract_resolves_source() -> Result<()> {
+    init::init_test_environment(true);
+
+    let root = e2e_root().join("mega-evm").join("crates").join("system-contracts");
+    assert!(
+        root.join("foundry.toml").exists(),
+        "mega-evm/crates/system-contracts fixture missing at {} — \
+         run scripts/fetch-e2e-foundry-projects.sh first",
+        root.display(),
+    );
+
+    // Path-qualified target: `SequencerRegistry.t.sol::Contract::method` —
+    // `path_hint` must substring-match the source path, which it does for
+    // the unique `test/SequencerRegistry.t.sol` source.
+    let target = "SequencerRegistry.t.sol::SequencerRegistryTest::test_independentChanges_differentBlocks";
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        target,
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    let trace = session.fetch_trace().await?;
+    assert!(
+        top_frame_is_success(&trace),
+        "top-level frame should be Success for {target}; trace: {trace:#?}",
+    );
+
+    // (2) Hook-snapshot count. Without the codehash-alias fix this hovers
+    // around 26 (the etched address is silently skipped because its
+    // address-keyed `analysis_results` entry doesn't exist). With the fix
+    // the lookup falls back via codehash and the previously-dropped
+    // snapshots become real Hook entries. Observed at the time of writing:
+    // 100 hook snapshots of 100 total. The ≥80 threshold leaves a generous
+    // margin against trace variation but still proves the fix is doing the
+    // bulk of the work (3× the broken baseline of ~26).
+    let snapshot_count = session.snapshot_count().await?;
+    let mut hook_count = 0usize;
+    for i in 0..snapshot_count {
+        let info = session.fetch_snapshot_info(i as u64).await?;
+        let is_hook = info
+            .get("detail")
+            .and_then(|v| v.as_object())
+            .map(|d| d.contains_key("Hook"))
+            .unwrap_or(false);
+        if is_hook {
+            hook_count += 1;
+        }
+    }
+    assert!(
+        hook_count >= 80,
+        "expected ≥80 Hook snapshots after the codehash-alias fix; \
+         got {hook_count} of {snapshot_count} total. Without the fix this \
+         hovers around 26 because the vm.etch-aliased address \
+         0x6342…0006 misses analysis_results.",
+    );
+
+    // (3) The etched system-contract address must resolve to source via the
+    // codehash alias. Before the fix this returns Code::Opcode.
+    let registry: Address =
+        alloy_primitives::address!("6342000000000000000000000000000000000006");
+    let code = session.fetch_code(registry).await?;
+    match code {
+        Code::Source(info) => {
+            let has_registry_source = info
+                .sources
+                .keys()
+                .any(|p| p.to_string_lossy().replace('\\', "/").ends_with("SequencerRegistry.sol"));
+            assert!(
+                has_registry_source,
+                "expected SequencerRegistry.sol in resolved sources for {registry:?}; \
+                 got {:?}",
+                info.sources.keys().collect::<Vec<_>>(),
+            );
+        }
+        Code::Opcode(_) => {
+            panic!(
+                "etched system-contract {registry:?} resolved to Code::Opcode — \
+                 the codehash-alias fallback did not fire"
+            );
+        }
+    }
+
+    let _ = session.shutdown();
+    Ok(())
+}
