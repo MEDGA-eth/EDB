@@ -259,12 +259,14 @@ where
     /// matching their live runtime bytecode against known artifacts.
     codehash_to_canonical: &'a HashMap<B256, Address>,
 
-    /// Per-run cache: address with no direct `analysis` entry → canonical
-    /// address whose analysis applies (resolved via codehash equality).
-    /// Populated lazily on first miss; subsequent lookups at the same
-    /// address are O(1). Cleared at the end of the run when the inspector
-    /// is dropped.
-    aliased_to: HashMap<Address, Address>,
+    /// Per-run cache mapping an alias address (one with no direct
+    /// `analysis` entry) to its canonical address (the artifact's
+    /// address whose bytecode it shares). The mapping is directional:
+    /// **alias → canonical**, never the reverse. Populated lazily on
+    /// first miss via codehash equality; subsequent lookups at the
+    /// same alias are O(1). Cleared at the end of the run when the
+    /// inspector is dropped.
+    canonical_by_alias: HashMap<Address, Address>,
 
     /// Collection of hook snapshots
     pub snapshots: HookSnapshots<DB>,
@@ -321,7 +323,7 @@ where
             trace,
             analysis,
             codehash_to_canonical,
-            aliased_to: HashMap::new(),
+            canonical_by_alias: HashMap::new(),
             snapshots: HookSnapshots::default(),
             frame_stack: Vec::new(),
             current_trace_id: 0,
@@ -767,7 +769,7 @@ where
         interp: &Interpreter,
     ) -> Option<&'a AnalysisResult> {
         // Step 1: cached redirect.
-        if let Some(canonical) = self.aliased_to.get(&address) {
+        if let Some(canonical) = self.canonical_by_alias.get(&address) {
             return self.analysis.get(canonical);
         }
         // Step 2: direct hit.
@@ -784,7 +786,7 @@ where
         }
         let code_hash = keccak256(raw_code);
         let canonical = *self.codehash_to_canonical.get(&code_hash)?;
-        self.aliased_to.insert(address, canonical);
+        self.canonical_by_alias.insert(address, canonical);
         debug!(
             ?address,
             ?canonical,
