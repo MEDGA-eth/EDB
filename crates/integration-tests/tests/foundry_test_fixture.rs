@@ -1653,8 +1653,7 @@ async fn cheats_etch_aliased_address_resolves_source() -> Result<()> {
     // Confirm the etched address is in the trace's code_address set.
     // Solidity `address(0xCAFEC0DE)` is the uint160 value 0xCAFEC0DE, i.e.
     // the 20-byte left-zero-padded address 0x00..CAFEC0DE.
-    let aliased: Address =
-        alloy_primitives::address!("00000000000000000000000000000000CAFEC0DE");
+    let aliased: Address = alloy_primitives::address!("00000000000000000000000000000000CAFEC0DE");
     let saw_etched = trace.iter().any(|e| e.code_address == aliased);
     assert!(saw_etched, "trace should include the etched address {aliased:?}; trace: {trace:#?}");
 
@@ -1663,10 +1662,8 @@ async fn cheats_etch_aliased_address_resolves_source() -> Result<()> {
     match code {
         Code::Source(info) => {
             // The Counter source (defined in Etch.t.sol) must be present.
-            let has_counter = info
-                .sources
-                .keys()
-                .any(|p| p.to_string_lossy().ends_with("Etch.t.sol"));
+            let has_counter =
+                info.sources.keys().any(|p| p.to_string_lossy().ends_with("Etch.t.sol"));
             assert!(
                 has_counter,
                 "expected Etch.t.sol in resolved sources, got {:?}",
@@ -1674,9 +1671,7 @@ async fn cheats_etch_aliased_address_resolves_source() -> Result<()> {
             );
         }
         Code::Opcode(_) => {
-            panic!(
-                "etched address {aliased:?} resolved to Opcode — codehash alias did not fire"
-            );
+            panic!("etched address {aliased:?} resolved to Opcode — codehash alias did not fire");
         }
     }
 

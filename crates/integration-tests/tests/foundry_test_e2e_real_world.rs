@@ -712,7 +712,8 @@ async fn mega_evm_etch_aliased_system_contract_resolves_source() -> Result<()> {
     // Path-qualified target: `SequencerRegistry.t.sol::Contract::method` —
     // `path_hint` must substring-match the source path, which it does for
     // the unique `test/SequencerRegistry.t.sol` source.
-    let target = "SequencerRegistry.t.sol::SequencerRegistryTest::test_independentChanges_differentBlocks";
+    let target =
+        "SequencerRegistry.t.sol::SequencerRegistryTest::test_independentChanges_differentBlocks";
     let session = edb::cmd::test::run_foundry_test_for_test(
         target,
         Some(root.to_str().unwrap()),
@@ -759,8 +760,7 @@ async fn mega_evm_etch_aliased_system_contract_resolves_source() -> Result<()> {
 
     // (3) The etched system-contract address must resolve to source via the
     // codehash alias. Before the fix this returns Code::Opcode.
-    let registry: Address =
-        alloy_primitives::address!("6342000000000000000000000000000000000006");
+    let registry: Address = alloy_primitives::address!("6342000000000000000000000000000000000006");
     let code = session.fetch_code(registry).await?;
     match code {
         Code::Source(info) => {
