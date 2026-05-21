@@ -54,6 +54,8 @@ clone_at_commit "https://github.com/transmissions11/solmate" "main" \
     "89365b880c4f3c786bdd453d4b8e8fe410344a69" "solmate"
 clone_at_commit "https://github.com/PaulRBerg/prb-math" "main" \
     "82e5ed5561d0a1c43a3a59edbf4291c8de26479e" "prb-math"
+clone_at_commit "https://github.com/megaeth-labs/mega-evm" "main" \
+    "ab851bede881e751be336c42b929946f5147ec21" "mega-evm"
 
 # prb-math fetches forge-std via npm (see package.json), not git submodules.
 # Materialize `node_modules/` so foundry-compilers can resolve
