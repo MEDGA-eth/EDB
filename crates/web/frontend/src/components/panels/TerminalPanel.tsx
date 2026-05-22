@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import { ArrowDownToLine, Copy, Eye, Trash2, X } from 'lucide-react';
@@ -54,6 +54,49 @@ export function formatEvalResult(value: unknown): string {
   return prettyJson(value);
 }
 
+/**
+ * First-token completions offered in the terminal: built-in command verbs
+ * plus the `$edb_*` expression builtins. Trailing space / `(` positions the
+ * caret for arguments once accepted. Single-letter aliases (s/n/c/…) are
+ * intentionally omitted to keep the list focused.
+ */
+const TERM_COMPLETIONS = [
+  'step',
+  'next',
+  'over',
+  'out',
+  'continue',
+  'reverse-continue',
+  'goto ',
+  'break ',
+  'bp',
+  'unbreak ',
+  'clear',
+  'help',
+  'edb_sload(',
+  'edb_tsload(',
+  'edb_stack(',
+  'edb_memory(',
+  'edb_calldata(',
+  'keccak256(',
+  'edb_help()',
+];
+
+/**
+ * Completions for the current input: only when typing the first token (no
+ * whitespace yet) and the token is a non-empty prefix of one or more
+ * candidates, excluding an exact match so the list disappears once a verb is
+ * fully typed. Capped to keep the dropdown compact.
+ */
+export function computeTermSuggestions(input: string): string[] {
+  const tok = input.trimStart();
+  if (tok.length === 0 || /\s/.test(tok)) return [];
+  const lc = tok.toLowerCase();
+  return TERM_COMPLETIONS.filter(
+    (c) => c.toLowerCase().startsWith(lc) && c.trimEnd() !== tok,
+  ).slice(0, 8);
+}
+
 export function TerminalPanel() {
   return (
     <ErrorBoundary label="TerminalPanel">
@@ -73,6 +116,19 @@ function TerminalPanelInner() {
   const snapshotCountQ = useSnapshotCount();
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const inputElRef = useRef<HTMLInputElement | null>(null);
+  // Command-history recall (Up/Down). `histCursorRef` indexes into the
+  // chronological list of prior input texts; null means "at the live draft".
+  // `draftRef` stashes whatever the user was typing before they started
+  // browsing history so Down past the newest restores it.
+  const histCursorRef = useRef<number | null>(null);
+  const draftRef = useRef('');
+  // Autocomplete dropdown state. Suggestions derive from `input`; `dismissed`
+  // (cleared on the next keystroke) lets Escape hide the list without
+  // clearing the input, and `focused` hides it when the field loses focus.
+  const [suggestActive, setSuggestActive] = useState(0);
+  const [suggestDismissed, setSuggestDismissed] = useState(false);
+  const [focused, setFocused] = useState(false);
   // Monotonically-increasing submission counter, used to pair an input
   // entry with its result/error so concurrent evals render in input-order
   // even when the server replies out-of-order.
@@ -143,6 +199,75 @@ function TerminalPanelInner() {
     return null;
   }
 
+  // Chronological list of prior submitted inputs, for Up/Down recall.
+  const inputTexts = useMemo(
+    () => history.filter((h) => h.kind === 'input').map((h) => h.text),
+    [history],
+  );
+
+  const suggestions = useMemo(() => computeTermSuggestions(input), [input]);
+  const showSuggest = focused && !suggestDismissed && suggestions.length > 0;
+
+  // Keep the active suggestion in range as the list changes.
+  useEffect(() => {
+    setSuggestActive((a) => (a >= suggestions.length ? 0 : a));
+  }, [suggestions.length]);
+
+  function recallPrev() {
+    if (inputTexts.length === 0) return;
+    if (histCursorRef.current === null) {
+      draftRef.current = input;
+      histCursorRef.current = inputTexts.length - 1;
+    } else {
+      histCursorRef.current = Math.max(0, histCursorRef.current - 1);
+    }
+    setInput(inputTexts[histCursorRef.current]!);
+  }
+
+  function recallNext() {
+    if (histCursorRef.current === null) return;
+    const idx = histCursorRef.current + 1;
+    if (idx >= inputTexts.length) {
+      histCursorRef.current = null;
+      setInput(draftRef.current);
+    } else {
+      histCursorRef.current = idx;
+      setInput(inputTexts[idx]!);
+    }
+  }
+
+  function acceptSuggestion(s: string) {
+    setInput(s);
+    setSuggestDismissed(true);
+    histCursorRef.current = null;
+    inputElRef.current?.focus();
+  }
+
+  function onInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    // Tab accepts the highlighted completion (when the dropdown is open).
+    if (e.key === 'Tab' && showSuggest) {
+      e.preventDefault();
+      acceptSuggestion(suggestions[suggestActive] ?? suggestions[0]!);
+      return;
+    }
+    if (e.key === 'Escape' && showSuggest) {
+      e.preventDefault();
+      setSuggestDismissed(true);
+      return;
+    }
+    // Arrows are reserved for command history so a previous command is always
+    // one keypress away (the dropdown is driven by Tab / click instead).
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      recallPrev();
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      recallNext();
+    }
+  }
+
   function saveLastAsWatch() {
     const last = lastInputText();
     if (last) addWatch(last);
@@ -160,13 +285,20 @@ function TerminalPanelInner() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!input.trim()) return;
+    // An empty submission re-runs the most recent command (shell convention).
+    let expr = input;
+    if (!expr.trim()) {
+      const last = lastInputText();
+      if (!last) return;
+      expr = last;
+    }
     const ts = Date.now();
     submissionCounterRef.current += 1;
     const submissionId = submissionCounterRef.current;
-    append({ kind: 'input', ts, text: input, submissionId });
-    const expr = input;
+    append({ kind: 'input', ts, text: expr, submissionId });
     setInput('');
+    histCursorRef.current = null;
+    setSuggestDismissed(false);
 
     // First try built-in commands (step / goto / bp / …). They run
     // synchronously and return either a markdown message or nothing.
@@ -261,12 +393,54 @@ function TerminalPanelInner() {
           <TerminalLine key={`${h.ts}-${i}`} entry={h} />
         ))}
       </div>
-      <form onSubmit={submit} className="flex items-center gap-2 border-t border-(--color-border) bg-(--color-bg) p-2">
+      <form onSubmit={submit} className="relative flex items-center gap-2 border-t border-(--color-border) bg-(--color-bg) p-2">
+        {showSuggest && (
+          <ul
+            role="listbox"
+            data-testid="terminal-suggestions"
+            className="absolute bottom-full left-2 right-2 z-20 mb-1 max-h-56 overflow-auto rounded border border-(--color-border) bg-(--color-bg-elevated) py-1 shadow-[var(--shadow-md)]"
+          >
+            {suggestions.map((s, i) => (
+              <li key={s}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={i === suggestActive}
+                  data-testid="terminal-suggestion"
+                  // Keep the input focused so onClick fires before blur closes us.
+                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => setSuggestActive(i)}
+                  onClick={() => acceptSuggestion(s)}
+                  className={`flex w-full items-center px-3 py-1 text-left font-mono text-xs ${
+                    i === suggestActive
+                      ? 'bg-(--color-bg-active) text-(--color-fg)'
+                      : 'text-(--color-fg-secondary) hover:bg-(--color-bg-hover)'
+                  }`}
+                >
+                  {s}
+                </button>
+              </li>
+            ))}
+            <li className="px-3 pt-1 text-[10px] text-(--color-fg-tertiary)">
+              Tab to complete · ↑/↓ history
+            </li>
+          </ul>
+        )}
         <span className="text-(--color-accent) font-bold">›</span>
         <input
+          ref={inputElRef}
           data-testid="terminal-input"
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            histCursorRef.current = null;
+            setSuggestDismissed(false);
+          }}
+          onKeyDown={onInputKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          autoComplete="off"
+          spellCheck={false}
           className="flex-1 bg-transparent font-mono outline-none"
           placeholder="Solidity expression or command (type `help`)"
         />
