@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { TerminalPanel, computeTermSuggestions } from './TerminalPanel';
+import { TerminalPanel, computeTermSuggestions, formatEvalResult } from './TerminalPanel';
 import { makeWrapper, mockRpc } from '../../hooks/_test-utils';
 import { useSession } from '../../store/session';
 
@@ -79,6 +79,15 @@ describe('<TerminalPanel />', () => {
     ).toBe(true);
     await userEvent.keyboard('{Tab}');
     expect(input.value).toBe('continue');
+  });
+
+  test('formatEvalResult renders a string result verbatim (newlines preserved)', () => {
+    expect(formatEvalResult({ kind: 'Ok', value: { type: 'String', value: 'a\nb' } })).toBe('a\nb');
+    // Non-string values keep their formatted form.
+    expect(formatEvalResult({ kind: 'Ok', value: { type: 'Bool', value: true } })).toBe('true');
+    expect(
+      formatEvalResult({ kind: 'Ok', value: { type: 'Uint', value: { bits: 256, value: '42' } } }),
+    ).toBe('42 (uint256)');
   });
 
   test('computeTermSuggestions: prefix match, exact + whitespace excluded', () => {

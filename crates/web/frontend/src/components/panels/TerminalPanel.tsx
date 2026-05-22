@@ -48,7 +48,15 @@ export function prettyJson(value: unknown): string {
 export function formatEvalResult(value: unknown): string {
   if (value && typeof value === 'object' && 'kind' in value) {
     const r = value as EvalResult;
-    if (r.kind === 'Ok') return formatSolValue(r.value);
+    if (r.kind === 'Ok') {
+      // A top-level string result is rendered verbatim (no quoting/escaping)
+      // so embedded newlines and tabs display as real line breaks in the
+      // <pre> below. `formatSolValue` JSON-encodes strings, which is the
+      // right call for the Variables table but turns "a\nb" into the literal
+      // `"a\nb"` here. Other value types keep their formatted form.
+      if (r.value && r.value.type === 'String') return r.value.value;
+      return formatSolValue(r.value);
+    }
     if (r.kind === 'Err') return `error: ${r.error}`;
   }
   return prettyJson(value);
