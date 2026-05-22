@@ -150,6 +150,13 @@ where
             .data(Bytes::copy_from_slice(data))
             .build_fill();
         relax_evm_tx_constraints(&mut tx_env);
+        // The derived EVM executes against `self.cfg`; align the synthetic
+        // tx's chain-id with it so REVM's EIP-155 validation passes regardless
+        // of which chain the engine was configured for (e.g. after
+        // `vm.chainId(...)` or in forked mode against a non-mainnet chain).
+        // `TxEnvBuilder` defaults to mainnet (1), which would otherwise
+        // mismatch and surface as "invalid chain ID" on every getter read.
+        tx_env.chain_id = Some(self.cfg.chain_id);
 
         evm.transact_one(tx_env).map_err(|e| eyre!(e.to_string()))
     }
