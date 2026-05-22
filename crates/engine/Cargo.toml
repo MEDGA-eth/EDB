@@ -48,6 +48,9 @@ revm = { workspace = true, features = [
 # solang
 solang-parser = { workspace = true }
 
+# source-text search (edb_searchSources regex mode)
+regex.workspace = true
+
 # async
 tokio = { workspace = true, features = ["full"] }
 futures.workspace = true

@@ -18,6 +18,7 @@
 
 use super::super::types::RpcError;
 use crate::{EngineContext, error_codes};
+use regex::RegexBuilder;
 use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 use serde::Serialize;
 use serde_json::Value;
@@ -53,10 +54,38 @@ struct FileMatches {
 #[derive(Debug, Serialize, PartialEq)]
 struct SearchResult {
     query: String,
+    /// Whether the query was interpreted as a regular expression.
+    regex: bool,
+    /// Set (with `files` empty) when `regex` is true but the pattern failed to
+    /// compile, so the UI can show "invalid pattern" instead of an error box.
+    error: Option<String>,
     /// True when the match cap was hit and results were cut short.
     truncated: bool,
     total_matches: usize,
     files: Vec<FileMatches>,
+}
+
+/// How a query is matched against each source line. Both variants are
+/// case-insensitive, mirroring the substring behavior the search shipped with.
+enum Matcher {
+    Substring(String),
+    Regex(regex::Regex),
+}
+
+impl Matcher {
+    fn is_match(&self, line: &str) -> bool {
+        match self {
+            Self::Substring(needle) => line.to_lowercase().contains(needle),
+            Self::Regex(re) => re.is_match(line),
+        }
+    }
+}
+
+/// Outcome of scanning the sources, before it's wrapped with query metadata.
+struct Matches {
+    files: Vec<FileMatches>,
+    total_matches: usize,
+    truncated: bool,
 }
 
 /// Truncate `line` to at most `MAX_LINE_LEN` characters on a char boundary,
@@ -71,18 +100,17 @@ fn clip_line(line: &str) -> String {
     out
 }
 
-/// Pure search core: scan `(address, path, content)` triples for `query`
-/// (case-insensitive substring), deduplicating shared source files by path.
+/// Pure search core: scan `(address, path, content)` triples with `matcher`,
+/// deduplicating shared source files by path.
 ///
 /// Each path's matching lines are computed once (the first time the path is
 /// seen); every address that carries that path is recorded so the caller can
 /// open the file under any of them. Results are capped at `max_matches`.
 fn search_in_sources<'a>(
-    query: &str,
+    matcher: &Matcher,
     sources: impl Iterator<Item = (String, String, &'a str)>,
     max_matches: usize,
-) -> SearchResult {
-    let needle = query.to_lowercase();
+) -> Matches {
     let mut by_path: BTreeMap<String, FileMatches> = BTreeMap::new();
     let mut computed: HashSet<String> = HashSet::new();
     let mut total = 0usize;
@@ -107,7 +135,7 @@ fn search_in_sources<'a>(
             continue;
         }
         for (idx, line) in content.lines().enumerate() {
-            if line.to_lowercase().contains(&needle) {
+            if matcher.is_match(line) {
                 if total >= max_matches {
                     truncated = true;
                     break;
@@ -125,13 +153,15 @@ fn search_in_sources<'a>(
     }
     files.sort_by(|a, b| a.path.cmp(&b.path));
 
-    SearchResult { query: query.to_string(), truncated, total_matches: total, files }
+    Matches { files, total_matches: total, truncated }
 }
 
 /// `edb_searchSources`: full-text search across every artifact's source files.
 ///
-/// Params: `[query: string]`. Returns files (deduped by path) with their
-/// matching lines and the addresses that carry them.
+/// Params: `[query: string, regex?: bool]`. With `regex` true the query is a
+/// case-insensitive regular expression; otherwise a case-insensitive
+/// substring. Returns files (deduped by path) with their matching lines and
+/// the addresses that carry them.
 pub fn search_sources<DB>(
     context: &Arc<EngineContext<DB>>,
     params: Option<Value>,
@@ -141,17 +171,16 @@ where
     <CacheDB<DB> as Database>::Error: Clone + Send + Sync,
     <DB as Database>::Error: Clone + Send + Sync,
 {
-    let query = params
-        .as_ref()
-        .and_then(|p| p.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| RpcError {
-            code: error_codes::INVALID_PARAMS,
-            message: "Invalid params: expected [query]".to_string(),
-            data: None,
-        })?;
+    let arr = params.as_ref().and_then(|p| p.as_array());
+    let query =
+        arr.and_then(|a| a.first()).and_then(|v| v.as_str()).map(|s| s.to_string()).ok_or_else(
+            || RpcError {
+                code: error_codes::INVALID_PARAMS,
+                message: "Invalid params: expected [query, regex?]".to_string(),
+                data: None,
+            },
+        )?;
+    let use_regex = arr.and_then(|a| a.get(1)).and_then(|v| v.as_bool()).unwrap_or(false);
 
     if query.trim().is_empty() {
         return Err(RpcError {
@@ -161,6 +190,32 @@ where
         });
     }
 
+    // Build the matcher. An invalid regex is reported in-band (empty results +
+    // `error`) rather than as an RPC error, so the UI can show a quiet hint
+    // while the user is still typing the pattern.
+    let matcher = if use_regex {
+        match RegexBuilder::new(&query).case_insensitive(true).build() {
+            Ok(re) => Matcher::Regex(re),
+            Err(e) => {
+                let result = SearchResult {
+                    query,
+                    regex: true,
+                    error: Some(e.to_string()),
+                    truncated: false,
+                    total_matches: 0,
+                    files: Vec::new(),
+                };
+                return serde_json::to_value(&result).map_err(|e| RpcError {
+                    code: error_codes::INTERNAL_ERROR,
+                    message: format!("Failed to serialize search result: {e}"),
+                    data: None,
+                });
+            }
+        }
+    } else {
+        Matcher::Substring(query.to_lowercase())
+    };
+
     let triples = context.artifacts.iter().flat_map(|(addr, artifact)| {
         let addr_hex = format!("{addr:#x}");
         artifact.input.sources.iter().map(move |(path, source)| {
@@ -168,7 +223,15 @@ where
         })
     });
 
-    let result = search_in_sources(&query, triples, MAX_MATCHES);
+    let matches = search_in_sources(&matcher, triples, MAX_MATCHES);
+    let result = SearchResult {
+        query: query.clone(),
+        regex: use_regex,
+        error: None,
+        truncated: matches.truncated,
+        total_matches: matches.total_matches,
+        files: matches.files,
+    };
 
     let json = serde_json::to_value(&result).map_err(|e| RpcError {
         code: error_codes::INTERNAL_ERROR,
@@ -176,8 +239,9 @@ where
         data: None,
     })?;
     debug!(
-        "edb_searchSources('{}') -> {} files, {} matches (truncated={})",
+        "edb_searchSources('{}', regex={}) -> {} files, {} matches (truncated={})",
         query,
+        use_regex,
         result.files.len(),
         result.total_matches,
         result.truncated
@@ -189,14 +253,20 @@ where
 mod tests {
     use super::*;
 
-    fn run(query: &str, triples: Vec<(String, String, &'static str)>) -> SearchResult {
-        search_in_sources(query, triples.into_iter(), MAX_MATCHES)
+    fn substring(query: &str) -> Matcher {
+        Matcher::Substring(query.to_lowercase())
+    }
+    fn regex(query: &str) -> Matcher {
+        Matcher::Regex(RegexBuilder::new(query).case_insensitive(true).build().unwrap())
+    }
+    fn run(matcher: &Matcher, triples: Vec<(String, String, &'static str)>) -> Matches {
+        search_in_sources(matcher, triples.into_iter(), MAX_MATCHES)
     }
 
     #[test]
     fn matches_are_case_insensitive_and_one_based() {
         let r = run(
-            "transfer",
+            &substring("transfer"),
             vec![(
                 "0xaaa".to_string(),
                 "src/Token.sol".to_string(),
@@ -219,7 +289,7 @@ mod tests {
         // addresses recorded and sorted.
         let content = "contract ERC20 { function mint() {} }\n";
         let r = run(
-            "mint",
+            &substring("mint"),
             vec![
                 ("0xbbb".to_string(), "lib/ERC20.sol".to_string(), content),
                 ("0xaaa".to_string(), "lib/ERC20.sol".to_string(), content),
@@ -235,7 +305,7 @@ mod tests {
     #[test]
     fn no_matches_yields_empty_files() {
         let r = run(
-            "doesnotexist",
+            &substring("doesnotexist"),
             vec![("0xaaa".to_string(), "a.sol".to_string(), "contract A {}\n")],
         );
         assert!(r.files.is_empty());
@@ -247,12 +317,41 @@ mod tests {
         let many: String = (0..50).map(|_| "needle\n").collect();
         let leaked: &'static str = Box::leak(many.into_boxed_str());
         let r = search_in_sources(
-            "needle",
+            &substring("needle"),
             vec![("0xaaa".to_string(), "big.sol".to_string(), leaked)].into_iter(),
             10,
         );
         assert_eq!(r.total_matches, 10);
         assert!(r.truncated);
         assert_eq!(r.files[0].matches.len(), 10);
+    }
+
+    #[test]
+    fn regex_matches_pattern_case_insensitively() {
+        let r = run(
+            &regex(r"function\s+\w+\("),
+            vec![(
+                "0xaaa".to_string(),
+                "src/Token.sol".to_string(),
+                "function transfer(address to) {}\n  uint256 x;\nFUNCTION  mint() {}\n",
+            )],
+        );
+        assert_eq!(r.files.len(), 1);
+        let lines: Vec<usize> = r.files[0].matches.iter().map(|m| m.line).collect();
+        assert_eq!(lines, vec![1, 3], "both function decls match, the bare uint line does not");
+    }
+
+    #[test]
+    fn regex_anchors_and_classes_work() {
+        let r = run(
+            &regex(r"^\s*mapping\("),
+            vec![(
+                "0xaaa".to_string(),
+                "a.sol".to_string(),
+                "  mapping(address => uint) bal;\n// not a mapping( decl\n",
+            )],
+        );
+        assert_eq!(r.total_matches, 1);
+        assert_eq!(r.files[0].matches[0].line, 1);
     }
 }
