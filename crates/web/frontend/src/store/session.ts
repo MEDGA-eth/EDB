@@ -64,6 +64,10 @@ export interface SessionState {
   activeFileId: string | null;
   /** serialised dockview JSON; persisted across reloads */
   layoutJson: string | null;
+  /** One-shot "scroll this open file to this line" request, e.g. from a
+   *  source-search result click. `nonce` bumps on every request so repeated
+   *  clicks on the same (file, line) re-trigger the scroll. Ephemeral. */
+  revealRequest: { fileId: string; line: number; nonce: number } | null;
 
   /* command-palette + global view toggles */
   paletteOpen: boolean;
@@ -118,6 +122,8 @@ export interface SessionState {
 
   setActivity(a: ActivityKind): void;
   openFile(args: { addr: string; path: string }): void;
+  /** Open (or focus) a file and request a scroll to `line` once it renders. */
+  openFileAtLine(args: { addr: string; path: string; line: number }): void;
   closeFile(id: string): void;
   setActiveFile(id: string | null): void;
   setLayoutJson(json: string | null): void;
@@ -170,6 +176,7 @@ export const useSession = create<SessionState>()(
       openFiles: [],
       activeFileId: null,
       layoutJson: null,
+      revealRequest: null,
 
       paletteOpen: false,
       paletteInitialQuery: '',
@@ -262,6 +269,16 @@ export const useSession = create<SessionState>()(
           activeFileId: id,
         });
       },
+      openFileAtLine: ({ addr, path, line }) => {
+        const id = fileId(addr, path);
+        const exists = get().openFiles.some((f) => f.id === id);
+        const prevNonce = get().revealRequest?.nonce ?? 0;
+        set({
+          openFiles: exists ? get().openFiles : [...get().openFiles, { id, addr, path }],
+          activeFileId: id,
+          revealRequest: { fileId: id, line, nonce: prevNonce + 1 },
+        });
+      },
       closeFile: (id) => {
         const remaining = get().openFiles.filter((f) => f.id !== id);
         const wasActive = get().activeFileId === id;
@@ -334,6 +351,7 @@ export const useSession = create<SessionState>()(
         activeActivity: 'explorer',
         openFiles: [],
         activeFileId: null,
+        revealRequest: null,
         paletteOpen: false,
         paletteInitialQuery: '',
         traceExpandTick: 0,

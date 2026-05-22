@@ -129,6 +129,9 @@ export interface SolidityEditorHandle {
   viewRef: React.MutableRefObject<EditorView | null>;
   /** Imperative scroll-to-byte-offset (1-indexed line number resolved internally). */
   revealOffset(byteOffset: number): void;
+  /** Imperative scroll-to-line (1-indexed). Returns false (no-op) when the
+   *  view isn't ready yet or the line is out of range. */
+  revealLine(line: number): boolean;
 }
 
 const lineHighlight = Decoration.line({
@@ -346,5 +349,13 @@ export function useSolidityEditor(opts: SolidityEditorOptions): SolidityEditorHa
     view.dispatch({ effects: EditorView.scrollIntoView(line.from, { y: 'center' }) });
   }
 
-  return { containerRef, viewRef, revealOffset };
+  function revealLine(line: number): boolean {
+    const view = viewRef.current;
+    if (!view || line < 1 || line > view.state.doc.lines) return false;
+    const l = view.state.doc.line(line);
+    view.dispatch({ effects: EditorView.scrollIntoView(l.from, { y: 'center' }) });
+    return true;
+  }
+
+  return { containerRef, viewRef, revealOffset, revealLine };
 }

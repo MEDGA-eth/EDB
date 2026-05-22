@@ -239,7 +239,7 @@ function SolidityView({
       });
     }
   }
-  const { containerRef, viewRef, revealOffset } = useSolidityEditor({
+  const { containerRef, viewRef, revealOffset, revealLine } = useSolidityEditor({
     content: file?.content ?? '',
     wordWrap,
     showLineNumbers,
@@ -247,6 +247,25 @@ function SolidityView({
     breakpoints: bpMarkers,
     onToggleBreakpoint: toggleBreakpointAtLine,
   });
+
+  // One-shot scroll-to-line, e.g. from a source-search result click. Only the
+  // tab matching the request's fileId responds. Re-runs when the editor view
+  // (re)initialises for this file's content, covering the open-then-reveal
+  // race where the request lands before the view exists.
+  const revealRequest = useSession((s) => s.revealRequest);
+  const consumedRevealNonce = useRef<number>(0);
+  useEffect(() => {
+    if (!revealRequest || !file) return;
+    if (revealRequest.fileId !== `${addr}::${path}`) return;
+    if (revealRequest.nonce === consumedRevealNonce.current) return;
+    // Mark consumed only once the scroll actually lands; on the open-then-load
+    // race the first attempt hits an empty doc and we retry when content fills.
+    if (revealLine(revealRequest.line)) {
+      consumedRevealNonce.current = revealRequest.nonce;
+    }
+    // `file?.content` covers the editor (re)init after the file loads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealRequest?.nonce, file?.content]);
 
   function revealCurrent() {
     if (!currentSnap) return;
