@@ -37,7 +37,12 @@ jobs:
     if: >
       github.event_name == 'workflow_dispatch'
       || contains(github.event.pull_request.labels.*.name, 'run-tests')
-    timeout-minutes: 60
+    # The full real-world e2e suite (solady / uniswap-v4 / solmate / prb-math
+    # + the mega-evm and foundry-fixture suites) runs to completion now that
+    # the previously fast-failing cases pass. macOS finishes in ~33 min, but
+    # the slower Windows runner exceeded the old 60-min cap mid-suite; 90
+    # gives it headroom without unbounding the job.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
