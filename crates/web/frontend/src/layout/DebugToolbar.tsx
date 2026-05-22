@@ -182,9 +182,9 @@ export function DebugToolbar() {
       data-testid="debug-toolbar"
       role="toolbar"
       aria-label="Debug toolbar"
-      className="flex items-center gap-1 border-b border-(--color-border) bg-(--color-bg-elevated) px-3 py-1.5"
+      className="flex items-center gap-1 overflow-x-auto border-b border-(--color-border) bg-(--color-bg-elevated) px-3 py-1.5"
     >
-      <span className="font-display text-xs font-semibold tracking-wide text-(--color-fg-tertiary) uppercase mr-2">
+      <span className="mr-2 shrink-0 font-display text-xs font-semibold tracking-wide text-(--color-fg-tertiary) uppercase">
         Debug
       </span>
       {ITEMS.map((item) => {
@@ -193,7 +193,7 @@ export function DebugToolbar() {
         return (
           <span key={item.id} className="contents">
             {item.groupBreak && (
-              <span aria-hidden className="mx-1 h-5 w-px bg-(--color-border)" />
+              <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-(--color-border)" />
             )}
             <button
               type="button"
@@ -210,7 +210,7 @@ export function DebugToolbar() {
                   ? `${item.label}, shortcut ${item.shortcut}. ${item.hint}`
                   : `${item.label}. ${item.hint}`
               }
-              className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-sm text-(--color-fg-secondary) transition enabled:hover:bg-(--color-bg-hover) enabled:hover:text-(--color-fg) disabled:opacity-40"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded px-2 py-1 text-sm whitespace-nowrap text-(--color-fg-secondary) transition enabled:hover:bg-(--color-bg-hover) enabled:hover:text-(--color-fg) disabled:opacity-40"
             >
               <item.Icon size={16} aria-hidden />
               <span className="hidden md:inline">{item.label}</span>
@@ -223,7 +223,7 @@ export function DebugToolbar() {
           </span>
         );
       })}
-      <span className="ml-auto inline-flex items-center gap-2">
+      <span className="ml-auto inline-flex shrink-0 items-center gap-2 pl-2">
         <ReopenMenu />
         {disabled && (
           <span className="inline-flex items-center gap-1 text-[12px] text-(--color-fg-tertiary)">
