@@ -58,6 +58,7 @@ mod breakpoint;
 mod expr;
 mod navigation;
 mod resolve;
+mod search;
 mod snapshot;
 mod storage;
 mod trace;
@@ -120,6 +121,7 @@ where
             "edb_getStorageDiff" => storage::get_storage_diff(&self.context, params),
             "edb_evalOnSnapshot" => expr::eval_on_snapshot(&self.context, params),
             "edb_getBreakpointHits" => breakpoint::get_breakpoint_hits(&self.context, params),
+            "edb_searchSources" => search::search_sources(&self.context, params),
             // Unimplemented methods
             _ => Err(RpcError {
                 code: error_codes::METHOD_NOT_FOUND,
