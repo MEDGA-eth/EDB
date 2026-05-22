@@ -52,7 +52,7 @@ use edb_common::ForkResult;
 use eyre::Result;
 use revm::{
     Database, DatabaseCommit, DatabaseRef, context::Host, context_interface::ContextTr,
-    database::CacheDB,
+    database::CacheDB, state::Bytecode,
 };
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use tokio::sync::{Mutex, mpsc};
@@ -384,7 +384,22 @@ impl Engine {
         // correct from either — analysis is source-driven (USID-keyed) and
         // independent of the deploy address beyond per-address lookup.
         let mut codehash_to_canonical: HashMap<B256, Address> = HashMap::new();
-        for (addr, art) in &recompiled_artifacts {
+        // Index both the instrumented (Pass 3, recompiled) and the original
+        // (Pass 1) runtime bytecode of every artifact. `recompiled_artifacts`
+        // is walked first so its canonical address wins on collision.
+        //
+        // Two hash flavors are registered per artifact so every reader
+        // resolves regardless of how it obtained the live bytecode:
+        //   - raw (unpadded) bytes — the hook inspector hashes
+        //     `interp.bytecode.original_byte_slice()`, and account /
+        //     `code_by_hash` lookups use the same unpadded form.
+        //   - REVM-analyzed (padded) bytes — `CallTracer` records
+        //     `interp.bytecode.bytes()`, which carries `analyze_legacy`'s
+        //     jump-table padding; trace-driven RPC fallbacks (`bytecode_at`)
+        //     hash that. `Bytecode::new_legacy` reproduces the exact padding
+        //     the interpreter applies at runtime.
+        // `entry().or_insert()` keeps first-insert-wins for determinism.
+        for (addr, art) in recompiled_artifacts.iter().chain(artifacts.iter()) {
             let Some(contract) = art.contract() else { continue };
             let Some(evm) = contract.evm.as_ref() else { continue };
             let Some(deployed) = evm.deployed_bytecode.as_ref() else { continue };
@@ -393,19 +408,8 @@ impl Engine {
                 continue;
             }
             codehash_to_canonical.entry(keccak256(bytes.as_ref())).or_insert(*addr);
-        }
-        // Index the original (Pass 1) runtime too so trace-driven fallbacks
-        // (which read `trace_entry.bytecode`, captured before instrumentation)
-        // can resolve the same canonical address.
-        for (addr, art) in &artifacts {
-            let Some(contract) = art.contract() else { continue };
-            let Some(evm) = contract.evm.as_ref() else { continue };
-            let Some(deployed) = evm.deployed_bytecode.as_ref() else { continue };
-            let Some(bytes) = deployed.bytes() else { continue };
-            if bytes.is_empty() {
-                continue;
-            }
-            codehash_to_canonical.entry(keccak256(bytes.as_ref())).or_insert(*addr);
+            let analyzed = Bytecode::new_legacy(Bytes::copy_from_slice(bytes.as_ref())).bytes();
+            codehash_to_canonical.entry(keccak256(analyzed.as_ref())).or_insert(*addr);
         }
         debug!("codehash_to_canonical index built with {} entries", codehash_to_canonical.len());
 

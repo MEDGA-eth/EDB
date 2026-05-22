@@ -120,7 +120,7 @@ impl<CTX: ContextTr> Inspector<CTX> for CallTracer {
             return;
         }
 
-        entry.bytecode = Some(Bytes::copy_from_slice(interp.bytecode.original_byte_slice()));
+        entry.bytecode = Some(interp.bytecode.bytes());
     }
 
     fn call(&mut self, context: &mut CTX, inputs: &mut CallInputs) -> Option<CallOutcome> {
