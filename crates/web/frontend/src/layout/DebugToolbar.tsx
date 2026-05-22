@@ -84,7 +84,7 @@ const ITEMS: ToolbarItem[] = [
   },
   {
     id: 'nav.go-back',
-    label: 'Reverse Step',
+    label: 'Reverse',
     // History-pop semantics now: undoes the user's *last* navigation
     // (step / continue / reverse-continue / trace click / palette goto)
     // rather than the engine's prev_id. Avoids the "leaped out of the
