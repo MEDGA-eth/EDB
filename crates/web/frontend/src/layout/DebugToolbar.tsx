@@ -11,7 +11,6 @@ import {
   RotateCcw,
   SkipBack,
   SkipForward,
-  Square,
   StepForward,
   Undo2,
 } from 'lucide-react';
@@ -72,25 +71,9 @@ const ITEMS: ToolbarItem[] = [
     shortcut: 'F10',
     Icon: StepForward,
   },
-  {
-    id: 'nav.restart',
-    label: 'Restart',
-    hint: 'Jump back to the very first snapshot (snapshot 0)',
-    shortcut: '⇧⌘F5',
-    Icon: RotateCcw,
-    groupBreak: true,
-    run: ({ setSnapshot }) => setSnapshot(0),
-  },
-  // Without a live debugger session to halt, "Stop" parks at the last
-  // snapshot, same intuition as "run to end". Wired in fire() since it
-  // needs `snapshotCount` from the toolbar's render scope.
-  {
-    id: 'nav.stop',
-    label: 'Stop',
-    hint: 'Park at the last snapshot in the trace (no live process to halt)',
-    shortcut: '⇧F5',
-    Icon: Square,
-  },
+  // Backward-navigation group: reverse-continue, reverse-step, and restart
+  // (jump all the way back to snapshot 0) all move the cursor toward the
+  // start of the trace, so they live together.
   {
     id: 'nav.reverse-continue',
     label: 'Reverse Continue',
@@ -110,6 +93,14 @@ const ITEMS: ToolbarItem[] = [
     hint: 'Go back to the last location you visited (undoes any step / continue / click)',
     shortcut: '⌥F10',
     Icon: ChevronsRight,
+  },
+  {
+    id: 'nav.restart',
+    label: 'Restart',
+    hint: 'Jump back to the very first snapshot (snapshot 0)',
+    shortcut: '⇧⌘F5',
+    Icon: RotateCcw,
+    run: ({ setSnapshot }) => setSnapshot(0),
   },
   {
     id: 'nav.prev-call',
@@ -167,10 +158,6 @@ export function DebugToolbar() {
       item.run(ctx);
       return;
     }
-    if (item.id === 'nav.stop') {
-      setSnapshot(Math.max(0, snapshotCount - 1));
-      return;
-    }
     const cmd = getCommand(item.id);
     if (!cmd) return;
     if (cmd.enabled && !cmd.enabled(ctx)) return;
@@ -214,11 +201,6 @@ export function DebugToolbar() {
             >
               <item.Icon size={16} aria-hidden />
               <span className="hidden md:inline">{item.label}</span>
-              {item.shortcut && (
-                <kbd className="hidden md:inline rounded border border-(--color-border) bg-(--color-bg) px-1 text-[10px] text-(--color-fg-tertiary)">
-                  {item.shortcut}
-                </kbd>
-              )}
             </button>
           </span>
         );
