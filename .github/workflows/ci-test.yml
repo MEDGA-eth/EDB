@@ -114,3 +114,9 @@ jobs:
           EDB_TEST_ETHERSCAN_MODE: cache-only
           EDB_ASSERT: all
           RUST_LOG: info
+          # Cap glibc malloc arenas. The multi-threaded test harness otherwise
+          # spawns up to ~8×cores arenas that retain freed memory under the
+          # heavy alloc/free churn of EVM analysis, inflating RSS several-fold
+          # on Linux (the suite uses only ~3.5 GB live) and OOM-killing the
+          # ubuntu runner agent mid-suite. No-op on macOS/Windows (non-glibc).
+          MALLOC_ARENA_MAX: "2"
