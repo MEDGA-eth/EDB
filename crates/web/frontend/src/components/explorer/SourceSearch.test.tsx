@@ -10,7 +10,12 @@ const ADDR = '0x' + 'a'.repeat(40);
 describe('<SourceSearch />', () => {
   afterEach(() => {
     cleanup();
-    useSession.setState({ openFiles: [], activeFileId: null, revealRequest: null });
+    useSession.setState({
+      openFiles: [],
+      activeFileId: null,
+      revealRequest: null,
+      searchUseRegex: false,
+    });
   });
 
   test('shows the tree (children) until a query is entered', async () => {
@@ -76,6 +81,48 @@ describe('<SourceSearch />', () => {
       expect(s.revealRequest?.line).toBe(30);
       expect(s.revealRequest?.fileId).toBe(`${ADDR}::src/Token.sol`);
     });
+  });
+
+  test('regex toggle enables regex mode in the search request', async () => {
+    let lastRegexFlag: unknown;
+    mockRpc({
+      edb_searchSources: (params) => {
+        lastRegexFlag = (params as unknown[])[1];
+        return {
+          query: (params as string[])[0],
+          regex: lastRegexFlag,
+          truncated: false,
+          total_matches: 0,
+          files: [],
+        };
+      },
+    });
+    const { wrapper } = makeWrapper();
+    render(<SourceSearch />, { wrapper });
+    await userEvent.click(screen.getByTestId('source-search-regex-toggle'));
+    await userEvent.type(screen.getByTestId('source-search-input'), 'func');
+    await waitFor(() => expect(lastRegexFlag).toBe(true));
+  });
+
+  test('invalid regex surfaces an inline hint, not an error box', async () => {
+    mockRpc({
+      edb_searchSources: (params) => ({
+        query: (params as string[])[0],
+        regex: true,
+        error: 'regex parse error: unclosed character class',
+        truncated: false,
+        total_matches: 0,
+        files: [],
+      }),
+    });
+    const { wrapper } = makeWrapper();
+    render(<SourceSearch />, { wrapper });
+    await userEvent.click(screen.getByTestId('source-search-regex-toggle'));
+    // `[[` types a literal `[` (userEvent treats a lone `[` as a key descriptor).
+    await userEvent.type(screen.getByTestId('source-search-input'), 'foo[[');
+    await waitFor(() =>
+      expect(screen.getByTestId('source-search-invalid-regex')).toBeTruthy(),
+    );
   });
 
   test('renders an empty-state when there are no matches', async () => {

@@ -78,6 +78,8 @@ export interface SessionState {
   paletteInitialQuery: string;
   wordWrap: boolean;
   showLineNumbers: boolean;
+  /** Source-search regex toggle (VSCode-style). Persisted. */
+  searchUseRegex: boolean;
   /** trace expand/collapse "epoch", bumping forces panels to re-evaluate */
   traceExpandTick: number;
   traceCollapseTick: number;
@@ -137,6 +139,7 @@ export interface SessionState {
   consumePaletteInitialQuery(): string;
   setWordWrap(on: boolean): void;
   toggleWordWrap(): void;
+  toggleSearchRegex(): void;
   setShowLineNumbers(on: boolean): void;
   toggleLineNumbers(): void;
   bumpTraceExpand(): void;
@@ -182,6 +185,7 @@ export const useSession = create<SessionState>()(
       paletteInitialQuery: '',
       wordWrap: false,
       showLineNumbers: true,
+      searchUseRegex: false,
       traceExpandTick: 0,
       traceCollapseTick: 0,
       revealTick: 0,
@@ -305,6 +309,7 @@ export const useSession = create<SessionState>()(
       },
       setWordWrap: (on) => set({ wordWrap: on }),
       toggleWordWrap: () => set({ wordWrap: !get().wordWrap }),
+      toggleSearchRegex: () => set({ searchUseRegex: !get().searchUseRegex }),
       setShowLineNumbers: (on) => set({ showLineNumbers: on }),
       toggleLineNumbers: () => set({ showLineNumbers: !get().showLineNumbers }),
       bumpTraceExpand: () => set({ traceExpandTick: get().traceExpandTick + 1 }),

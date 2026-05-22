@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { FileCode2, Search, X } from 'lucide-react';
+import { FileCode2, Regex, Search, X } from 'lucide-react';
 import { useSearchSources, MIN_SEARCH_LEN } from '../../hooks/useSearchSources';
 import { useSession } from '../../store/session';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -35,9 +35,12 @@ function SourceSearchInner({ children }: { children?: ReactNode }) {
     return () => clearTimeout(t);
   }, [input]);
 
+  const useRegex = useSession((s) => s.searchUseRegex);
+  const toggleRegex = useSession((s) => s.toggleSearchRegex);
+
   const trimmed = debounced.trim();
   const active = trimmed.length >= MIN_SEARCH_LEN;
-  const { data, isFetching, isError, error } = useSearchSources(debounced);
+  const { data, isFetching, isError, error } = useSearchSources(debounced, useRegex);
   const openFileAtLine = useSession((s) => s.openFileAtLine);
 
   return (
@@ -47,7 +50,7 @@ function SourceSearchInner({ children }: { children?: ReactNode }) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Search all sources…"
+          placeholder={useRegex ? 'Search by regex…' : 'Search all sources…'}
           spellCheck={false}
           autoComplete="off"
           data-testid="source-search-input"
@@ -64,6 +67,21 @@ function SourceSearchInner({ children }: { children?: ReactNode }) {
             <X size={12} />
           </button>
         )}
+        <button
+          type="button"
+          onClick={toggleRegex}
+          aria-label="Use regular expression"
+          aria-pressed={useRegex}
+          title="Use regular expression"
+          data-testid="source-search-regex-toggle"
+          className={`shrink-0 rounded p-0.5 ${
+            useRegex
+              ? 'bg-(--color-accent-dim) text-(--color-accent)'
+              : 'text-(--color-fg-tertiary) hover:bg-(--color-bg-hover)'
+          }`}
+        >
+          <Regex size={13} />
+        </button>
       </div>
 
       {!active ? (
@@ -78,7 +96,12 @@ function SourceSearchInner({ children }: { children?: ReactNode }) {
               Search failed: {(error as Error).message}
             </div>
           )}
-          {!isFetching && data && data.files.length === 0 && (
+          {!isFetching && data && data.error && (
+            <div className="px-3 py-2 text-xs text-(--color-danger)" data-testid="source-search-invalid-regex">
+              Invalid regex: {data.error}
+            </div>
+          )}
+          {!isFetching && data && !data.error && data.files.length === 0 && (
             <div className="px-3 py-2 text-xs text-(--color-fg-tertiary)">
               No matches for “{trimmed}”.
             </div>

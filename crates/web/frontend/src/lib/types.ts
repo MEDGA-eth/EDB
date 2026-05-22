@@ -579,6 +579,11 @@ export type SourceSearchFile = z.infer<typeof SourceSearchFile>;
 
 export const SourceSearchResult = z.object({
   query: z.string(),
+  // Whether the query was treated as a regex. Optional for back-compat with
+  // engines predating the regex mode.
+  regex: z.boolean().optional().default(false),
+  // Set (with empty `files`) when a regex pattern failed to compile.
+  error: z.string().nullish(),
   truncated: z.boolean(),
   total_matches: z.number(),
   files: z.array(SourceSearchFile),
