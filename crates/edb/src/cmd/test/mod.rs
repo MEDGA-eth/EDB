@@ -288,6 +288,7 @@ where
         &compiled_entry.deployed_bytecode,
         compiled_entry.artifact.clone(),
         &project_ctx.root,
+        &Default::default(),
     )?;
 
     let engine_config = edb_engine::EngineConfig::default().with_quick_mode(cli.quick);

@@ -180,6 +180,7 @@ pub async fn run_foundry_test_for_test(
         &compiled_entry.deployed_bytecode,
         compiled_entry.artifact.clone(),
         &project_ctx.root,
+        &Default::default(),
     )?;
 
     let engine_config = EngineConfig::default();

@@ -51,13 +51,39 @@ pub fn build_local_artifact_set(
     entrypoint_bytecode: &Bytes,
     entrypoint_artifact: Artifact,
     project_root: &Path,
+    libraries: &foundry_compilers::artifacts::Libraries,
 ) -> Result<LocalArtifactSet> {
-    use foundry_compilers::Artifact as FoundryArtifact;
-
     let mut set = LocalArtifactSet::default();
 
+    // Flatten the forge-resolved library map into `(file, name, address)`
+    // link triples once. `BytecodeObject::link_all` consumes these to patch
+    // the `__$<hash>$__` placeholders solc leaves for unlinked libraries.
+    // With an empty map this is empty and `link_all` is a no-op.
+    let link_triples: Vec<(String, String, alloy_primitives::Address)> = libraries
+        .libs
+        .iter()
+        .flat_map(|(path, libs)| {
+            let p = path.to_string_lossy().to_string();
+            libs.iter().filter_map(move |(name, addr)| {
+                addr.parse().ok().map(|a| (p.clone(), name.clone(), a))
+            })
+        })
+        .collect();
+
     for (id, art) in output.artifact_ids() {
-        let Some(bytes) = art.get_deployed_bytecode_bytes() else { continue };
+        // Clone the deployed bytecode object and link it against the resolved
+        // libraries before extracting bytes. The old path called
+        // `art.get_deployed_bytecode_bytes()`, which returns `None` for
+        // contracts that still carry unresolved library placeholders — those
+        // contracts were silently skipped and never debuggable. Linking first
+        // means library-using contracts get indexed too.
+        let mut deployed_obj = match art.deployed_bytecode.as_ref().and_then(|d| d.bytecode.as_ref())
+        {
+            Some(bc) => bc.object.clone(),
+            None => continue,
+        };
+        deployed_obj.link_all(link_triples.iter().map(|(f, n, a)| (f, n, *a)));
+        let Some(bytes) = deployed_obj.into_bytes() else { continue };
         if bytes.is_empty() {
             continue;
         }
@@ -85,7 +111,7 @@ pub fn build_local_artifact_set(
         // readers don't think this is a bug.
         let is_library = matches!(bytes.first(), Some(&0x73)) && bytes.len() >= 21;
 
-        let mut lifted = Artifact::from_foundry(&id, art, &Default::default())
+        let mut lifted = Artifact::from_foundry(&id, art, libraries)
             .map_err(|e| eyre::eyre!("lift artifact for {}: {e}", id.name))?;
         backfill_source_contents(&mut lifted, project_root);
         set.insert_with_template(&bytes, &immutable_refs, &link_refs, is_library, lifted);
