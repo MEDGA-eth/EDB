@@ -185,7 +185,13 @@ pub async fn run_foundry_test(
     }
     let compile_output = compile_output.with_stripped_file_prefixes(&project_ctx.root);
 
-    let resolved = discover::resolve_test(target, &project_ctx.root, &compile_output, &Default::default())?;
+    // Resolve external-library addresses (forge-exact) once; thread into every
+    // compile/lift/etch site below so library-using contracts link.
+    let starting_libs = project_ctx.config.libraries_with_remappings().unwrap_or_default();
+    let linked = link::link_libraries(&compile_output, &project_ctx.root, starting_libs)?;
+
+    let resolved =
+        discover::resolve_test(target, &project_ctx.root, &compile_output, &linked.libraries)?;
     tracing::info!(
         "Resolved {}::{} (setUp={}, solc={})",
         resolved.contract_name,
@@ -211,7 +217,7 @@ pub async fn run_foundry_test(
         &resolved.compiler_version,
         &project_ctx.root,
         &test_source_rel,
-        &Default::default(),
+        &linked.libraries,
     )?;
 
     match resolved_fork_url {
@@ -222,7 +228,7 @@ pub async fn run_foundry_test(
                 &resolved.contract_name,
                 &resolved.test_function,
                 compiled_entry.run_selector,
-                &[],
+                &linked.etch,
                 &upstream,
                 fork_block_number,
             )
@@ -233,6 +239,7 @@ pub async fn run_foundry_test(
                 &compile_output,
                 &compiled_entry,
                 &resolved,
+                &linked.libraries,
                 no_ui,
                 cli,
             )
@@ -250,7 +257,7 @@ pub async fn run_foundry_test(
                 &resolved.contract_name,
                 &resolved.test_function,
                 compiled_entry.run_selector,
-                &[],
+                &linked.etch,
             )?;
             drive_engine_with_fork_result(
                 fork_result,
@@ -258,6 +265,7 @@ pub async fn run_foundry_test(
                 &compile_output,
                 &compiled_entry,
                 &resolved,
+                &linked.libraries,
                 no_ui,
                 cli,
             )
@@ -272,12 +280,14 @@ pub async fn run_foundry_test(
 /// Shared by both the fork-free and forked paths in `run_foundry_test`.
 /// When `no_ui` is `true`, skips the UI and instead prints a one-line JSON
 /// summary to stdout, then shuts down immediately.
+#[allow(clippy::too_many_arguments)] // cohesive pipeline driver; splitting hurts readability
 async fn drive_engine_with_fork_result<DB>(
     fork_result: edb_common::ForkResult<DB>,
     project_ctx: &project::ResolvedProject,
     compile_output: &foundry_compilers::ProjectCompileOutput,
     compiled_entry: &entrypoint::CompiledEntrypoint,
     resolved: &discover::ResolvedTest,
+    libraries: &foundry_compilers::artifacts::Libraries,
     no_ui: bool,
     cli: &crate::Cli,
 ) -> Result<()>
@@ -291,7 +301,7 @@ where
         &compiled_entry.deployed_bytecode,
         compiled_entry.artifact.clone(),
         &project_ctx.root,
-        &Default::default(),
+        libraries,
     )?;
 
     let engine_config = edb_engine::EngineConfig::default().with_quick_mode(cli.quick);

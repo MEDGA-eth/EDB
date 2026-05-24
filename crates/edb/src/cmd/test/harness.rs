@@ -154,7 +154,13 @@ pub async fn run_foundry_test_for_test(
     }
     let compile_output = compile_output.with_stripped_file_prefixes(&project_ctx.root);
 
-    let resolved = discover::resolve_test(target, &project_ctx.root, &compile_output, &Default::default())?;
+    // Resolve external-library addresses (forge-exact) once; thread into every
+    // compile/lift/etch site below so library-using contracts link.
+    let starting_libs = project_ctx.config.libraries_with_remappings().unwrap_or_default();
+    let linked = super::link::link_libraries(&compile_output, &project_ctx.root, starting_libs)?;
+
+    let resolved =
+        discover::resolve_test(target, &project_ctx.root, &compile_output, &linked.libraries)?;
 
     // Canonicalize both paths before computing the relative import path so that
     // symlinks (e.g. macOS /tmp → /private/tmp) don't produce spurious `../../`
@@ -173,7 +179,7 @@ pub async fn run_foundry_test_for_test(
         &resolved.compiler_version,
         &project_ctx.root,
         &test_source_rel,
-        &Default::default(),
+        &linked.libraries,
     )?;
 
     let local_artifacts = artifacts::build_local_artifact_set(
@@ -181,7 +187,7 @@ pub async fn run_foundry_test_for_test(
         &compiled_entry.deployed_bytecode,
         compiled_entry.artifact.clone(),
         &project_ctx.root,
-        &Default::default(),
+        &linked.libraries,
     )?;
 
     let engine_config = EngineConfig::default();
@@ -209,7 +215,7 @@ pub async fn run_foundry_test_for_test(
                 &resolved.contract_name,
                 &resolved.test_function,
                 compiled_entry.run_selector,
-                &[],
+                &linked.etch,
                 &upstream,
                 fork_block_number,
             )
@@ -241,7 +247,7 @@ pub async fn run_foundry_test_for_test(
                 &resolved.contract_name,
                 &resolved.test_function,
                 compiled_entry.run_selector,
-                &[],
+                &linked.etch,
             )?;
             let cheats_factory = Box::new(cheats::build_cheats_factory(cheats_config.clone()));
             let hits_for_hook = cheats_config.unsupported_hits.clone();

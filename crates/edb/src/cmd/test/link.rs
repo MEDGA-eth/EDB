@@ -16,7 +16,6 @@ pub const LIBRARY_DEPLOYER: Address = address!("1F95D37F27EA0dEA9C252FC09D5A6eaA
 
 /// Result of linking a compiled project's external libraries.
 #[derive(Debug, Default, Clone)]
-#[allow(dead_code)] // consumed by later wiring tasks
 pub struct LinkedLibraries {
     /// `<source path>:<lib name> -> address` map for feeding solc
     /// `Settings.libraries` at every compile/lift site.
@@ -30,7 +29,6 @@ pub struct LinkedLibraries {
 /// `starting` seeds any user-pinned libraries (from `foundry.toml [libraries]`)
 /// so they keep their addresses; the rest get `LIBRARY_DEPLOYER.create(nonce)`.
 /// Returns an empty result when the project uses no external libraries.
-#[allow(dead_code)] // consumed by later wiring tasks
 pub fn link_libraries(
     output: &ProjectCompileOutput,
     project_root: &Path,
