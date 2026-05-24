@@ -168,7 +168,7 @@ pub fn compile_entrypoint(
     // Lift the foundry artifact into EDB's `Artifact` shape so the engine can
     // run source-level analysis / instrumentation against the synthesized
     // entrypoint without an Etherscan round-trip.
-    let mut lifted = edb_engine::Artifact::from_foundry(&entry_id, artifact)
+    let mut lifted = edb_engine::Artifact::from_foundry(&entry_id, artifact, &Default::default())
         .map_err(|e| eyre::eyre!("lift entrypoint artifact: {e}"))?;
     // The entrypoint file is deleted on exit (the _guard above removes the
     // whole temp dir), so `cmd::test::artifacts::backfill_source_contents`

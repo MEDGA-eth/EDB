@@ -41,7 +41,7 @@ use foundry_compilers::{
     ArtifactId,
     artifacts::{
         Bytecode, CompilerOutput, ConfigurableContractArtifact, Contract, ContractBytecode,
-        DeployedBytecode, Evm, SolcInput, SolcLanguage, Source, SourceFile, Sources,
+        DeployedBytecode, Evm, Libraries, SolcInput, SolcLanguage, Source, SourceFile, Sources,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -108,10 +108,14 @@ impl Artifact {
     /// Fields without an exact counterpart on the foundry side (chain-specific
     /// metadata such as `constructor_arguments`, `proxy`, etc.) are filled
     /// with sensible defaults; callers may overwrite them later if needed.
-    pub fn from_foundry(id: &ArtifactId, art: &ConfigurableContractArtifact) -> eyre::Result<Self> {
+    pub fn from_foundry(
+        id: &ArtifactId,
+        art: &ConfigurableContractArtifact,
+        libraries: &Libraries,
+    ) -> eyre::Result<Self> {
         let meta = build_meta_from_foundry(id, art)?;
-        let mut input = build_input_from_foundry(id, art)?;
-        let mut output = build_output_from_foundry(id, art)?;
+        let mut input = build_input_from_foundry(id, art, libraries)?;
+        let mut output = build_output_from_foundry(id, art, libraries)?;
         // `id.source` may be absolute (when `with_stripped_file_prefixes` couldn't
         // resolve a matching prefix — e.g. macOS `/private/tmp` canonicalization),
         // while `meta.sources.inner` keys (used to populate `input.sources`) are
@@ -271,6 +275,7 @@ fn build_meta_from_foundry(
 fn build_input_from_foundry(
     id: &ArtifactId,
     art: &ConfigurableContractArtifact,
+    libraries: &Libraries,
 ) -> eyre::Result<SolcInput> {
     use foundry_compilers::artifacts::Settings;
 
@@ -296,11 +301,15 @@ fn build_input_from_foundry(
         settings.via_ir = m.via_ir;
         settings.remappings = m.remappings.clone();
         settings.metadata = m.metadata.clone();
-        // m.libraries is `BTreeMap<String, String>`, whereas Settings::libraries
-        // is the richer `Libraries` map type — we leave it at Default since
-        // local artifacts already have their library links baked into the
-        // deployed bytecode.
     }
+    // Carry the forge-computed library map into the compiler settings so that
+    // when the engine recompiles/instruments these sources, solc links the
+    // instrumented bytecode to the *same* addresses. Otherwise the recompiled
+    // deployed bytecode stays unlinked (`__$hash$__` placeholders), its
+    // codehash never matches the on-chain codehash, and the contract is
+    // silently dropped from analysis. Empty `libraries` (the current default)
+    // is a no-op: an empty map serializes the same as `Default`.
+    settings.libraries = libraries.clone();
     // Always emit the complete output selection so downstream recompilation
     // gets the AST, sourceMap, bytecode, etc.
     settings.output_selection =
@@ -314,15 +323,40 @@ fn build_input_from_foundry(
 fn build_output_from_foundry(
     id: &ArtifactId,
     art: &ConfigurableContractArtifact,
+    libraries: &Libraries,
 ) -> eyre::Result<CompilerOutput> {
     // Convert the compact bytecode pair into the non-compact forms that
     // `Contract { evm: Some(Evm { bytecode, deployed_bytecode, .. }), .. }`
     // wraps. The `From` impls already exist in foundry-compilers.
-    let cb = ContractBytecode {
+    let mut cb = ContractBytecode {
         abi: art.abi.clone(),
         bytecode: art.bytecode.clone().map(Bytecode::from),
         deployed_bytecode: art.deployed_bytecode.clone().map(DeployedBytecode::from),
     };
+
+    // Link the *original* artifact's output bytecode objects to the
+    // forge-computed library addresses. The deployed object feeds the engine's
+    // `codehash_to_canonical` map, so an unlinked object (`__$hash$__`
+    // placeholders) would produce a codehash that never matches the on-chain
+    // one and the contract would be dropped from analysis. `link_all` is a
+    // no-op when there are no matching placeholders, so an empty `libraries`
+    // (the current default) leaves the objects untouched.
+    let link_triples: Vec<(String, String, alloy_primitives::Address)> = libraries
+        .libs
+        .iter()
+        .flat_map(|(path, libs)| {
+            let p = path.to_string_lossy().to_string();
+            libs.iter().filter_map(move |(name, addr)| {
+                addr.parse().ok().map(|a| (p.clone(), name.clone(), a))
+            })
+        })
+        .collect();
+    if let Some(deployed) = cb.deployed_bytecode.as_mut().and_then(|d| d.bytecode.as_mut()) {
+        deployed.object.link_all(link_triples.iter().map(|(f, n, a)| (f, n, *a)));
+    }
+    if let Some(creation) = cb.bytecode.as_mut() {
+        creation.object.link_all(link_triples.iter().map(|(f, n, a)| (f, n, *a)));
+    }
 
     let evm = Evm {
         assembly: art.assembly.clone(),
@@ -486,7 +520,7 @@ mod from_foundry_tests {
     fn lifts_preserves_contract_name_and_version() {
         let art = sample_foundry_artifact();
         let id = sample_artifact_id();
-        let lifted = Artifact::from_foundry(&id, &art).unwrap();
+        let lifted = Artifact::from_foundry(&id, &art, &Default::default()).unwrap();
         assert_eq!(lifted.contract_name(), id.name);
         assert!(
             lifted.compiler_version().contains("0.8.20"),
@@ -499,7 +533,7 @@ mod from_foundry_tests {
     fn lifts_preserves_abi_when_present() {
         let art = sample_foundry_artifact();
         let id = sample_artifact_id();
-        let lifted = Artifact::from_foundry(&id, &art).unwrap();
+        let lifted = Artifact::from_foundry(&id, &art, &Default::default()).unwrap();
         // The contract entry should carry the ABI through to output.contracts.
         let contract = lifted.contract().expect("contract entry should exist");
         assert!(contract.abi.is_some(), "abi should be carried through");
@@ -515,7 +549,7 @@ mod from_foundry_tests {
     fn lifts_carries_sources_and_bytecode_into_output() {
         let art = sample_foundry_artifact();
         let id = sample_artifact_id();
-        let lifted = Artifact::from_foundry(&id, &art).unwrap();
+        let lifted = Artifact::from_foundry(&id, &art, &Default::default()).unwrap();
 
         // SolcInput.sources should contain the lifted "Foo.sol" entry.
         let has_foo = lifted.input.sources.keys().any(|p| p.ends_with("Foo.sol"));
@@ -570,7 +604,7 @@ mod from_foundry_tests {
             build_id: "stub".to_string(),
             profile: "default".to_string(),
         };
-        let lifted = Artifact::from_foundry(&id, &art).unwrap();
+        let lifted = Artifact::from_foundry(&id, &art, &Default::default()).unwrap();
 
         // input.sources has "Foo.sol" (relative) — that's the canonical key.
         let foo: PathBuf = "Foo.sol".into();
@@ -634,7 +668,7 @@ mod from_foundry_tests {
             build_id: "stub".to_string(),
             profile: "default".to_string(),
         };
-        let lifted = Artifact::from_foundry(&id, &art).unwrap();
+        let lifted = Artifact::from_foundry(&id, &art, &Default::default()).unwrap();
 
         let canonical: PathBuf = relative.into();
         assert!(

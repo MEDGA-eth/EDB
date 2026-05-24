@@ -85,7 +85,7 @@ pub fn build_local_artifact_set(
         // readers don't think this is a bug.
         let is_library = matches!(bytes.first(), Some(&0x73)) && bytes.len() >= 21;
 
-        let mut lifted = Artifact::from_foundry(&id, art)
+        let mut lifted = Artifact::from_foundry(&id, art, &Default::default())
             .map_err(|e| eyre::eyre!("lift artifact for {}: {e}", id.name))?;
         backfill_source_contents(&mut lifted, project_root);
         set.insert_with_template(&bytes, &immutable_refs, &link_refs, is_library, lifted);
