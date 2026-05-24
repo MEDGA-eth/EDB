@@ -173,6 +173,7 @@ pub async fn run_foundry_test_for_test(
         &resolved.compiler_version,
         &project_ctx.root,
         &test_source_rel,
+        &Default::default(),
     )?;
 
     let local_artifacts = artifacts::build_local_artifact_set(

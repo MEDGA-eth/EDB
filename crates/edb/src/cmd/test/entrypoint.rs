@@ -98,6 +98,7 @@ pub fn compile_entrypoint(
     compiler_version: &str,
     project_root: &std::path::Path,
     test_source_relative: &std::path::Path,
+    libraries: &foundry_compilers::artifacts::Libraries,
 ) -> Result<CompiledEntrypoint> {
     let import_path = test_source_relative
         .to_str()
@@ -139,6 +140,10 @@ pub fn compile_entrypoint(
     project.update_output_selection(|sel| {
         *sel = foundry_compilers::artifacts::output_selection::OutputSelection::complete_output_selection();
     });
+    // Link the test contract's external-library refs at compile time — the
+    // entrypoint's import graph pulls in the test contract, so its libraries
+    // must resolve here too.
+    project.settings.solc.libraries = libraries.clone();
     let output = project
         .compile_file(&entrypoint_path)
         .map_err(|e| eyre::eyre!("compile entrypoint: {e}"))?;

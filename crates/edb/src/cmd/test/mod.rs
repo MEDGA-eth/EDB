@@ -211,6 +211,7 @@ pub async fn run_foundry_test(
         &resolved.compiler_version,
         &project_ctx.root,
         &test_source_rel,
+        &Default::default(),
     )?;
 
     match resolved_fork_url {
