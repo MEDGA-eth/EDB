@@ -20,7 +20,8 @@ use alloy_json_abi::JsonAbi;
 use alloy_primitives::Bytes;
 use eyre::{Result, bail};
 use foundry_compilers::{
-    Artifact, ArtifactId, ProjectCompileOutput, artifacts::ConfigurableContractArtifact,
+    ArtifactId, ProjectCompileOutput,
+    artifacts::{ConfigurableContractArtifact, Libraries},
 };
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
@@ -124,6 +125,7 @@ pub fn resolve_test(
     target: &str,
     project_root: &Path,
     output: &ProjectCompileOutput,
+    libraries: &Libraries,
 ) -> Result<ResolvedTest> {
     let parsed = parse_target(target)?;
     validate_test_function_name(&parsed.test_function)?;
@@ -143,7 +145,7 @@ pub fn resolve_test(
     };
 
     let (id, artifact) = chosen;
-    build_resolved_test(id.name.clone(), parsed.test_function, &id, artifact, project_root)
+    build_resolved_test(id.name.clone(), parsed.test_function, &id, artifact, project_root, libraries)
 }
 
 fn candidate_matches(
@@ -266,6 +268,7 @@ fn build_resolved_test(
     id: &foundry_compilers::ArtifactId,
     artifact: &ConfigurableContractArtifact,
     project_root: &Path,
+    libraries: &Libraries,
 ) -> Result<ResolvedTest> {
     let abi = artifact.abi.clone().ok_or_else(|| eyre::eyre!("compiled artifact has no ABI"))?;
 
@@ -276,17 +279,45 @@ fn build_resolved_test(
         bail!("function {test_function:?} not in {contract_name:?}. Did you mean {suggestion:?}?");
     }
 
-    // Both helpers are trait methods from foundry_compilers::Artifact, which is
-    // blanket-implemented for ConfigurableContractArtifact via the Into<Compact*>
-    // impls. They return Option<Cow<'_, Bytes>>.
+    // Build link triples from the provided libraries map, then link the
+    // bytecode objects before extracting bytes.  For test contracts without
+    // external library references the map is empty and behaviour is unchanged.
+    // For contracts whose bytecode still contains unresolved placeholders after
+    // linking (e.g. an empty map was passed) we fall back to an empty Bytes
+    // rather than killing the session — these fields are informational only.
+    let link_triples: Vec<(String, String, alloy_primitives::Address)> = libraries
+        .libs
+        .iter()
+        .flat_map(|(path, libs)| {
+            let p = path.to_string_lossy().to_string();
+            libs.iter().filter_map(move |(name, addr)| {
+                addr.parse().ok().map(|a| (p.clone(), name.clone(), a))
+            })
+        })
+        .collect();
+
     let deployed = artifact
-        .get_deployed_bytecode_bytes()
-        .ok_or_else(|| eyre::eyre!("artifact missing deployed bytecode"))?
-        .into_owned();
+        .deployed_bytecode
+        .as_ref()
+        .and_then(|d| d.bytecode.as_ref())
+        .map(|bc| {
+            let mut o = bc.object.clone();
+            o.link_all(link_triples.iter().map(|(f, n, a)| (f, n, *a)));
+            o
+        })
+        .and_then(|o| o.into_bytes())
+        .unwrap_or_default();
+
     let creation = artifact
-        .get_bytecode_bytes()
-        .ok_or_else(|| eyre::eyre!("artifact missing creation bytecode"))?
-        .into_owned();
+        .bytecode
+        .as_ref()
+        .map(|bc| {
+            let mut o = bc.object.clone();
+            o.link_all(link_triples.iter().map(|(f, n, a)| (f, n, *a)));
+            o
+        })
+        .and_then(|o| o.into_bytes())
+        .unwrap_or_default();
 
     // Metadata.compiler is Compiler (not Option<Compiler>), so no inner Option unwrap.
     let compiler_version = artifact

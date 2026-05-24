@@ -154,7 +154,7 @@ pub async fn run_foundry_test_for_test(
     }
     let compile_output = compile_output.with_stripped_file_prefixes(&project_ctx.root);
 
-    let resolved = discover::resolve_test(target, &project_ctx.root, &compile_output)?;
+    let resolved = discover::resolve_test(target, &project_ctx.root, &compile_output, &Default::default())?;
 
     // Canonicalize both paths before computing the relative import path so that
     // symlinks (e.g. macOS /tmp → /private/tmp) don't produce spurious `../../`

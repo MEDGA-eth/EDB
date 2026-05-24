@@ -185,7 +185,7 @@ pub async fn run_foundry_test(
     }
     let compile_output = compile_output.with_stripped_file_prefixes(&project_ctx.root);
 
-    let resolved = discover::resolve_test(target, &project_ctx.root, &compile_output)?;
+    let resolved = discover::resolve_test(target, &project_ctx.root, &compile_output, &Default::default())?;
     tracing::info!(
         "Resolved {}::{} (setUp={}, solc={})",
         resolved.contract_name,
