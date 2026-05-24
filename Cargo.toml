@@ -137,6 +137,7 @@ foundry-compilers = { version = "0.20.0", default-features = false, features = [
     "svm-solc",
 ] }
 foundry-config = { git = "https://github.com/foundry-rs/foundry", tag = "v1.7.1", default-features = false }
+foundry-linking = { git = "https://github.com/foundry-rs/foundry", tag = "v1.7.1", default-features = false }
 
 # revm - aligned with Foundry's current workspace requirements
 revm = { version = "38.0.0", default-features = false }

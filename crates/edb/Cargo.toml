@@ -50,6 +50,7 @@ p256.workspace = true
 # foundry
 foundry-config.workspace = true
 foundry-compilers.workspace = true
+foundry-linking.workspace = true
 
 # revm
 # `optional_eip3607` gates the `disable_eip3607` cfg field; we set it in

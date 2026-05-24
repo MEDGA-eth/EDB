@@ -2341,6 +2341,7 @@ dependencies = [
  "eyre",
  "foundry-compilers",
  "foundry-config",
+ "foundry-linking",
  "futures",
  "p256",
  "pathdiff",
@@ -3005,6 +3006,18 @@ dependencies = [
  "foundry-evm-hardforks",
  "revm",
  "serde",
+]
+
+[[package]]
+name = "foundry-linking"
+version = "1.7.1"
+source = "git+https://github.com/foundry-rs/foundry?tag=v1.7.1#4072e48705af9d93e3c0f6e29e93b5e9a40caed8"
+dependencies = [
+ "alloy-primitives",
+ "foundry-compilers",
+ "rayon",
+ "semver 1.0.28",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
