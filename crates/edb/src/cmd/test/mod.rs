@@ -20,6 +20,7 @@ pub mod artifacts;
 pub mod cheats;
 pub mod discover;
 pub mod entrypoint;
+mod link;
 pub mod project;
 pub mod synth;
 
