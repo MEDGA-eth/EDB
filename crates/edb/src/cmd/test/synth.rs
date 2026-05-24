@@ -68,6 +68,8 @@ pub fn synthetic_tx_hash(contract: &str, test_fn: &str) -> TxHash {
 /// Build a clean (fork-free) ForkResult containing:
 /// - Empty in-memory DB
 /// - `_EdbTestEntrypoint` etched at `ENTRYPOINT_ADDR`
+/// - Each `libs_to_etch` library's linked deployed bytecode etched at its
+///   forge-computed address (and `LIBRARY_DEPLOYER`'s nonce bumped to match)
 /// - Cheatcode sentinel etched at `CHEATCODE_ADDRESS`
 /// - `FORGE_CALLER` funded with U256::MAX
 /// - Block env: chain_id=31337, block=1, ts=1, basefee=0, gas_limit=1_000_000_000
@@ -78,7 +80,9 @@ pub fn build_clean_fork_result(
     contract_name: &str,
     test_fn: &str,
     run_selector: [u8; 4],
+    libs_to_etch: &[(Address, Bytes)],
 ) -> Result<ForkResult<EdbDB<CacheDB<EmptyDB>>>> {
+    use revm::Database;
     let chain_id = DEFAULT_FORK_FREE_CHAIN_ID;
     let block_number = DEFAULT_FORK_FREE_BLOCK;
     let timestamp = DEFAULT_FORK_FREE_TIMESTAMP;
@@ -92,6 +96,24 @@ pub fn build_clean_fork_result(
 
     let entrypoint_code = Bytecode::new_raw(entrypoint_bytecode);
     cache_db.insert_account_info(ENTRYPOINT_ADDR, AccountInfo::from_bytecode(entrypoint_code));
+
+    // Etch each external library's linked deployed bytecode at the forge-computed
+    // address (`LIBRARY_DEPLOYER.create(nonce)`). Without this the linked bytecode
+    // would jump to empty accounts and revert.
+    for (lib_addr, lib_code) in libs_to_etch {
+        cache_db.insert_account_info(
+            *lib_addr,
+            AccountInfo::from_bytecode(Bytecode::new_raw(lib_code.clone())),
+        );
+    }
+    // Cosmetic: make LIBRARY_DEPLOYER's nonce match a real forge run (it deploys
+    // each library via CREATE at sequential nonces).
+    if !libs_to_etch.is_empty() {
+        let dep = crate::cmd::test::link::LIBRARY_DEPLOYER;
+        let mut info = cache_db.basic(dep)?.unwrap_or_default();
+        info.nonce = libs_to_etch.len() as u64;
+        cache_db.insert_account_info(dep, info);
+    }
 
     let cheat_bytes = Bytes::copy_from_slice(CHEATCODE_SENTINEL_BYTECODE);
     let cheat_code = Bytecode::new_raw(cheat_bytes);
@@ -173,6 +195,7 @@ pub async fn build_forked_fork_result(
     contract_name: &str,
     test_fn: &str,
     run_selector: [u8; 4],
+    libs_to_etch: &[(Address, Bytes)],
     upstream_rpc: &str,
     fork_block_number: Option<u64>,
 ) -> Result<
@@ -228,6 +251,24 @@ pub async fn build_forked_fork_result(
         crate::cmd::test::entrypoint::ENTRYPOINT_ADDR,
         AccountInfo::from_bytecode(entrypoint_code),
     );
+
+    // Etch each external library's linked deployed bytecode at the forge-computed
+    // address (`LIBRARY_DEPLOYER.create(nonce)`). Without this the linked bytecode
+    // would jump to empty accounts and revert.
+    for (lib_addr, lib_code) in libs_to_etch {
+        db.insert_account_info(
+            *lib_addr,
+            AccountInfo::from_bytecode(Bytecode::new_raw(lib_code.clone())),
+        );
+    }
+    // Cosmetic: make LIBRARY_DEPLOYER's nonce match a real forge run (it deploys
+    // each library via CREATE at sequential nonces).
+    if !libs_to_etch.is_empty() {
+        let dep = crate::cmd::test::link::LIBRARY_DEPLOYER;
+        let mut info = db.basic(dep)?.unwrap_or_default();
+        info.nonce = libs_to_etch.len() as u64;
+        db.insert_account_info(dep, info);
+    }
 
     // Pre-stage cheatcode sentinel
     let cheat_bytes = Bytes::copy_from_slice(CHEATCODE_SENTINEL_BYTECODE);
@@ -361,6 +402,7 @@ mod tests {
             "Foo",
             "testBar",
             [0x12, 0x34, 0x56, 0x78],
+            &[],
         )
         .expect("build_clean_fork_result");
         let cfg = &fork.context.cfg;

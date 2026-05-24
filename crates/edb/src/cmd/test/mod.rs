@@ -222,6 +222,7 @@ pub async fn run_foundry_test(
                 &resolved.contract_name,
                 &resolved.test_function,
                 compiled_entry.run_selector,
+                &[],
                 &upstream,
                 fork_block_number,
             )
@@ -249,6 +250,7 @@ pub async fn run_foundry_test(
                 &resolved.contract_name,
                 &resolved.test_function,
                 compiled_entry.run_selector,
+                &[],
             )?;
             drive_engine_with_fork_result(
                 fork_result,

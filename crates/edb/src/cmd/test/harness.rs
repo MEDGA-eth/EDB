@@ -209,6 +209,7 @@ pub async fn run_foundry_test_for_test(
                 &resolved.contract_name,
                 &resolved.test_function,
                 compiled_entry.run_selector,
+                &[],
                 &upstream,
                 fork_block_number,
             )
@@ -240,6 +241,7 @@ pub async fn run_foundry_test_for_test(
                 &resolved.contract_name,
                 &resolved.test_function,
                 compiled_entry.run_selector,
+                &[],
             )?;
             let cheats_factory = Box::new(cheats::build_cheats_factory(cheats_config.clone()));
             let hits_for_hook = cheats_config.unsupported_hits.clone();
