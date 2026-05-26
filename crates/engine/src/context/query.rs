@@ -16,7 +16,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use alloy_primitives::{Address, Bytes, keccak256};
+use alloy_primitives::{Address, Bytes};
 use revm::{Database, DatabaseCommit, DatabaseRef, database::CacheDB};
 use tracing::debug;
 
@@ -128,9 +128,9 @@ where
         if raw_code.is_empty() {
             return None;
         }
-        let hash = keccak256(raw_code.as_ref());
-        let canonical = self.codehash_to_canonical.get(&hash).copied()?;
-        debug!(?address, ?canonical, ?hash, "engine context resolved address via codehash alias");
+        let canonical =
+            crate::utils::resolve_canonical(&self.codehash_to_canonical, raw_code.as_ref())?;
+        debug!(?address, ?canonical, "engine context resolved address via codehash alias");
         Some(canonical)
     }
 

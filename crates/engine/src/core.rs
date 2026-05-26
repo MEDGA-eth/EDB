@@ -388,7 +388,7 @@ impl Engine {
         // (Pass 1) runtime bytecode of every artifact. `recompiled_artifacts`
         // is walked first so its canonical address wins on collision.
         //
-        // Two hash flavors are registered per artifact so every reader
+        // Three hash flavors are registered per artifact so every reader
         // resolves regardless of how it obtained the live bytecode:
         //   - raw (unpadded) bytes — the hook inspector hashes
         //     `interp.bytecode.original_byte_slice()`, and account /
@@ -398,6 +398,12 @@ impl Engine {
         //     jump-table padding; trace-driven RPC fallbacks (`bytecode_at`)
         //     hash that. `Bytecode::new_legacy` reproduces the exact padding
         //     the interpreter applies at runtime.
+        //   - normalized code body (via `index_codehash`) — REVM's pad length
+        //     varies with EVM/DB state, and solc's CBOR metadata hash differs
+        //     when the same contract is compiled with vs. without a
+        //     `settings.libraries` entry (the entrypoint compile sets it, the
+        //     main compile does not). Stripping trailing zeros + the metadata
+        //     trailer collapses these `vm.etch`-aliased variants to one key.
         // `entry().or_insert()` keeps first-insert-wins for determinism.
         for (addr, art) in recompiled_artifacts.iter().chain(artifacts.iter()) {
             let Some(contract) = art.contract() else { continue };
@@ -407,7 +413,7 @@ impl Engine {
             if bytes.is_empty() {
                 continue;
             }
-            codehash_to_canonical.entry(keccak256(bytes.as_ref())).or_insert(*addr);
+            crate::utils::index_codehash(&mut codehash_to_canonical, bytes.as_ref(), *addr);
             let analyzed = Bytecode::new_legacy(Bytes::copy_from_slice(bytes.as_ref())).bytes();
             codehash_to_canonical.entry(keccak256(analyzed.as_ref())).or_insert(*addr);
         }

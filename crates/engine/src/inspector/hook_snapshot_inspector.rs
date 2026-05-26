@@ -26,7 +26,7 @@
 //! making it more efficient for tracking specific execution states.
 
 use alloy_dyn_abi::{DynSolType, DynSolValue};
-use alloy_primitives::{Address, B256, Bytes, U256, keccak256};
+use alloy_primitives::{Address, B256, Bytes, U256};
 use edb_common::{
     EdbContext, OpcodeTr,
     types::{CallResult, EdbSolValue, ExecutionFrameId, Trace},
@@ -779,20 +779,15 @@ where
         // Step 3: codehash fallback. The bytes currently executing in
         // `interp` at `address` are the etched / instrumented runtime
         // bytecode in Pass 3 — exactly what we keccak'd when building
-        // the `codehash_to_canonical` index in `prepare`.
+        // the `codehash_to_canonical` index in `prepare`. `resolve_canonical`
+        // absorbs REVM's variable trailing-zero padding for etched aliases.
         let raw_code = interp.bytecode.original_byte_slice();
         if raw_code.is_empty() {
             return None;
         }
-        let code_hash = keccak256(raw_code);
-        let canonical = *self.codehash_to_canonical.get(&code_hash)?;
+        let canonical = crate::utils::resolve_canonical(self.codehash_to_canonical, raw_code)?;
         self.canonical_by_alias.insert(address, canonical);
-        debug!(
-            ?address,
-            ?canonical,
-            ?code_hash,
-            "hook inspector resolved address via codehash alias"
-        );
+        debug!(?address, ?canonical, "hook inspector resolved address via codehash alias");
         self.analysis.get(&canonical)
     }
 }

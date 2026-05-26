@@ -51,6 +51,9 @@
 mod artifact;
 pub use artifact::*;
 
+mod codehash;
+pub use codehash::*;
+
 mod ast_prune;
 pub use ast_prune::*;
 

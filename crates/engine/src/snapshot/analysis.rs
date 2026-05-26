@@ -51,7 +51,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use alloy_primitives::{Address, B256, keccak256};
+use alloy_primitives::{Address, B256};
 use edb_common::types::{ExecutionFrameId, Trace};
 use eyre::Result;
 use itertools::Itertools;
@@ -145,11 +145,11 @@ where
 
                 // Direct hit, then codehash fallback for vm.etch-aliased contracts:
                 // the snapshot's `code_address` may be an etched address with no
-                // direct entry in `analysis`. Hash the trace entry's bytecode and
-                // look up the canonical address through `codehash_to_canonical`
-                // (which the engine populates with both the instrumented Pass-3
-                // runtime hash *and* the original Pass-1 runtime hash for every
-                // canonical artifact — see `core.rs`).
+                // direct entry in `analysis`. Resolve the trace entry's bytecode
+                // to its canonical address through `codehash_to_canonical` (which
+                // the engine populates with the instrumented Pass-3 runtime hash,
+                // the original Pass-1 runtime hash, and a trailing-zero-stripped
+                // hash for every canonical artifact — see `core.rs`).
                 let analysis_result = analysis
                     .get(&bytecode_address)
                     .or_else(|| {
@@ -157,8 +157,8 @@ where
                         if bytecode.is_empty() {
                             return None;
                         }
-                        let codehash = keccak256(bytecode.as_ref());
-                        codehash_to_canonical.get(&codehash).and_then(|c| analysis.get(c))
+                        crate::utils::resolve_canonical(codehash_to_canonical, bytecode.as_ref())
+                            .and_then(|c| analysis.get(&c))
                     })
                     .ok_or_else(|| {
                         eyre::eyre!(
