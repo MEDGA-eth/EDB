@@ -77,11 +77,11 @@ pub fn build_local_artifact_set(
         // contracts that still carry unresolved library placeholders — those
         // contracts were silently skipped and never debuggable. Linking first
         // means library-using contracts get indexed too.
-        let mut deployed_obj = match art.deployed_bytecode.as_ref().and_then(|d| d.bytecode.as_ref())
-        {
-            Some(bc) => bc.object.clone(),
-            None => continue,
-        };
+        let mut deployed_obj =
+            match art.deployed_bytecode.as_ref().and_then(|d| d.bytecode.as_ref()) {
+                Some(bc) => bc.object.clone(),
+                None => continue,
+            };
         deployed_obj.link_all(link_triples.iter().map(|(f, n, a)| (f, n, *a)));
         let Some(bytes) = deployed_obj.into_bytes() else { continue };
         if bytes.is_empty() {

@@ -145,7 +145,14 @@ pub fn resolve_test(
     };
 
     let (id, artifact) = chosen;
-    build_resolved_test(id.name.clone(), parsed.test_function, &id, artifact, project_root, libraries)
+    build_resolved_test(
+        id.name.clone(),
+        parsed.test_function,
+        &id,
+        artifact,
+        project_root,
+        libraries,
+    )
 }
 
 fn candidate_matches(
