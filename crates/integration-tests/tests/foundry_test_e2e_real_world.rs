@@ -786,3 +786,39 @@ async fn mega_evm_etch_aliased_system_contract_resolves_source() -> Result<()> {
     let _ = session.shutdown();
     Ok(())
 }
+
+/// Uniswap V4 `TestDynamicFees::test_swap_withDynamicFee_gas` calls
+/// `vm.snapshotGasLastCall`, which is declared `returns (uint256)`. EDB stubs
+/// the gas-snapshot cheats as no-ops; if the stub returns empty bytes the
+/// Solidity caller reverts decoding the missing `uint256` return (an
+/// empty-output revert right after the cheat frame). The stub must return a
+/// 32-byte word for the uint256-returning gas-snapshot variants. This test
+/// pins that: the test runs to a clean top-level Success with no revert.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_e2e_realworld)]
+async fn uniswap_v4_gas_snapshot_cheat_returns_uint256() -> Result<()> {
+    init::init_test_environment(true);
+    let root = require_fixture("uniswap-v4-core");
+    let target = "TestDynamicFees::test_swap_withDynamicFee_gas";
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        target,
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+    let trace = session.fetch_trace().await?;
+    assert!(
+        top_frame_is_success(&trace),
+        "{target} top frame should succeed once the gas-snapshot stub returns a \
+         uint256; got: {:?}",
+        trace.iter().find(|e| e.depth == 0).and_then(|e| e.result.clone()),
+    );
+    assert!(
+        !trace_has_revert(&trace),
+        "{target} should not revert after the gas-snapshot stub fix; trace: {trace:#?}",
+    );
+    let _ = session.shutdown();
+    Ok(())
+}

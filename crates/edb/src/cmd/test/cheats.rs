@@ -3179,7 +3179,15 @@ where
             "EDB stubs this gas-snapshot cheatcode — gas profiling is not available \
              in EDB v1. The call is accepted as a no-op.",
         );
-        ok_return(inputs, Bytes::new())
+        // `startSnapshotGas` is `void`, but `stopSnapshotGas` and
+        // `snapshotGasLastCall` are declared `returns (uint256 gasUsed)`.
+        // Returning empty bytes for the latter makes the Solidity caller revert
+        // while ABI-decoding the missing return value (observed as an
+        // empty-output revert right after the cheat frame), so emit a 32-byte
+        // zero word for the uint256-returning variants.
+        let ret =
+            if name == "startSnapshotGas" { Bytes::new() } else { Bytes::from_static(&[0u8; 32]) };
+        ok_return(inputs, ret)
     }
 
     /// Benchmark-value snapshot stub: `vm.snapshotValue(string,uint256)` and
