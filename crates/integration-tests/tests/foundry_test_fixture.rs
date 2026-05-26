@@ -1678,3 +1678,45 @@ async fn cheats_etch_aliased_address_resolves_source() -> Result<()> {
     let _ = session.shutdown();
     Ok(())
 }
+
+/// External-library linking: `LibTest::testExternalLibraryLinks` exercises both
+/// linking cases — the test contract calls a `public` library function
+/// directly (so `LibTest`'s own bytecode carries `__$hash$__` placeholders,
+/// the Aave-style "artifact missing deployed bytecode" abort), and a deployed
+/// `UsesLib` contract also calls it. Both `require`s revert unless the library
+/// is deployed at its forge-computed address and every caller's creation +
+/// deployed + instrumented bytecode is linked. A clean top-level Success here
+/// proves the full link → etch → instrument pipeline works end to end.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[serial(foundry_fixture)]
+async fn external_library_links_resolve() -> Result<()> {
+    init::init_test_environment(true);
+    let root = fixture_root();
+    let session = edb::cmd::test::run_foundry_test_for_test(
+        "LibTest::testExternalLibraryLinks",
+        Some(root.to_str().unwrap()),
+        None,
+        None,
+        None,
+    )
+    .await?;
+
+    let trace = session.fetch_trace().await?;
+    let top = trace
+        .iter()
+        .find(|e| e.depth == 0)
+        .expect("no depth-0 entry for LibTest::testExternalLibraryLinks");
+    assert!(
+        matches!(top.result, Some(CallResult::Success { .. })),
+        "top-level frame should succeed (library linked + etched); got: {:?}; trace: {trace:#?}",
+        top.result,
+    );
+    assert!(
+        !trace_has_revert(&trace),
+        "external-library test should not revert anywhere (unlinked library would jump to an \
+         empty account and revert); trace: {trace:#?}",
+    );
+
+    let _ = session.shutdown();
+    Ok(())
+}
