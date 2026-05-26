@@ -11,7 +11,6 @@ import {
   RotateCcw,
   SkipBack,
   SkipForward,
-  Square,
   StepForward,
   Undo2,
 } from 'lucide-react';
@@ -72,25 +71,9 @@ const ITEMS: ToolbarItem[] = [
     shortcut: 'F10',
     Icon: StepForward,
   },
-  {
-    id: 'nav.restart',
-    label: 'Restart',
-    hint: 'Jump back to the very first snapshot (snapshot 0)',
-    shortcut: '⇧⌘F5',
-    Icon: RotateCcw,
-    groupBreak: true,
-    run: ({ setSnapshot }) => setSnapshot(0),
-  },
-  // Without a live debugger session to halt, "Stop" parks at the last
-  // snapshot, same intuition as "run to end". Wired in fire() since it
-  // needs `snapshotCount` from the toolbar's render scope.
-  {
-    id: 'nav.stop',
-    label: 'Stop',
-    hint: 'Park at the last snapshot in the trace (no live process to halt)',
-    shortcut: '⇧F5',
-    Icon: Square,
-  },
+  // Backward-navigation group: reverse-continue, reverse-step, and restart
+  // (jump all the way back to snapshot 0) all move the cursor toward the
+  // start of the trace, so they live together.
   {
     id: 'nav.reverse-continue',
     label: 'Reverse Continue',
@@ -101,7 +84,7 @@ const ITEMS: ToolbarItem[] = [
   },
   {
     id: 'nav.go-back',
-    label: 'Reverse Step',
+    label: 'Reverse',
     // History-pop semantics now: undoes the user's *last* navigation
     // (step / continue / reverse-continue / trace click / palette goto)
     // rather than the engine's prev_id. Avoids the "leaped out of the
@@ -110,6 +93,14 @@ const ITEMS: ToolbarItem[] = [
     hint: 'Go back to the last location you visited (undoes any step / continue / click)',
     shortcut: '⌥F10',
     Icon: ChevronsRight,
+  },
+  {
+    id: 'nav.restart',
+    label: 'Restart',
+    hint: 'Jump back to the very first snapshot (snapshot 0)',
+    shortcut: '⇧⌘F5',
+    Icon: RotateCcw,
+    run: ({ setSnapshot }) => setSnapshot(0),
   },
   {
     id: 'nav.prev-call',
@@ -167,10 +158,6 @@ export function DebugToolbar() {
       item.run(ctx);
       return;
     }
-    if (item.id === 'nav.stop') {
-      setSnapshot(Math.max(0, snapshotCount - 1));
-      return;
-    }
     const cmd = getCommand(item.id);
     if (!cmd) return;
     if (cmd.enabled && !cmd.enabled(ctx)) return;
@@ -182,9 +169,9 @@ export function DebugToolbar() {
       data-testid="debug-toolbar"
       role="toolbar"
       aria-label="Debug toolbar"
-      className="flex items-center gap-1 border-b border-(--color-border) bg-(--color-bg-elevated) px-3 py-1.5"
+      className="flex items-center gap-1 overflow-x-auto border-b border-(--color-border) bg-(--color-bg-elevated) px-3 py-1.5"
     >
-      <span className="font-display text-xs font-semibold tracking-wide text-(--color-fg-tertiary) uppercase mr-2">
+      <span className="mr-2 shrink-0 font-display text-xs font-semibold tracking-wide text-(--color-fg-tertiary) uppercase">
         Debug
       </span>
       {ITEMS.map((item) => {
@@ -193,7 +180,7 @@ export function DebugToolbar() {
         return (
           <span key={item.id} className="contents">
             {item.groupBreak && (
-              <span aria-hidden className="mx-1 h-5 w-px bg-(--color-border)" />
+              <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-(--color-border)" />
             )}
             <button
               type="button"
@@ -210,20 +197,15 @@ export function DebugToolbar() {
                   ? `${item.label}, shortcut ${item.shortcut}. ${item.hint}`
                   : `${item.label}. ${item.hint}`
               }
-              className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-sm text-(--color-fg-secondary) transition enabled:hover:bg-(--color-bg-hover) enabled:hover:text-(--color-fg) disabled:opacity-40"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded px-2 py-1 text-sm whitespace-nowrap text-(--color-fg-secondary) transition enabled:hover:bg-(--color-bg-hover) enabled:hover:text-(--color-fg) disabled:opacity-40"
             >
               <item.Icon size={16} aria-hidden />
               <span className="hidden md:inline">{item.label}</span>
-              {item.shortcut && (
-                <kbd className="hidden md:inline rounded border border-(--color-border) bg-(--color-bg) px-1 text-[10px] text-(--color-fg-tertiary)">
-                  {item.shortcut}
-                </kbd>
-              )}
             </button>
           </span>
         );
       })}
-      <span className="ml-auto inline-flex items-center gap-2">
+      <span className="ml-auto inline-flex shrink-0 items-center gap-2 pl-2">
         <ReopenMenu />
         {disabled && (
           <span className="inline-flex items-center gap-1 text-[12px] text-(--color-fg-tertiary)">

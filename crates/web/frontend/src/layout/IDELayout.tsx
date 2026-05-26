@@ -4,6 +4,7 @@ import { StatusBar } from './StatusBar';
 import { DebugToolbar } from './DebugToolbar';
 import { MainArea } from './MainArea';
 import { FileExplorer } from '../components/explorer/FileExplorer';
+import { SourceSearch } from '../components/explorer/SourceSearch';
 import { BreakpointsView } from '../components/explorer/BreakpointsView';
 import { TraceSidebar } from '../components/explorer/TraceSidebar';
 import { CommandPalette } from '../components/CommandPalette';
@@ -29,7 +30,9 @@ function SideBar({ activity, width }: { activity: ActivityKind; width: number })
       </header>
       <div className="flex-1 overflow-auto" data-testid={`side-bar-${activity}`}>
         {activity === 'explorer' ? (
-          <FileExplorer />
+          <SourceSearch>
+            <FileExplorer />
+          </SourceSearch>
         ) : activity === 'breakpoints' ? (
           <BreakpointsView />
         ) : activity === 'trace' ? (

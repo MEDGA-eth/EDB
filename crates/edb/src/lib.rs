@@ -14,21 +14,22 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Debug command - debug_foundry_test function
+//! EDB library facade.
+//!
+//! This crate ships both a `bin` (`edb`) and a `lib` (`edb`). The library
+//! exists primarily so integration tests can drive the same command pipeline
+//! that `main.rs` does — without paying the cost of spawning a subprocess and
+//! parsing its stdout.
+//!
+//! The full command surface (replay, server, proxy_status, test) lives under
+//! [`cmd`]. The test-harness helpers used by integration tests are gated
+//! behind the `test-harness` Cargo feature and live in
+//! [`cmd::test::harness`](crate::cmd::test).
+//!
+pub mod cli;
+pub mod cmd;
+pub mod proxy;
+pub mod utils;
+pub mod ws_protocol;
 
-use eyre::Result;
-
-/// Debug a Foundry test case
-pub async fn debug_foundry_test(
-    _test_name: &str,
-    _block: Option<u64>,
-    _cli: &crate::Cli,
-    _rpc_url: &str,
-) -> Result<()> {
-    // The Foundry test debugging path is still under design. Returning a
-    // friendly error here is preferable to `unimplemented!()` because the
-    // panic crashes the entire process — including the web UI host —
-    // before the browser even loads. With a clean `Err` the CLI prints a
-    // single tidy line and exits 1, which is what users expect.
-    eyre::bail!("`edb test` is not yet implemented. Use `edb replay <tx-hash>` instead.")
-}
+pub use cli::{Cli, Commands, Ui};

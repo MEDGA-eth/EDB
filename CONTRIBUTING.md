@@ -61,13 +61,27 @@ cargo check -p edb-engine
 
 ```bash
 # Run all tests
-cargo test
+cargo test --workspace --all-features
 
 # Run tests for a specific crate
 cargo test -p edb-common
+
+# Skip the e2e suite (heaviest part) — sufficient for most local iteration
+cargo test --workspace --all-features --exclude edb-integration-tests
 ```
 
-*Note: Tests are still being finalized, so `cargo test` may currently fail.*
+The full workspace test suite includes integration + e2e tests against
+vendored Foundry projects (`testdata/foundry-e2e/`) — solady,
+uniswap-v4-core, solmate, prb-math, forge-template. The e2e set is
+~25 min sequential on CI Linux, so it's gated behind the `run-tests`
+PR label in CI (see [Pull Request Process](#pull-request-process)).
+Locally you can run it ad-hoc with `cargo test`.
+
+Before the e2e tests can find their fixtures, run:
+```bash
+./scripts/fetch-e2e-foundry-projects.sh
+```
+once after a fresh clone. The script is idempotent.
 
 ### Code Quality
 
@@ -146,7 +160,32 @@ Closes #123
    - Push additional commits to your branch
    - Re-request review when ready
 
-5. **After approval:**
+5. **Run the heavy test suite before requesting merge:**
+   - The default CI (`ci.yml`) runs only the fast checks on every push:
+     `fmt` / `clippy` / `check` / `build` / web-frontend.
+   - The heavy `cargo test --workspace --all-features` job — including
+     the integration + real-world e2e suites — is **gated behind the
+     `run-tests` label** (see `.github/workflows/ci-test.yml`).
+   - **Before requesting final review**, add the label to your PR:
+     ```bash
+     gh pr edit <number> --add-label run-tests
+     ```
+     or in the GitHub UI: PR page → right sidebar → Labels → check
+     `run-tests` (a maintainer creates the label first if it doesn't
+     exist).
+   - The label re-fires on every subsequent push as long as it's still
+     applied, so you don't need to re-add after rebases.
+   - **Required for merge:** branch protection requires a green
+     `Test (*)` check on each OS — you can't merge a PR until the
+     gated workflow runs and passes.
+   - For local iteration, run the full suite yourself with
+     `cargo test --workspace --all-features` (slower, but matches CI).
+   - Manual one-off run (skipping the label dance):
+     ```bash
+     gh workflow run ci-test.yml --ref <your-branch>
+     ```
+
+6. **After approval:**
    - The maintainers will merge your PR
    - Delete your feature branch
 

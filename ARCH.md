@@ -76,7 +76,17 @@ The main orchestrator that coordinates the entire debugging workflow:
 - `main.rs`: Entry point and CLI handling
 - `proxy.rs`: RPC proxy lifecycle management
 - `cmd/replay.rs`: Transaction replay command implementation
-- `cmd/debug.rs`: Foundry test debugging (future)
+- `cmd/test/`: Foundry test debugging — synthesizes a single
+  transaction that wraps deploy + setUp + test, embeds a hand-rolled
+  cheatcode inspector (~90 cheatcodes — state mutation, pranks, mocks,
+  `vm.expectRevert`, `vm.expectEmit` (soft-match), `vm.expectCall`,
+  `vm.assume`, the 40-overload `vm.assertEq` / `assertGt` / `assertTrue`
+  family, snapshot family, env vars, gas-metering stubs, and 6
+  no-op gas-snapshot stubs), and drives the whole thing through the
+  standard engine pipeline. See `docs/cheatcodes.md` for the full
+  support matrix and
+  `docs/superpowers/specs/2026-05-10-edb-test-design.md` for the design
+  rationale (gitignored; local-only).
 
 ### 2. Common Module (`crates/common`)
 
@@ -349,7 +359,17 @@ Browser-based debugging interface, served by the same `edb` binary:
 ## Future Enhancements
 
 ### Near Term
-- **Foundry Integration**: Direct test debugging support
+- **Hook firing for instrumented entrypoint**: improve creation hook
+  matching for in-tx-deployed test contracts (Phase 6.3 landed an
+  initial fix; further hardening may be needed for nested CREATE/CREATE2).
+- **Cheatcode coverage expansion**: `vm.envInt`/`envUint`/`envAddress`
+  (and their `envOr` overloads), `vm.parseJson*`, `vm.parseToml*`,
+  `vm.toString*`, `vm.serialize*`, mapping introspection
+  (`getMappingKeyOf`, `getMappingLength`, etc.) — see
+  `docs/cheatcodes.md`'s "Not yet implemented" section for the full list.
+- **`vm.expectEmit` faithful template matching**: upgrade from v1
+  soft-match (topic-count + emitter) to byte-equality against the
+  template log recorded by the test's own `emit` statement.
 - **Breakpoint Conditions**: Conditional breakpoints
 - **Watch Expressions**: Monitor specific variables
 

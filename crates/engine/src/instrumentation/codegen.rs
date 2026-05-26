@@ -217,19 +217,35 @@ fn generate_view_body(var_name: &str, params: &[String]) -> String {
 }
 
 /// Formats the return type with appropriate data location for reference types.
-/// For reference types (string, arrays, structs), adds "memory" data location.
-/// For value types, returns as-is.
+/// For reference types (string, dynamic bytes, arrays), adds "memory" data location.
+/// For value types (uint*, int*, bool, address, bytesN with N=1..32), returns as-is.
 fn format_return_type(type_name: &str) -> String {
-    match type_name {
-        // Reference types that need memory data location
-        t if t.starts_with("string") => format!("{t} memory"),
-        // Dynamic arrays (ends with [])
-        t if t.ends_with("[]") => format!("{t} memory"),
-        // Fixed-size arrays (contains [n] where n is a number)
-        t if t.contains('[') && t.contains(']') => format!("{t} memory"),
-        // Value types don't need data location
-        _ => type_name.to_string(),
+    // Dynamic arrays (ends with [])
+    if type_name.ends_with("[]") {
+        return format!("{type_name} memory");
     }
+    // Fixed-size arrays (contains [n] where n is a number)
+    if type_name.contains('[') && type_name.contains(']') {
+        return format!("{type_name} memory");
+    }
+    // `string` (dynamic): needs memory. Elementary type names are bare (no
+    // trailing " memory" / " calldata" suffix) so equality is the canonical
+    // shape; the `starts_with` arm tolerates pre-suffixed forms defensively.
+    if type_name == "string" || type_name.starts_with("string ") {
+        return format!("{type_name} memory");
+    }
+    // Dynamic `bytes`: needs memory. `bytesN` (N = 1..32) is a value type
+    // and must NOT be promoted — distinguish by checking that what follows
+    // "bytes" is not a digit. Solc's elementary type names use the digit
+    // form (e.g. `bytes32`), so a simple digit check is sufficient.
+    if type_name == "bytes"
+        || type_name.starts_with("bytes ")
+        || (type_name.starts_with("bytes")
+            && !type_name.chars().nth(5).map(|c| c.is_ascii_digit()).unwrap_or(false))
+    {
+        return format!("{type_name} memory");
+    }
+    type_name.to_string()
 }
 
 #[cfg(test)]
@@ -452,5 +468,86 @@ mod tests {
                 _ => panic!("Unexpected variable name: {var_name}"),
             }
         }
+    }
+
+    /// Regression for the case that broke `solady` ERC1155 tests: a `bytes`
+    /// state variable (dynamic, reference type) needs `memory` on the
+    /// return parameter, while a `bytesN` state variable (value type) does
+    /// NOT — solc rejects `returns (bytes)` but accepts `returns (bytes32)`.
+    #[test]
+    #[allow(non_snake_case)]
+    fn test_generate_view_method_bytes_and_bytesN() {
+        let source = r#"
+        contract C {
+            bytes private blob;
+            bytes32 private digest;
+            bytes[] private blobs;
+            bytes32[] private digests;
+        }
+        "#;
+        let (_sources, analysis) = analysis::tests::compile_and_analyze(source);
+
+        assert_eq!(analysis.private_state_variables.len(), 4);
+
+        for private_var in &analysis.private_state_variables {
+            let code =
+                super::generate_view_method(private_var).expect("should generate view method");
+            let var_name = &private_var.declaration().name;
+            match var_name.as_str() {
+                "blob" => {
+                    assert!(
+                        code.contains("returns (bytes memory)"),
+                        "dynamic bytes must be `memory`: {code}"
+                    );
+                }
+                "digest" => {
+                    assert!(
+                        code.contains("returns (bytes32)"),
+                        "bytes32 is value type, no `memory`: {code}"
+                    );
+                    assert!(!code.contains("bytes32 memory"));
+                }
+                "blobs" => {
+                    // `bytes[]` indexed access yields one `bytes` element, which
+                    // still needs `memory` because dynamic bytes is a reference type.
+                    assert!(
+                        code.contains("(uint256 index) public view returns (bytes memory)"),
+                        "bytes[] indexed access returns bytes memory: {code}"
+                    );
+                }
+                "digests" => {
+                    // `bytes32[]` indexed access yields one `bytes32` element —
+                    // a value type — so no `memory`.
+                    assert!(
+                        code.contains("(uint256 index) public view returns (bytes32)"),
+                        "bytes32[] indexed access returns bare bytes32: {code}"
+                    );
+                    assert!(!code.contains("bytes32 memory"));
+                }
+                _ => panic!("unexpected var: {var_name}"),
+            }
+        }
+    }
+
+    /// Pure-fn smoke for `format_return_type` so regressions on this small
+    /// helper don't require a full analyze-and-generate round-trip.
+    #[test]
+    fn test_format_return_type_units() {
+        use super::format_return_type;
+
+        // Value types: no `memory`.
+        assert_eq!(format_return_type("uint256"), "uint256");
+        assert_eq!(format_return_type("int128"), "int128");
+        assert_eq!(format_return_type("bool"), "bool");
+        assert_eq!(format_return_type("address"), "address");
+        assert_eq!(format_return_type("bytes1"), "bytes1");
+        assert_eq!(format_return_type("bytes32"), "bytes32");
+
+        // Reference types: `memory`.
+        assert_eq!(format_return_type("string"), "string memory");
+        assert_eq!(format_return_type("bytes"), "bytes memory");
+        assert_eq!(format_return_type("uint256[]"), "uint256[] memory");
+        assert_eq!(format_return_type("address[5]"), "address[5] memory");
+        assert_eq!(format_return_type("bytes[]"), "bytes[] memory");
     }
 }

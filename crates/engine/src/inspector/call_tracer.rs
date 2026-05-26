@@ -20,7 +20,7 @@
 //! and execution flow. The trace can be replayed later to determine execution paths
 //! without needing to re-examine transaction inputs/outputs.
 
-use alloy_primitives::{Address, Log, U256};
+use alloy_primitives::{Address, B256, Bytes, Log, U256, keccak256};
 use edb_common::types::{CallResult, Trace, TraceEntry};
 use revm::{
     Inspector,
@@ -35,6 +35,17 @@ use tracing::{debug, error};
 pub struct TraceReplayResult {
     /// All addresses visited during execution
     pub visited_addresses: HashMap<Address, bool>,
+    /// For contracts deployed during this transaction, the keccak256 of their
+    /// post-deployment runtime bytecode. Used to look up local artifacts by
+    /// codehash for in-tx-deployed contracts (the pre-tx state doesn't yet
+    /// contain these addresses, so a `db.basic(addr)` from the original
+    /// context would return `KECCAK_EMPTY`).
+    pub in_tx_codehashes: HashMap<Address, B256>,
+    /// Post-deployment runtime bytecode for each address that was CREATEd
+    /// during this transaction. Captured alongside [`Self::in_tx_codehashes`]
+    /// so the foundry-style local-artifact lookup (which needs the raw bytes,
+    /// not just the keccak) can resolve in-tx-deployed contracts.
+    pub in_tx_runtime_code: HashMap<Address, Bytes>,
     /// Complete execution trace with call/create details
     pub execution_trace: Trace,
 }
@@ -46,6 +57,12 @@ pub struct CallTracer {
     pub trace: Trace,
     /// Map of visited addresses to whether they were deployed in this transaction
     pub visited_addresses: HashMap<Address, bool>,
+    /// Keccak256 of the post-deploy runtime bytecode for each address that was
+    /// CREATEd during this transaction. Populated in `create_end`.
+    pub in_tx_codehashes: HashMap<Address, B256>,
+    /// Post-deploy runtime bytecode for each address that was CREATEd during
+    /// this transaction. Populated in `create_end` alongside `in_tx_codehashes`.
+    pub in_tx_runtime_code: HashMap<Address, Bytes>,
     /// Stack to track call indices for proper nesting
     call_stack: Vec<usize>,
 }
@@ -53,7 +70,13 @@ pub struct CallTracer {
 impl CallTracer {
     /// Create a new call tracer
     pub fn new() -> Self {
-        Self { trace: Trace::default(), visited_addresses: HashMap::new(), call_stack: Vec::new() }
+        Self {
+            trace: Trace::default(),
+            visited_addresses: HashMap::new(),
+            in_tx_codehashes: HashMap::new(),
+            in_tx_runtime_code: HashMap::new(),
+            call_stack: Vec::new(),
+        }
     }
 
     /// Get all visited addresses
@@ -68,7 +91,12 @@ impl CallTracer {
 
     /// Convert the call tracer into a replay result
     pub fn into_replay_result(self) -> TraceReplayResult {
-        TraceReplayResult { visited_addresses: self.visited_addresses, execution_trace: self.trace }
+        TraceReplayResult {
+            visited_addresses: self.visited_addresses,
+            in_tx_codehashes: self.in_tx_codehashes,
+            in_tx_runtime_code: self.in_tx_runtime_code,
+            execution_trace: self.trace,
+        }
     }
 
     /// Add an address to the visited set
@@ -246,6 +274,19 @@ impl<CTX: ContextTr> Inspector<CTX> for CallTracer {
         let _ = trace_entry;
 
         self.mark_address_visited(created_address_for_marking, true);
+
+        // The CREATE output is the post-deploy runtime bytecode; its keccak256
+        // is what the journaled state will store as `account.info.code_hash`.
+        // Record it so the engine can look up local artifacts by codehash for
+        // contracts deployed inside the current transaction (the pre-tx
+        // database doesn't yet know these addresses).
+        let runtime_code = &outcome.result.output;
+        if !runtime_code.is_empty() {
+            self.in_tx_codehashes
+                .insert(created_address_for_marking, keccak256(runtime_code.as_ref()));
+            self.in_tx_runtime_code
+                .insert(created_address_for_marking, Bytes::copy_from_slice(runtime_code.as_ref()));
+        }
     }
 
     fn selfdestruct(&mut self, contract: Address, target: Address, value: U256) {

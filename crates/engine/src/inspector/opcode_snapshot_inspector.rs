@@ -81,6 +81,36 @@ where
     /// Transient storage
     #[serde(with = "edb_common::types::arc_transient_string_map")]
     pub transient_storage: Arc<TransientStorage>,
+    /// Block environment at the moment of capture. Mutates across the tx when
+    /// cheatcodes like vm.warp/vm.roll fire.
+    #[serde(default)]
+    pub block_env: revm::context::BlockEnv,
+    /// Cfg environment at the moment of capture. Mutates when vm.chainId fires.
+    #[serde(default)]
+    pub cfg_env: revm::context::CfgEnv,
+}
+
+impl<DB> Default for OpcodeSnapshot<DB>
+where
+    DB: Database + DatabaseCommit + DatabaseRef + Clone + Default,
+    <CacheDB<DB> as Database>::Error: Clone,
+    <DB as Database>::Error: Clone,
+{
+    fn default() -> Self {
+        Self {
+            pc: 0,
+            target_address: Address::default(),
+            bytecode_address: Address::default(),
+            opcode: 0,
+            memory: Arc::new(Vec::new()),
+            stack: Stack::default(),
+            calldata: Arc::new(Bytes::default()),
+            database: Arc::new(CacheDB::default()),
+            transient_storage: Arc::new(TransientStorage::default()),
+            block_env: revm::context::BlockEnv::default(),
+            cfg_env: revm::context::CfgEnv::default(),
+        }
+    }
 }
 
 /// Collection of opcode snapshots
@@ -279,17 +309,32 @@ where
 
         let mut new_stack = trace_state.stack.clone();
         for _ in 0..opcode_info.inputs() {
-            let (_popped, stack_after_pop) =
-                new_stack.pop().unwrap_or_else(|| panic!("Stack underflow ({opcode})"));
+            let Some((_popped, stack_after_pop)) = new_stack.pop() else {
+                // The persistent stack model can desync from the interpreter when
+                // a sub-frame's terminating opcode is interpreted in the parent's
+                // trace state (e.g. a failed CREATE2 whose REVERT we observe just
+                // before the parent's frame_end fires). Logging is enough: the
+                // next call_end / create_end will rebuild `trace_state.stack`
+                // from the live interpreter, so this snapshot's local stack is
+                // the only casualty.
+                tracing::debug!(
+                    target: "edb::opcode_snapshot",
+                    "stack underflow popping inputs for {opcode}; skipping persistent-stack update for this step"
+                );
+                return;
+            };
             new_stack = stack_after_pop;
         }
         if !opcode.is_message_call() {
             // For call opcodes, the stack will only be updated after the call returns
             for i in (0..opcode_info.outputs()).rev() {
-                let value = interp
-                    .stack
-                    .peek(i as usize)
-                    .unwrap_or_else(|e| panic!("Stack underflow ({opcode}): {e:?}"));
+                let Ok(value) = interp.stack.peek(i as usize) else {
+                    tracing::debug!(
+                        target: "edb::opcode_snapshot",
+                        "stack underflow peeking outputs for {opcode}; skipping persistent-stack update for this step"
+                    );
+                    return;
+                };
                 new_stack = new_stack.push(value);
             }
         }
@@ -405,6 +450,8 @@ where
             calldata,
             database: self.database.clone(),
             transient_storage: self.transient_storage.clone(),
+            block_env: ctx.block.clone(),
+            cfg_env: ctx.cfg.clone(),
         };
 
         // Add to snapshots for this frame
@@ -783,4 +830,23 @@ fn check_memory_consistency(origin: &[u8], reference: &[u8]) -> bool {
     }
 
     true
+}
+
+#[cfg(test)]
+mod env_capture_tests {
+    use super::*;
+    use revm::{
+        context::{BlockEnv, CfgEnv},
+        database::CacheDB,
+        database_interface::EmptyDB,
+    };
+
+    type TestDB = CacheDB<EmptyDB>;
+
+    #[test]
+    fn opcode_snapshot_carries_block_env() {
+        let s = OpcodeSnapshot::<TestDB>::default();
+        let _: &BlockEnv = &s.block_env;
+        let _: &CfgEnv = &s.cfg_env;
+    }
 }

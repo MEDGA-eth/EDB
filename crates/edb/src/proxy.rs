@@ -16,7 +16,6 @@
 
 //! RPC Proxy management for EDB
 
-use crate::Cli;
 use eyre::{Result, eyre};
 use serde_json::{Value, json};
 use std::{
@@ -29,13 +28,18 @@ use tracing::{debug, info, warn};
 const PROXY_HEARTBEAT_INTERVAL: u64 = 10;
 const PROXY_GRACE_PERIOD: u64 = 30;
 
-pub async fn ensure_proxy_running(cli: &Cli) -> Result<()> {
+/// Ensure an `edb-rpc-proxy` instance is running at `proxy_port`, spawning one if necessary.
+pub async fn ensure_proxy_running(
+    rpc_urls: &str,
+    proxy_port: u16,
+    disable_cache: bool,
+) -> Result<()> {
     // Check if proxy already exists and is healthy
-    match proxy_health_check(cli.proxy_port).await {
+    match proxy_health_check(proxy_port).await {
         Ok(_) => {
-            info!("Found healthy proxy at port {}", cli.proxy_port);
-            register_with_proxy(cli.proxy_port).await?;
-            start_heartbeat_task(cli.proxy_port, PROXY_HEARTBEAT_INTERVAL);
+            info!("Found healthy proxy at port {}", proxy_port);
+            register_with_proxy(proxy_port).await?;
+            start_heartbeat_task(proxy_port, PROXY_HEARTBEAT_INTERVAL);
             return Ok(());
         }
         Err(e) => {
@@ -45,16 +49,16 @@ pub async fn ensure_proxy_running(cli: &Cli) -> Result<()> {
 
     // Spawn new one
     info!("No healthy proxy found, spawning new instance");
-    spawn_proxy(cli).await?;
+    spawn_proxy(rpc_urls, proxy_port, disable_cache).await?;
 
     // Wait for proxy to be ready
-    wait_for_proxy_ready(cli.proxy_port).await?;
+    wait_for_proxy_ready(proxy_port).await?;
 
     // Register with the new proxy
-    register_with_proxy(cli.proxy_port).await?;
+    register_with_proxy(proxy_port).await?;
 
     // Start heartbeat task
-    start_heartbeat_task(cli.proxy_port, PROXY_HEARTBEAT_INTERVAL);
+    start_heartbeat_task(proxy_port, PROXY_HEARTBEAT_INTERVAL);
 
     Ok(())
 }
@@ -144,7 +148,7 @@ fn start_heartbeat_task(port: u16, interval: u64) {
     });
 }
 
-async fn spawn_proxy(cli: &Cli) -> Result<()> {
+async fn spawn_proxy(rpc_urls: &str, proxy_port: u16, disable_cache: bool) -> Result<()> {
     let proxy_binary = find_proxy_binary()?;
 
     info!("Spawning proxy binary: {:?}", proxy_binary);
@@ -156,21 +160,19 @@ async fn spawn_proxy(cli: &Cli) -> Result<()> {
         let mut args = vec![
             "server".to_string(), // Add the server subcommand
             "--port".to_string(),
-            cli.proxy_port.to_string(),
+            proxy_port.to_string(),
             "--grace-period".to_string(),
             PROXY_GRACE_PERIOD.to_string(),
             "--heartbeat-interval".to_string(),
             PROXY_HEARTBEAT_INTERVAL.to_string(),
         ];
 
-        // Add RPC URLs if provided, otherwise proxy will use defaults
-        if let Some(rpc_urls) = &cli.rpc_urls {
-            args.push("--rpc-urls".to_string());
-            args.push(rpc_urls.clone());
-        }
+        // Add RPC URLs
+        args.push("--rpc-urls".to_string());
+        args.push(rpc_urls.to_string());
 
-        // If cache is disabled, add set the max cache items to 0
-        if cli.disable_cache {
+        // If cache is disabled, set the max cache items to 0
+        if disable_cache {
             args.push("--max-cache-items".to_string());
             args.push("0".to_string());
         }
@@ -203,21 +205,19 @@ async fn spawn_proxy(cli: &Cli) -> Result<()> {
         let mut args = vec![
             "server".to_string(), // Add the server subcommand
             "--port".to_string(),
-            cli.proxy_port.to_string(),
+            proxy_port.to_string(),
             "--grace-period".to_string(),
             PROXY_GRACE_PERIOD.to_string(),
             "--heartbeat-interval".to_string(),
             PROXY_HEARTBEAT_INTERVAL.to_string(),
         ];
 
-        // Add RPC URLs if provided, otherwise proxy will use defaults
-        if let Some(rpc_urls) = &cli.rpc_urls {
-            args.push("--rpc-urls".to_string());
-            args.push(rpc_urls.clone());
-        }
+        // Add RPC URLs
+        args.push("--rpc-urls".to_string());
+        args.push(rpc_urls.to_string());
 
-        // If cache is disabled, add set the max cache items to 0
-        if cli.disable_cache {
+        // If cache is disabled, set the max cache items to 0
+        if disable_cache {
             args.push("--max-cache-items".to_string());
             args.push("0".to_string());
         }

@@ -125,9 +125,14 @@ where
             let bytecode_address = trace_entry.code_address;
             let usid = hook_snapshot.usid;
 
-            // Get the analysis result for this address
-            let analysis_result =
-                context.analysis_results.get(&bytecode_address).ok_or_else(|| RpcError {
+            // Get the analysis result for this address. If `bytecode_address`
+            // is the etched address from `vm.etch(target, address(impl).code)`
+            // there is no direct entry; fall back through the codehash alias
+            // index so we surface the canonical artifact's analysis (same
+            // pattern as the hook inspector and the code/abi handlers).
+            let analysis_result = context
+                .resolve_analysis_via_codehash(bytecode_address)
+                .ok_or_else(|| RpcError {
                     code: error_codes::INVALID_ADDRESS,
                     message: format!("No analysis result found for address {bytecode_address}"),
                     data: None,

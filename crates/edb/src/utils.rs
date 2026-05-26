@@ -91,15 +91,11 @@ pub fn find_tui_binary() -> Result<PathBuf> {
 }
 
 /// TUI-specific options
-#[derive(Debug, Args)]
-#[command(next_help_heading = "Terminal UI Options (only apply with --ui=tui)")]
-pub struct TuiOptions {
-    /// Disable mouse support in the terminal UI
-    #[arg(long)]
-    pub disable_mouse: bool,
-}
+#[derive(Debug, Default, Args)]
+pub struct TuiOptions {}
 
-pub async fn start_tui(options: &TuiOptions, rpc_server_addr: SocketAddr) -> Result<()> {
+/// Spawn the `edb-tui` binary and wait for it or Ctrl-C.
+pub async fn start_tui(_options: &TuiOptions, rpc_server_addr: SocketAddr) -> Result<()> {
     // Launch Terminal UI
     tracing::info!("Launching Terminal UI...");
 
@@ -110,11 +106,6 @@ pub async fn start_tui(options: &TuiOptions, rpc_server_addr: SocketAddr) -> Res
     // Spawn TUI as a child process with inherited stdio
     let mut cmd = tokio::process::Command::new(&tui_binary);
     cmd.arg("--url").arg(format!("http://{rpc_server_addr}"));
-
-    // Only pass --mouse flag if requested and using TUI mode
-    if !options.disable_mouse {
-        cmd.arg("--mouse");
-    }
 
     let mut ui_handle = cmd
         .stdin(std::process::Stdio::inherit())
@@ -139,6 +130,26 @@ pub async fn start_tui(options: &TuiOptions, rpc_server_addr: SocketAddr) -> Res
     }
 
     Ok(())
+}
+
+/// Launch whichever UI the user requested and block until it exits.
+///
+/// - `Tui`: spawns the `edb-tui` binary and waits for it or Ctrl-C.
+/// - `Web`: opens the browser and waits for Ctrl-C.
+pub async fn launch_ui_and_wait(
+    cli: &crate::Cli,
+    rpc_server_addr: std::net::SocketAddr,
+) -> eyre::Result<()> {
+    match cli.ui {
+        crate::Ui::Tui => start_tui(&cli.tui_options, rpc_server_addr).await,
+        crate::Ui::Web => {
+            let url = format!("http://{rpc_server_addr}/");
+            open_browser(&url);
+            tracing::info!("Web UI ready. Press Ctrl+C to exit.");
+            tokio::signal::ctrl_c().await?;
+            Ok(())
+        }
+    }
 }
 
 /// Open `url` in the user's default browser.

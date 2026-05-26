@@ -56,7 +56,12 @@ pub async fn start_server(ws_port: u16, cli: &crate::Cli, rpc_url: &str) -> Resu
     info!("Starting EDB WebSocket server on port {}", ws_port);
 
     // Create the engine with configuration
-    let engine_config = cli.to_engine_config(rpc_url);
+    let mut engine_config = edb_engine::EngineConfig::default()
+        .with_quick_mode(cli.quick)
+        .with_rpc_proxy_url(rpc_url.to_string());
+    if let Some(api_key) = &cli.etherscan_api_key {
+        engine_config = engine_config.with_etherscan_api_key(api_key.clone());
+    }
     let engine = Engine::new(engine_config);
     let engine = Arc::new(engine);
 
@@ -309,9 +314,13 @@ async fn track_connection(
 /// Represents messages sent to the worker thread for handling operations involving types that are
 /// not `Send`.
 pub enum WorkerMessage {
+    /// Request to replay a transaction on a fresh fork.
     Replay {
+        /// Transaction hash to replay.
         tx_hash: TxHash,
+        /// Channel for sending progress updates to the client.
         progress_tx: mpsc::UnboundedSender<ProgressMessage>,
+        /// Channel for sending the completed RPC port back to the caller.
         response_tx: oneshot::Sender<Result<u16>>,
     },
 }

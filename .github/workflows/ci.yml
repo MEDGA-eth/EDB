@@ -145,53 +145,13 @@ jobs:
       - name: Run cargo build
         run: cargo build --all-features --verbose
 
-  test:
-    name: Test
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v5
-
-      - name: Install bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Cache cargo registry and target
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Cache SVM
-        uses: actions/cache@v5
-        with:
-          path: ~/.svm
-          key: ${{ runner.os }}-svm-${{ hashFiles('~/.svm/**') }}
-          restore-keys: |
-            ${{ runner.os }}-svm-
-
-      - name: Run tests
-        run: cargo test --workspace --all-features --verbose -- --nocapture
-        env:
-          EDB_TEST_PROXY_MODE: cache-only
-          EDB_TEST_ETHERSCAN_MODE: cache-only
-          EDB_ASSERT: all
-          RUST_LOG: info
+  # NOTE: The heavy `cargo test --workspace` job moved to its own workflow
+  # `.github/workflows/ci-test.yml`. It runs on `workflow_dispatch` or when
+  # a PR is labeled `run-tests` — see that file for the gate.
+  # Rationale: the e2e integration suite (solady/uniswap-v4-core/solmate/
+  # prb-math) is heavy enough that we don't want it on every push, but the
+  # cheap checks (fmt / clippy / check / build / web-frontend) still run on
+  # every push for fast signal.
 
   web-frontend:
     name: Web frontend tests

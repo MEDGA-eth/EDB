@@ -21,132 +21,10 @@
 use std::env;
 
 use alloy_primitives::TxHash;
-use clap::{Parser, Subcommand, ValueEnum};
-use edb_engine::EngineConfig;
+use clap::Parser;
 use eyre::Result;
 
-use crate::utils::TuiOptions;
-
-mod cmd;
-mod proxy;
-mod utils;
-mod ws_protocol;
-
-/// Command-line interface for EDB
-#[derive(Debug, Parser)]
-#[command(name = "edb")]
-#[command(
-    about = "Ethereum Debugger - Source-level time-travel debugger for Ethereum smart contracts"
-)]
-#[command(version)]
-pub struct Cli {
-    /// Upstream RPC URLs (comma-separated, overrides defaults if provided).
-    ///
-    /// Example: --rpc-urls "https://eth.llamarpc.com,https://rpc.ankr.com/eth"
-    #[arg(long)]
-    rpc_urls: Option<String>,
-
-    /// Port for the RPC proxy server
-    #[arg(long, default_value = "8546")]
-    pub proxy_port: u16,
-
-    /// Etherscan API key for source code download
-    #[arg(long, env = "ETHERSCAN_API_KEY")]
-    pub etherscan_api_key: Option<String>,
-
-    /// Quick mode - skip replaying preceding transactions in the block
-    #[arg(long)]
-    pub quick: bool,
-
-    /// Disable cache - do not use cached RPC responses
-    #[arg(long)]
-    pub disable_cache: bool,
-
-    /// The cache directory
-    #[arg(long, env = edb_common::env::EDB_CACHE_DIR)]
-    pub cache_dir: Option<String>,
-
-    /// TUI-specific options
-    #[command(flatten)]
-    pub tui_options: TuiOptions,
-
-    /// User interface to launch after engine startup
-    #[arg(long, value_enum, default_value = "web")]
-    pub ui: Ui,
-
-    /// Command to execute
-    #[command(subcommand)]
-    pub command: Commands,
-}
-
-impl Cli {
-    /// Validate CLI arguments and warn about misused options
-    pub fn validate(&self) {
-        // Warn if TUI-specific options are used with non-TUI configurations.
-        // Note: --ui no longer triggers a warning when given to a non-UI
-        // subcommand (server, proxy-status) — those subcommands ignore the
-        // flag silently, and after the Web-default flip, the previous
-        // warning would fire on every default invocation.
-        let runs_ui = self.command.runs_ui();
-        if self.tui_options.disable_mouse && !(runs_ui && self.ui == Ui::Tui) {
-            tracing::warn!("--disable-mouse only applies to --ui=tui");
-            eprintln!("Warning: --disable-mouse only applies to --ui=tui");
-        }
-    }
-
-    /// Derive EDB engine configuration from CLI arguments
-    pub fn to_engine_config(&self, rpc_url: &str) -> EngineConfig {
-        let mut engine_config = EngineConfig::default()
-            .with_quick_mode(self.quick)
-            .with_rpc_proxy_url(rpc_url.to_string());
-        if let Some(api_key) = &self.etherscan_api_key {
-            engine_config = engine_config.with_etherscan_api_key(api_key.clone());
-        }
-        engine_config
-    }
-}
-
-/// Available commands
-#[derive(Debug, Subcommand)]
-pub enum Commands {
-    /// Replay an existing transaction
-    Replay {
-        /// Transaction hash to replay
-        tx_hash: String,
-    },
-    /// Debug a Foundry test case
-    Test {
-        /// Test name to debug
-        test_name: String,
-
-        /// Block number to fork at (default: latest)
-        block: Option<u64>,
-    },
-    /// Start WebSocket server for remote debugging sessions
-    Server {
-        /// Port for the WebSocket server
-        #[arg(long, default_value = "9001")]
-        ws_port: u16,
-    },
-    /// Show RPC proxy provider status
-    ProxyStatus,
-}
-
-impl Commands {
-    /// Whether the command launches a user interface (TUI or Web).
-    pub fn runs_ui(&self) -> bool {
-        matches!(self, Self::Replay { .. } | Self::Test { .. })
-    }
-}
-
-/// Which user interface to use after engine startup
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum Ui {
-    /// Terminal UI
-    Tui,
-    /// Browser UI on the engine's port (default)
-    Web,
-}
+use edb::{Cli, Commands, cmd, proxy};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -159,9 +37,6 @@ async fn main() -> Result<()> {
     // Parse CLI arguments
     let cli = Cli::parse();
 
-    // Validate CLI arguments
-    cli.validate();
-
     if let Some(cache_dir) = &cli.cache_dir {
         tracing::info!("Using cache directory: {cache_dir}");
         // SAFETY: edition 2024 marks env::set_var as unsafe (RFC 3445); this runs at startup
@@ -171,30 +46,35 @@ async fn main() -> Result<()> {
         }
     }
 
-    // Set up RPC endpoint (proxy or direct)
-    let effective_rpc_url = {
-        tracing::info!("Ensuring RPC proxy is running...");
-        proxy::ensure_proxy_running(&cli).await?;
-        format!("http://127.0.0.1:{}", cli.proxy_port)
-    };
-
-    tracing::info!("Using RPC endpoint: {}", effective_rpc_url);
-
-    // Execute the command to get RPC server handle
     match &cli.command {
-        Commands::Replay { tx_hash } => {
+        Commands::Replay { tx_hash, rpc_urls, proxy_port } => {
             tracing::info!("Replaying transaction: {}", tx_hash);
             let tx_hash: TxHash = tx_hash.parse()?;
+            tracing::info!("Ensuring RPC proxy is running...");
+            proxy::ensure_proxy_running(rpc_urls, *proxy_port, cli.disable_cache).await?;
+            let effective_rpc_url = format!("http://127.0.0.1:{proxy_port}");
             cmd::replay_transaction(tx_hash, &cli, &effective_rpc_url).await
         }
-        Commands::Test { test_name, block } => {
-            tracing::info!("Debugging test: {}", test_name);
-            cmd::debug_foundry_test(test_name, *block, &cli, &effective_rpc_url).await
+        Commands::Test { target, root, profile, fork_url, fork_block_number, no_ui } => {
+            tracing::info!("Debugging test: {}", target);
+            cmd::run_foundry_test(
+                target,
+                root.as_deref(),
+                profile.as_deref(),
+                fork_url.as_deref(),
+                *fork_block_number,
+                *no_ui,
+                &cli,
+            )
+            .await
         }
-        Commands::Server { ws_port } => {
+        Commands::Server { ws_port, rpc_urls, proxy_port } => {
             tracing::info!("Starting WebSocket server on port {}", ws_port);
+            tracing::info!("Ensuring RPC proxy is running...");
+            proxy::ensure_proxy_running(rpc_urls, *proxy_port, cli.disable_cache).await?;
+            let effective_rpc_url = format!("http://127.0.0.1:{proxy_port}");
             cmd::start_server(*ws_port, &cli, &effective_rpc_url).await
         }
-        Commands::ProxyStatus => cmd::show_proxy_status(&cli).await,
+        Commands::ProxyStatus { proxy_port } => cmd::show_proxy_status(*proxy_port).await,
     }
 }

@@ -236,9 +236,28 @@ where
             if detail.bytecode_address != *bytecode_address {
                 false
             } else {
-                let Some(analysis_result) = context.analysis_results.get(bytecode_address) else {
-                    return false;
-                };
+                // Resolve the analysis-keyed address once via the codehash
+                // alias index so etched addresses (no direct entry) still
+                // match, then reuse the same key for the artifact lookup
+                // below — analysis_results and artifacts must agree on
+                // which canonical address backs this snapshot. Use a
+                // single `.get()` on the fast path; only fall through to
+                // the codehash index when the direct lookup misses.
+                let (resolved_addr, analysis_result) =
+                    match context.analysis_results.get(bytecode_address) {
+                        Some(a) => (*bytecode_address, a),
+                        None => {
+                            let Some(canonical) =
+                                context.resolve_canonical_via_codehash(*bytecode_address)
+                            else {
+                                return false;
+                            };
+                            let Some(a) = context.analysis_results.get(&canonical) else {
+                                return false;
+                            };
+                            (canonical, a)
+                        }
+                    };
 
                 let Some(step_src) =
                     analysis_result.usid_to_step.get(&detail.usid).map(|step| step.src())
@@ -257,11 +276,16 @@ where
 
                 context
                     .artifacts
-                    .get(bytecode_address)
+                    .get(&resolved_addr)
                     .and_then(|artifact| artifact.input.sources.get(file_path))
                     .zip(Some(step_src.start))
                     .is_some_and(|(source, offset)| {
-                        source.content[..offset + 1].lines().count() == *line_number
+                        // Bounds-check: `offset + 1` may exceed `content.len()`
+                        // for offsets at or past EOF. Clamp so the slice stays
+                        // in range; the line count is then "all lines through
+                        // EOF", which is the closest meaningful answer.
+                        let end = (offset + 1).min(source.content.len());
+                        source.content[..end].lines().count() == *line_number
                     })
             }
         }

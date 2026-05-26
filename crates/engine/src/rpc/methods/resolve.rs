@@ -57,17 +57,21 @@ where
             data: None,
         })?;
 
+    // Resolve via the direct address first; if that misses, fall back
+    // through the codehash alias index so addresses installed by
+    // `vm.etch(target, address(impl).code)` surface the canonical
+    // artifact's ABI instead of `null`. The same fallback already
+    // backs `edb_getCode` (see `artifact.rs`) and the hook inspector
+    // (see `HookSnapshotInspector::resolve_analysis`).
     let abi = if recompiled {
         context
-            .recompiled_artifacts
-            .get(&address)
+            .resolve_recompiled_artifact_via_codehash(address)
             .and_then(|artifact| artifact.contract())
             .and_then(|contract| contract.abi.as_ref())
             .cloned()
     } else {
         context
-            .artifacts
-            .get(&address)
+            .resolve_artifact_via_codehash(address)
             .and_then(|artifact| artifact.contract())
             .and_then(|contract| contract.abi.as_ref())
             .cloned()
@@ -142,7 +146,14 @@ where
     let abi_info = related_addresses
         .into_iter()
         .filter_map(|(addr, ty)| {
-            context.recompiled_artifacts.get(&addr).and_then(|artifact| {
+            // Direct lookup first; fall back through the codehash alias
+            // index so a related address whose code was installed by
+            // `vm.etch` still resolves to the canonical recompiled
+            // artifact. `addr` is the live etched address;
+            // `parse_callable_abi_info` embeds it as the call target in
+            // the returned info so the UI routes simulated calls to the
+            // right on-chain address, not the canonical deploy address.
+            context.resolve_recompiled_artifact_via_codehash(addr).and_then(|artifact| {
                 artifact.contract().map(|contract| parse_callable_abi_info(addr, contract, ty))
             })
         })

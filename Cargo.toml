@@ -125,12 +125,19 @@ alloy-transport-ipc = { version = "2.0.1", default-features = false }
 alloy-transport-ws = { version = "2.0.1", default-features = false }
 alloy-trie = "0.9"
 
+# NIST P-256 (secp256r1) ECDSA. Used by `vm.signP256` / `vm.publicKeyP256`.
+# Pure-Rust; no native crypto deps. `ecdsa` feature pulls in the SigningKey
+# / signature::Signer trait; `default-features = false` keeps build lean.
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "std"] }
+
 # foundry - aligned with Foundry's current workspace requirements
 foundry-block-explorers = { version = "0.23.1", default-features = false }
 foundry-compilers = { version = "0.20.0", default-features = false, features = [
     "rustls",
     "svm-solc",
 ] }
+foundry-config = { git = "https://github.com/foundry-rs/foundry", tag = "v1.7.1", default-features = false }
+foundry-linking = { git = "https://github.com/foundry-rs/foundry", tag = "v1.7.1", default-features = false }
 
 # revm - aligned with Foundry's current workspace requirements
 revm = { version = "38.0.0", default-features = false }
@@ -173,6 +180,7 @@ webbrowser = "1"
 # misc
 auto_impl = "1"
 chrono = "0.4"
+ciborium = { version = "0.2", default-features = false }
 dashmap = "6"
 delegate = "0.13"
 derive_more = "2.1"
@@ -189,6 +197,7 @@ parking_lot = "0.12"
 paste = "1.0"
 rand = "0.9"
 rayon = "1"
+regex = "1"
 reqwest = { version = "0.13", default-features = false }
 rpds = { version = "1", features = ["serde"] }
 rust-embed = "8"
@@ -203,4 +212,5 @@ itertools = "0.14.0"
 # dev dependencies
 assert_cmd = "2.0"
 predicates = "3.0"
+
 

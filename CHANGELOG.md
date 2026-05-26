@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `edb test --no-ui` — runs the prepare pipeline and prints a one-line JSON
+  summary to stdout (`{"target":…,"status":…,"snapshots":…,"trace_entries":…,
+  "reverts":…,"edb_rejections":…}`), then exits without launching the UI.
+  Status values: `ok` / `edb-rejected` / `test-revert` / `unknown`. Useful
+  for batch coverage scripts and CI.
+- `scripts/edb-test-coverage.sh` — walks every test function in
+  `testdata/foundry-e2e/{forge-template,solady}` (populated by
+  `scripts/fetch-e2e-foundry-projects.sh`), runs `edb test --no-ui` on each,
+  and prints a per-test JSON line plus a final tally by status
+  (ok / edb-rejected / test-revert / engine-panic / timeout). Accepts
+  `--limit N` to cap the number of tests per project.
+- `edb test <Contract>::<testFn>` — Foundry test debugging command.
+  Walks parent dirs for `foundry.toml`, compiles via `foundry-compilers`,
+  synthesizes a single-tx entrypoint, embeds a hand-rolled cheatcode
+  inspector (~90 cheatcodes), and runs the whole thing through EDB's
+  existing engine pipeline. See README's "Debug a Foundry Test" section
+  and [`docs/cheatcodes.md`](docs/cheatcodes.md).
+- `edb test --fork-url <rpc>` — opt-in mainnet/L2 forking for tests.
+  Falls back to `foundry.toml`'s `eth_rpc_url` (with `${VAR}` env-var
+  expansion).
+- `LocalArtifactSet` indexes locally-compiled contracts by deployed-bytecode
+  codehash, so `edb test` resolves source code without hitting Etherscan.
+- `CheatedStack` inspector wrapper (in `crates/engine`) for layering an
+  optional cheatcodes inspector over EDB's existing inspectors.
+- Per-snapshot `BlockEnv` + `CfgEnv` capture so cheatcode-driven mid-tx
+  env mutation (`vm.warp` / `vm.roll` / `vm.chainId`) shows up correctly
+  in snapshots.
+- **Snapshot family cheatcodes**: `vm.snapshotState` / `vm.snapshot`,
+  `vm.revertToState` / `vm.revertTo` / `vm.revertToStateAndDelete`,
+  `vm.deleteStateSnapshot` / `vm.deleteStateSnapshots`. Snapshots capture
+  the journaled state (which carries the CacheDB) and are restored on
+  revert (foundry-faithful one-shot semantics).
+- **Assertion family cheatcodes** (40 overloads): `vm.assertEq` /
+  `assertNotEq` / `assertGt` / `assertGe` / `assertLt` / `assertLe` /
+  `assertTrue` / `assertFalse` for the fixed-width primitive types
+  (`uint256`, `int256`, `address`, `bool`, `bytes32`), with and without
+  the optional `string err` argument. Signed comparisons handle the
+  cross-sign case explicitly. Dynamic / array / decimal / approxEq
+  overloads are cataloged as "not yet implemented" so users see an
+  actionable error instead of "unknown selector".
+- **Gas snapshot stub cheatcodes** (6 overloads): `vm.startSnapshotGas`,
+  `vm.stopSnapshotGas` (3 overloads), `vm.snapshotGasLastCall` (2
+  overloads). Accepted as no-ops — EDB is not a gas profiler in v1.
+- **`vm.rollFork(uint256)` (partial v1)**: updates `block.number` only.
+  Does not touch `block.timestamp` (pair with `vm.warp`) or invalidate
+  the CacheDB. See `docs/cheatcodes.md` for the limitation.
+  Cross-fork roll variants (`rollFork(uint,uint)`, `rollFork(bytes32)`)
+  remain rejected.
+
+### Changed
+
+- `--rpc-urls` and `--proxy-port` moved from the top-level CLI to the
+  `replay` (and `proxy-status`) subcommands. `edb test` does not use the
+  proxy — it talks directly to the upstream RPC when forking, mirroring
+  `forge test` behavior.
+- TUI mouse capture is **disabled by default**. The `--disable-mouse`
+  flag is removed; `--enable-mouse` may return in a future release.
+- `Engine::prepare_with_router_and_cheats` is the new generic engine
+  entry point. The existing `prepare_with_router` delegates to it with
+  `None` for cheats + local artifacts, so the replay capability is
+  unaffected.
+
+### Removed
+
+- `cmd/debug.rs` stub (replaced by `cmd/test/`).
+- `TuiOptions::disable_mouse` flag (replaced by mouse-off default).
+
+### Internal
+
+- `.github/workflows/release-test.yml` — release-only `cargo test --release` matrix
+  across ubuntu/windows/macos. Triggered by published releases or manual
+  `workflow_dispatch`. Catches optimizer-induced regressions without burdening
+  per-PR CI.
+
 ## [0.0.3] - 2026-05-10
 
 ### Added

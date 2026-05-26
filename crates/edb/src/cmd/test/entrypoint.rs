@@ -1,0 +1,255 @@
+// EDB - Ethereum Debugger
+// Copyright (C) 2024 Zhuo Zhang and Wuqi Zhang
+// SPDX-License-Identifier: AGPL-3.0
+
+//! Synthetic entrypoint generation: builds a Solidity file that, when called,
+//! deploys the user's test contract and invokes setUp + the chosen test function
+//! within a single transaction.
+
+use alloy_primitives::{Bytes, address};
+use eyre::{Result, bail};
+
+/// Name of the generated synthetic entrypoint contract.
+#[allow(dead_code)] // consumed by downstream tasks (4.2+)
+pub const ENTRYPOINT_NAME: &str = "_EdbTestEntrypoint";
+/// Filename of the generated synthetic entrypoint source file.
+#[allow(dead_code)] // consumed by downstream tasks (4.2+)
+pub const ENTRYPOINT_FILE: &str = "_EdbTestEntrypoint.sol";
+/// Deterministic address where the entrypoint is deployed.
+#[allow(dead_code)] // consumed by downstream tasks (4.2+)
+pub const ENTRYPOINT_ADDR: alloy_primitives::Address =
+    address!("ED0100000000000000000000000000000000ED01");
+
+/// Build the Solidity source for the synthetic entrypoint.
+///
+/// `import_path` should be a path resolvable by the project's solc remappings — typically
+/// the test contract's source path relative to the project root.
+pub fn generate_entrypoint_source(
+    contract_name: &str,
+    test_function: &str,
+    has_setup: bool,
+    compiler_version: &str,
+    import_path: &str,
+) -> String {
+    // Strip leading 'v' and any build metadata suffix (e.g. "+commit.abc123"),
+    // then keep only the major.minor.patch triple for the pragma constraint.
+    let raw = compiler_version.trim_start_matches('v');
+    let raw = raw.split('+').next().unwrap_or(raw);
+    let major_minor = raw.split('.').take(3).collect::<Vec<_>>().join(".");
+    let setup_call = if has_setup { "        t.setUp();\n" } else { "" };
+    // Solidity import paths use POSIX-style separators on every platform; on Windows
+    // `pathdiff::diff_paths` returns `\`, which solc parses as an escape (`\C` → bad escape).
+    let import_path = import_path.replace('\\', "/");
+    format!(
+        r#"// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^{major_minor};
+
+import "{import_path}";
+
+contract {ENTRYPOINT_NAME} {{
+    function run() external {{
+        {contract_name} t = new {contract_name}();
+{setup_call}        t.{test_function}();
+    }}
+}}
+"#
+    )
+}
+
+/// Result of compiling the synthetic entrypoint.
+#[allow(dead_code)] // consumed by downstream tasks (4.2+)
+pub struct CompiledEntrypoint {
+    /// Deployed bytecode of the compiled entrypoint contract.
+    pub deployed_bytecode: Bytes,
+    /// 4-byte selector for the `run()` function.
+    pub run_selector: [u8; 4],
+    /// Foundry-lifted artifact for the synthesized entrypoint, ready to be
+    /// inserted into a `LocalArtifactSet` for source-level analysis /
+    /// instrumentation of the test contract.
+    pub artifact: edb_engine::Artifact,
+}
+
+/// RAII guard that removes a directory tree on drop.
+///
+/// Used to ensure the unique temp directory created for the synthetic entrypoint
+/// is cleaned up whether compilation succeeds or fails.
+struct TempDirGuard(std::path::PathBuf);
+
+impl Drop for TempDirGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Generate and compile the synthetic entrypoint using foundry-compilers.
+///
+/// Writes the source into `<project_root>/.edb-entrypoint-<pid>-<nanos>/`
+/// (cleaned up on exit via a RAII guard) to avoid collisions with user files
+/// named `_EdbTestEntrypoint.sol` and to prevent races when two `edb test`
+/// invocations run on the same project concurrently.
+///
+/// The subdirectory is UNDER project_root so that foundry-compilers' remapping
+/// resolution (which anchors at the project root) still works correctly.
+#[allow(dead_code)] // consumed by downstream tasks (4.2+)
+pub fn compile_entrypoint(
+    contract_name: &str,
+    test_function: &str,
+    has_setup: bool,
+    compiler_version: &str,
+    project_root: &std::path::Path,
+    test_source_relative: &std::path::Path,
+    libraries: &foundry_compilers::artifacts::Libraries,
+) -> Result<CompiledEntrypoint> {
+    let import_path = test_source_relative
+        .to_str()
+        .ok_or_else(|| eyre::eyre!("non-utf8 test source path: {test_source_relative:?}"))?;
+
+    let src = generate_entrypoint_source(
+        contract_name,
+        test_function,
+        has_setup,
+        compiler_version,
+        import_path,
+    );
+
+    // Build a unique subdirectory name: <pid>-<subsecond nanos> is cheap and
+    // collision-resistant for the concurrent-runs use case.
+    let unique_name = format!(
+        ".edb-entrypoint-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .subsec_nanos()
+    );
+    let temp_dir = project_root.join(&unique_name);
+    std::fs::create_dir_all(&temp_dir)?;
+    // RAII guard ensures the temp dir is removed on all exit paths.
+    let _guard = TempDirGuard(temp_dir.clone());
+
+    let entrypoint_path = temp_dir.join(ENTRYPOINT_FILE);
+    std::fs::write(&entrypoint_path, &src)?;
+
+    // Compile via foundry-config + foundry-compilers, mirroring `cmd::test::mod::run_foundry_test`.
+    let config = foundry_config::Config::load_with_root(project_root)
+        .map_err(|e| eyre::eyre!("foundry-config load_with_root: {e}"))?
+        .sanitized();
+    let mut project = config.project().map_err(|e| eyre::eyre!("project setup: {e}"))?;
+    // EDB needs AST in the compile output to drive source-level analysis;
+    // request the full output selection so the lifted Artifact carries it.
+    project.update_output_selection(|sel| {
+        *sel = foundry_compilers::artifacts::output_selection::OutputSelection::complete_output_selection();
+    });
+    // Link the test contract's external-library refs at compile time — the
+    // entrypoint's import graph pulls in the test contract, so its libraries
+    // must resolve here too.
+    project.settings.solc.libraries = libraries.clone();
+    let output = project
+        .compile_file(&entrypoint_path)
+        .map_err(|e| eyre::eyre!("compile entrypoint: {e}"))?;
+
+    if output.has_compiler_errors() {
+        bail!("entrypoint compile errors:\n{output}");
+    }
+
+    // Strip the project-root prefix so artifact ids (and `id.source`) use the
+    // same relative keys that solc emits in `metadata.sources` — otherwise
+    // `Artifact::from_foundry` ends up with an absolute `id.source` in
+    // `output.sources` while `input.sources` (lifted from metadata) keys are
+    // relative, causing analysis to fail with `MissingSource`.
+    let output = output.with_stripped_file_prefixes(project_root);
+
+    let entry = output.artifact_ids().find(|(id, _)| id.name == ENTRYPOINT_NAME);
+    let Some((entry_id, artifact)) = entry else {
+        bail!("entrypoint artifact not produced (compile output had {ENTRYPOINT_NAME}?)");
+    };
+
+    use foundry_compilers::Artifact as _;
+    let deployed = artifact
+        .get_deployed_bytecode_bytes()
+        .ok_or_else(|| eyre::eyre!("entrypoint missing deployed bytecode"))?
+        .into_owned();
+
+    // Lift the foundry artifact into EDB's `Artifact` shape so the engine can
+    // run source-level analysis / instrumentation against the synthesized
+    // entrypoint without an Etherscan round-trip. Pass the resolved `libraries`
+    // (NOT `Default::default()`): the entrypoint's import graph pulls in the
+    // test contract, so its creation bytecode embeds `__$hash$__` library
+    // placeholders. `from_foundry` propagates the map into `input.settings.libraries`
+    // so the engine's instrument-recompile re-links the placeholders — otherwise
+    // the recompiled creation bytecode stays unlinked and `get_bytecode_bytes()`
+    // returns `None` when registering creation hooks.
+    let mut lifted = edb_engine::Artifact::from_foundry(&entry_id, artifact, libraries)
+        .map_err(|e| eyre::eyre!("lift entrypoint artifact: {e}"))?;
+    // The entrypoint file is deleted on exit (the _guard above removes the
+    // whole temp dir), so `cmd::test::artifacts::backfill_source_contents`
+    // cannot read it from disk later. Patch the in-memory source body directly
+    // so analysis has the entrypoint contents available.
+    {
+        use std::sync::Arc;
+        let path_in_input = lifted
+            .input
+            .sources
+            .0
+            .keys()
+            .find(|p| p.file_name().and_then(|n| n.to_str()) == Some(ENTRYPOINT_FILE))
+            .cloned();
+        if let Some(p) = path_in_input
+            && let Some(s) = lifted.input.sources.0.get_mut(&p)
+        {
+            s.content = Arc::new(src);
+        }
+    }
+
+    // _guard drops here, removing the temp dir.
+    Ok(CompiledEntrypoint {
+        deployed_bytecode: deployed,
+        run_selector: alloy_primitives::keccak256(b"run()")[..4].try_into().unwrap(),
+        artifact: lifted,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn entrypoint_includes_setup_when_present() {
+        let src =
+            generate_entrypoint_source("MyTest", "testFoo", true, "0.8.20", "test/MyTest.t.sol");
+        assert!(src.contains("t.setUp();"));
+        assert!(src.contains("t.testFoo();"));
+        assert!(src.contains("pragma solidity ^0.8.20;"));
+        assert!(src.contains("import \"test/MyTest.t.sol\""));
+    }
+
+    #[test]
+    fn entrypoint_omits_setup_when_absent() {
+        let src = generate_entrypoint_source("MyTest", "testFoo", false, "0.8.20", "x.sol");
+        assert!(!src.contains("setUp"));
+        assert!(src.contains("t.testFoo();"));
+    }
+
+    #[test]
+    fn entrypoint_strips_compiler_version_prefix() {
+        let src = generate_entrypoint_source("MyTest", "testFoo", false, "v0.8.20", "x.sol");
+        assert!(src.contains("pragma solidity ^0.8.20;"));
+    }
+
+    #[test]
+    fn entrypoint_normalizes_windows_path_separators() {
+        // pathdiff::diff_paths returns `\`-separated paths on Windows; solc parses
+        // them as escape sequences. The generator must convert to POSIX `/`.
+        let src =
+            generate_entrypoint_source("MyTest", "testFoo", false, "0.8.20", r"test\MyTest.t.sol");
+        assert!(src.contains("import \"test/MyTest.t.sol\""), "got: {src}");
+        assert!(!src.contains(r"test\MyTest.t.sol"));
+    }
+
+    #[test]
+    fn entrypoint_truncates_compiler_version_patch() {
+        let src =
+            generate_entrypoint_source("MyTest", "testFoo", false, "0.8.20+commit.xyz", "x.sol");
+        assert!(src.contains("pragma solidity ^0.8.20;"));
+    }
+}

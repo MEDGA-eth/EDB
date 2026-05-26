@@ -39,16 +39,22 @@ use crate::{
 };
 
 /// Replay the target transaction and collect call trace with all touched addresses
-pub fn replay_and_collect_trace<DB>(ctx: EdbContext<DB>, tx: TxEnv) -> Result<TraceReplayResult>
+pub fn replay_and_collect_trace<DB, Cheats>(
+    ctx: EdbContext<DB>,
+    tx: TxEnv,
+    cheats: Option<&mut Cheats>,
+) -> Result<TraceReplayResult>
 where
     DB: Database + DatabaseCommit + DatabaseRef + Clone,
     <CacheDB<DB> as Database>::Error: Clone,
     <DB as Database>::Error: Clone,
+    Cheats: revm::Inspector<EdbContext<DB>>,
 {
     info!("Replaying transaction to collect call trace and touched addresses");
 
     let mut tracer = CallTracer::new();
-    let mut evm = ctx.build_mainnet_with_inspector(&mut tracer);
+    let mut stack = crate::inspector::CheatedStack::new(cheats, &mut tracer);
+    let mut evm = ctx.build_mainnet_with_inspector(&mut stack);
 
     let result = evm
         .inspect_one_tx(tx)
@@ -93,13 +99,21 @@ pub fn analyze_source_code(
     Ok(analysis_result)
 }
 
-/// Tweak the bytecode of the contracts
+/// Tweak the bytecode of the contracts.
+///
+/// `deployed_in_tx` is a snapshot of the tracer's `visited_addresses` flag:
+/// `true` means the contract was deployed during the current transaction.
+/// For such addresses we skip the Etherscan `get_creation_tx` lookup
+/// entirely — that's necessary for `edb test` synthetic addresses (which
+/// have no Etherscan presence at all) and is also a sound fast path in
+/// replay mode (the result would be the same: tx_hash == current tx).
 pub async fn tweak_bytecode<DB>(
     config: &EngineConfig,
     ctx: &mut EdbContext<DB>,
     artifacts: &HashMap<Address, Artifact>,
     recompiled_artifacts: &HashMap<Address, Artifact>,
     tx_hash: TxHash,
+    deployed_in_tx: &HashMap<Address, bool>,
 ) -> Result<Vec<Address>>
 where
     DB: Database + DatabaseCommit + DatabaseRef + Clone,
@@ -107,13 +121,51 @@ where
     <DB as Database>::Error: Clone,
 {
     info!("Tweaking bytecode");
+    debug!(
+        target: "edb::hook::creation",
+        recompiled = recompiled_artifacts.len(),
+        deployed_in_tx = deployed_in_tx.iter().filter(|(_, v)| **v).count(),
+        "tweak_bytecode: starting",
+    );
 
     let mut tweaker =
         CodeTweaker::new(ctx, config.rpc_proxy_url.clone(), config.etherscan_api_key.clone());
 
     let mut contracts_in_tx = Vec::new();
 
+    // When there is no upstream RPC (e.g. `edb test`'s synthetic in-memory
+    // chain), Etherscan lookups can't succeed for any address; route every
+    // non-deployed-in-tx contract through the creation-hook path instead.
+    // In replay mode this is `true` and we keep the existing semantics
+    // (Etherscan failures bubble up as errors).
+    let has_upstream = config.has_upstream_rpc();
+
     for (address, recompiled_artifact) in recompiled_artifacts {
+        // Fast path: the tracer recorded this contract as deployed during the
+        // current tx (relevant for `edb test`-style synthetic addresses with
+        // no Etherscan presence, and a safe shortcut in replay mode).
+        if deployed_in_tx.get(address).copied().unwrap_or(false) {
+            debug!(
+                "Skip tweaking contract {}, since the tracer flagged it as deployed in this tx",
+                address
+            );
+            contracts_in_tx.push(*address);
+            continue;
+        }
+
+        // No upstream RPC → no Etherscan path. This is `edb test`-mode; any
+        // non-deployed-in-tx address must be one we etched locally (e.g. the
+        // synthetic test entrypoint), so route it through the creation-hook
+        // path using the lifted artifact's constructor.
+        if !has_upstream {
+            debug!(
+                "Routing {} through creation-hook path (no upstream RPC for Etherscan lookup)",
+                address
+            );
+            contracts_in_tx.push(*address);
+            continue;
+        }
+
         let creation_tx_hash = tweaker.get_creation_tx(address).await?;
         if creation_tx_hash == tx_hash {
             debug!(

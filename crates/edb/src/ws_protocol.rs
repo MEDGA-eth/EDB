@@ -49,10 +49,14 @@ pub enum ClientRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "status", rename_all = "lowercase")]
 pub enum ServerResponse {
+    /// In-progress status update sent while the session is being prepared.
     Progress {
+        /// Human-readable progress message.
         message: String,
+        /// Optional current step index.
         #[serde(skip_serializing_if = "Option::is_none")]
         current_step: Option<usize>,
+        /// Optional total number of steps.
         #[serde(skip_serializing_if = "Option::is_none")]
         total_steps: Option<usize>,
     },

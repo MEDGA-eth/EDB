@@ -197,10 +197,14 @@ pub fn dyn_sol_type(
                     let mut prop_types = Vec::with_capacity(definition.members.len());
                     for field in definition.members.iter() {
                         prop_names.push(field.name.clone());
-                        prop_types.push(
-                            dyn_sol_type(all_user_defined_types, field.type_name.as_ref()?)
-                                .unwrap(),
-                        );
+                        // Propagate `None` from unresolvable field types (e.g. a
+                        // struct member whose own type comes from a contract whose
+                        // AST we didn't pull in, or a mapping-valued member). The
+                        // prior `.unwrap()` panicked on those cases — solady's
+                        // `ERC6551Test::testOnERC1155Received` hit this on a struct
+                        // carrying a function-pointer member.
+                        prop_types
+                            .push(dyn_sol_type(all_user_defined_types, field.type_name.as_ref()?)?);
                     }
                     Some(DynSolType::CustomStruct {
                         name: definition.name.clone(),
@@ -304,5 +308,29 @@ mod tests {
                 tuple: vec![DynSolType::Uint(256), DynSolType::Uint(256)],
             }
         );
+    }
+
+    /// Regression: a struct member whose type cannot be lowered to a
+    /// `DynSolType` (a mapping member, a function-pointer member, an
+    /// unresolved user-defined member, etc.) used to panic at the unwrap
+    /// in `dyn_sol_type`. Solady's `ERC1271Test::testSupportsERC7739`
+    /// tripped this. The function must now propagate `None` instead.
+    #[test]
+    fn test_struct_with_mapping_member_returns_none() {
+        let source = r#"
+        contract C {
+            struct WithMapping {
+                uint256 a;
+                mapping(uint256 => uint256) m;
+            }
+            WithMapping internal w;
+        }
+        "#;
+        let (_sources, analysis) = compile_and_analyze(source);
+        let var = analysis.state_variables.first().unwrap();
+        let ty = var.type_name().as_ref().unwrap();
+        // Must not panic; should gracefully return None for an unrepresentable
+        // (mapping-bearing) struct.
+        assert!(dyn_sol_type(&analysis.user_defined_types(), ty).is_none());
     }
 }

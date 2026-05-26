@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, FileCode2, RefreshCw } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronRight,
+  FileCode2,
+  Folder,
+  FolderOpen,
+  RefreshCw,
+} from 'lucide-react';
 import { useTrace } from '../../hooks/useTrace';
 import { useAvailableFiles } from '../../hooks/useAvailableFiles';
 import { useSession } from '../../store/session';
@@ -20,6 +28,57 @@ function shortAddr(a: string): string {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
 
+// Left padding (px) for the shallowest file/folder under an address, and the
+// per-depth increment. Depth 0 (24px) matches the legacy flat `pl-6` look.
+const INDENT_BASE = 24;
+const INDENT_STEP = 14;
+
+/**
+ * Directory tree reconstructed from the full relative source paths the backend
+ * returns (e.g. `src/Foo.sol`, `lib/openzeppelin/.../ERC20.sol`). Built once
+ * per address from its file list.
+ */
+type TreeNode =
+  | { type: 'dir'; name: string; path: string; children: TreeNode[] }
+  | { type: 'file'; name: string; path: string };
+
+function isDir(n: TreeNode): n is Extract<TreeNode, { type: 'dir' }> {
+  return n.type === 'dir';
+}
+
+function buildTree(files: { path: string }[]): TreeNode[] {
+  const root: TreeNode[] = [];
+  for (const f of files) {
+    // Synthetic disassembly entries have no directory component.
+    const segments = f.path.split('/').filter((s) => s.length > 0);
+    const fileName = segments.pop() ?? f.path;
+    let level = root;
+    let acc = '';
+    for (const seg of segments) {
+      acc = acc ? `${acc}/${seg}` : seg;
+      let dir = level.find((n): n is Extract<TreeNode, { type: 'dir' }> => isDir(n) && n.name === seg);
+      if (!dir) {
+        dir = { type: 'dir', name: seg, path: acc, children: [] };
+        level.push(dir);
+      }
+      level = dir.children;
+    }
+    level.push({ type: 'file', name: fileName, path: f.path });
+  }
+  return sortTree(root);
+}
+
+// Directories first, then files; each group alphabetical. Mirrors the ordering
+// most file explorers use and keeps the tree stable across renders.
+function sortTree(nodes: TreeNode[]): TreeNode[] {
+  const dirs = nodes.filter(isDir);
+  const files = nodes.filter((n) => !isDir(n));
+  dirs.sort((a, b) => a.name.localeCompare(b.name));
+  files.sort((a, b) => a.name.localeCompare(b.name));
+  for (const d of dirs) d.children = sortTree(d.children);
+  return [...dirs, ...files];
+}
+
 export function FileExplorer() {
   return (
     <ErrorBoundary label="FileExplorer">
@@ -29,13 +88,25 @@ export function FileExplorer() {
 }
 
 /**
- * Flat row model, driven by per-address expansion state. The tree renders
- * by mapping over this list, which also determines focus order and Up/Down
- * navigation semantics.
+ * Flat row model, driven by per-address and per-folder expansion state. The
+ * tree renders by mapping over this list, which also determines focus order
+ * and Up/Down navigation semantics. `depth` is the nesting level under an
+ * address (0 = direct child), used purely for indentation.
  */
 type Row =
   | { kind: 'addr'; id: string; addr: string; expanded: boolean; hasError: boolean }
-  | { kind: 'file'; id: string; addr: string; path: string; label: string };
+  | { kind: 'dir'; id: string; addr: string; path: string; name: string; depth: number; expanded: boolean }
+  | { kind: 'file'; id: string; addr: string; path: string; label: string; depth: number };
+
+// Expansion-state key. Addresses key by the raw address; folders key by
+// `<addr>::<dirPath>` so a folder and a same-named address can't collide
+// (an address key never contains `::`).
+function addrKey(addr: string): string {
+  return addr;
+}
+function dirKey(addr: string, path: string): string {
+  return `${addr}::${path}`;
+}
 
 function FileExplorerInner() {
   const { data: trace, isLoading } = useTrace();
@@ -43,7 +114,8 @@ function FileExplorerInner() {
   const { perAddress } = useAvailableFiles();
   const open = useSession((s) => s.openFile);
 
-  // Default: every address starts expanded (preserves prior behaviour).
+  // Default: every address and folder starts expanded (preserves the prior
+  // "show all files" behaviour). Absent keys fall back to `true` below.
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   useEffect(() => {
     setExpanded((prev) => {
@@ -61,24 +133,43 @@ function FileExplorerInner() {
 
   // Build the visible row list.
   const rows = useMemo<Row[]>(() => {
+    // Flatten a directory tree into rows, honouring per-folder expansion.
+    const flattenTree = (nodes: TreeNode[], addr: string, depth: number, out: Row[]) => {
+      for (const node of nodes) {
+        if (node.type === 'dir') {
+          const isExpanded = expanded[dirKey(addr, node.path)] ?? true;
+          out.push({
+            kind: 'dir',
+            id: `dir:${addr}::${node.path}`,
+            addr,
+            path: node.path,
+            name: node.name,
+            depth,
+            expanded: isExpanded,
+          });
+          if (isExpanded) flattenTree(node.children, addr, depth + 1, out);
+        } else {
+          const label = node.path === DISASM_PATH ? '(disassembly)' : node.name;
+          out.push({
+            kind: 'file',
+            id: `file:${addr}::${node.path}`,
+            addr,
+            path: node.path,
+            label,
+            depth,
+          });
+        }
+      }
+    };
+
     const list: Row[] = [];
     for (const addr of addresses) {
       const entry = perAddress.find((p) => p.addr === addr);
       const hasError = entry?.status === 'error';
-      const isExpanded = expanded[addr] ?? true;
+      const isExpanded = expanded[addrKey(addr)] ?? true;
       list.push({ kind: 'addr', id: `addr:${addr}`, addr, expanded: isExpanded, hasError });
       if (isExpanded && entry && entry.status === 'ok') {
-        for (const f of entry.files) {
-          const label =
-            f.path === DISASM_PATH ? '(disassembly)' : (f.path.split('/').pop() ?? f.path);
-          list.push({
-            kind: 'file',
-            id: `file:${addr}::${f.path}`,
-            addr,
-            path: f.path,
-            label,
-          });
-        }
+        flattenTree(buildTree(entry.files), addr, 0, list);
       }
     }
     return list;
@@ -111,6 +202,20 @@ function FileExplorerInner() {
     }
   }
 
+  // Set expansion for an expandable (addr / dir) row.
+  function setRowExpanded(row: Row, value: boolean) {
+    const key =
+      row.kind === 'addr' ? addrKey(row.addr) : row.kind === 'dir' ? dirKey(row.addr, row.path) : null;
+    if (key === null) return;
+    setExpanded((prev) => ({ ...prev, [key]: value }));
+  }
+  function toggleRow(row: Row) {
+    const key =
+      row.kind === 'addr' ? addrKey(row.addr) : row.kind === 'dir' ? dirKey(row.addr, row.path) : null;
+    if (key === null) return;
+    setExpanded((prev) => ({ ...prev, [key]: !(prev[key] ?? true) }));
+  }
+
   function onKey(e: React.KeyboardEvent<HTMLUListElement>) {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -124,9 +229,9 @@ function FileExplorerInner() {
     }
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       const cur = rows.find((r) => r.id === activeId);
-      if (cur && cur.kind === 'addr') {
+      if (cur && (cur.kind === 'addr' || cur.kind === 'dir')) {
         e.preventDefault();
-        setExpanded((prev) => ({ ...prev, [cur.addr]: e.key === 'ArrowRight' }));
+        setRowExpanded(cur, e.key === 'ArrowRight');
       }
       return;
     }
@@ -134,10 +239,10 @@ function FileExplorerInner() {
       const cur = rows.find((r) => r.id === activeId);
       if (!cur) return;
       e.preventDefault();
-      if (cur.kind === 'addr') {
-        setExpanded((prev) => ({ ...prev, [cur.addr]: !prev[cur.addr] }));
-      } else {
+      if (cur.kind === 'file') {
         open({ addr: cur.addr, path: cur.path });
+      } else {
+        toggleRow(cur);
       }
     }
   }
@@ -174,13 +279,18 @@ function FileExplorerInner() {
             row={row}
             active={row.id === activeId}
             onActivate={() => setActiveId(row.id)}
-            onToggle={() =>
-              setExpanded((prev) => ({ ...prev, [row.addr]: !(prev[row.addr] ?? true) }))
-            }
+            onToggle={() => toggleRow(row)}
             onRetry={() => perAddress.find((p) => p.addr === row.addr)?.refetch()}
-            errorMessage={
-              perAddress.find((p) => p.addr === row.addr)?.error
-            }
+            errorMessage={perAddress.find((p) => p.addr === row.addr)?.error}
+            registerRef={(el) => (rowRefs.current[row.id] = el)}
+          />
+        ) : row.kind === 'dir' ? (
+          <DirRow
+            key={row.id}
+            row={row}
+            active={row.id === activeId}
+            onActivate={() => setActiveId(row.id)}
+            onToggle={() => toggleRow(row)}
             registerRef={(el) => (rowRefs.current[row.id] = el)}
           />
         ) : (
@@ -266,6 +376,48 @@ function AddressRow({
   );
 }
 
+function DirRow({
+  row,
+  active,
+  onActivate,
+  onToggle,
+  registerRef,
+}: {
+  row: Extract<Row, { kind: 'dir' }>;
+  active: boolean;
+  onActivate(): void;
+  onToggle(): void;
+  registerRef(el: HTMLDivElement | null): void;
+}) {
+  const Chevron = row.expanded ? ChevronDown : ChevronRight;
+  const FolderIcon = row.expanded ? FolderOpen : Folder;
+  return (
+    <li className="select-none" role="treeitem" aria-expanded={row.expanded}>
+      <div
+        ref={registerRef}
+        tabIndex={active ? 0 : -1}
+        onFocus={onActivate}
+        onClick={() => {
+          onActivate();
+          onToggle();
+        }}
+        style={{ paddingLeft: INDENT_BASE + row.depth * INDENT_STEP }}
+        className={
+          'flex w-full items-center gap-1 py-1 pr-2 text-xs outline-none focus:bg-(--color-bg-active) hover:bg-(--color-bg-hover) ' +
+          (active ? 'bg-(--color-bg-hover)' : '')
+        }
+        data-testid={`explorer-dir-${row.addr}-${row.path}`}
+        aria-label={`${row.expanded ? 'Collapse' : 'Expand'} ${row.name}`}
+        role="button"
+      >
+        <Chevron size={12} className="shrink-0 text-(--color-fg-tertiary)" />
+        <FolderIcon size={12} className="shrink-0 text-(--color-fg-tertiary)" />
+        <span className="truncate text-(--color-fg-secondary)">{row.name}</span>
+      </div>
+    </li>
+  );
+}
+
 function FileRow({
   row,
   active,
@@ -289,15 +441,18 @@ function FileRow({
           onActivate();
           onOpen();
         }}
+        style={{ paddingLeft: INDENT_BASE + row.depth * INDENT_STEP }}
         className={
-          'flex w-full items-center gap-2 px-2 py-1 pl-6 text-xs outline-none focus:bg-(--color-bg-active) hover:bg-(--color-bg-hover) ' +
+          'flex w-full items-center gap-1 py-1 pr-2 text-xs outline-none focus:bg-(--color-bg-active) hover:bg-(--color-bg-hover) ' +
           (active ? 'bg-(--color-bg-hover)' : '')
         }
         data-testid={`explorer-file-${row.addr}-${row.path}`}
         aria-label={`Open ${row.label}`}
         role="button"
       >
-        <FileCode2 size={12} className="text-(--color-fg-tertiary)" />
+        {/* Spacer matching the dir chevron so file icons align with folder icons. */}
+        <span className="inline-block w-3 shrink-0" aria-hidden="true" />
+        <FileCode2 size={12} className="shrink-0 text-(--color-fg-tertiary)" />
         <span className="truncate">{row.label}</span>
       </div>
     </li>

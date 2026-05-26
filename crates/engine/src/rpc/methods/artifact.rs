@@ -90,12 +90,19 @@ where
             Code::Opcode(OpcodeInfo { bytecode_address, codes })
         }
         SnapshotDetail::Hook(..) => {
-            // Get the artifact for this address
-            let artifact = context.artifacts.get(&bytecode_address).ok_or_else(|| RpcError {
-                code: error_codes::INVALID_ADDRESS,
-                message: format!("No artifact found for address {bytecode_address}"),
-                data: None,
-            })?;
+            // Get the artifact for this address. If there is no direct
+            // entry, the address may have been etched (e.g. via `vm.etch`)
+            // with another contract's instrumented runtime; in that case
+            // the codehash-alias index maps the live bytecode back to a
+            // canonical address whose artifact we do have.
+            let artifact =
+                context.resolve_artifact_via_codehash(bytecode_address).ok_or_else(|| {
+                    RpcError {
+                        code: error_codes::INVALID_ADDRESS,
+                        message: format!("No artifact found for address {bytecode_address}"),
+                        data: None,
+                    }
+                })?;
 
             // Extract sources from the SolcInput
             let mut sources = HashMap::new();
@@ -150,7 +157,15 @@ where
             data: None,
         })?;
 
-    let code = match context.artifacts.get(&address) {
+    // Resolve an artifact, trying the direct address first and then
+    // falling back through the codehash alias index. The fallback covers
+    // the case where `vm.etch(target, address(impl).code)` installs the
+    // instrumented runtime of `impl` at `target`: `target` has no
+    // artifact of its own, but its live bytecode hashes to a key the
+    // engine built from `impl`'s recompiled artifact.
+    let artifact = context.resolve_artifact_via_codehash(address);
+
+    let code = match artifact {
         Some(artifact) => {
             // Extract sources from the SolcInput
             let mut sources = HashMap::new();
@@ -217,6 +232,10 @@ where
             data: None,
         })?;
 
+    // No codehash fallback: `vm.etch` does not run a constructor, so an
+    // etched address has no constructor arguments. Falling back to a
+    // canonical artifact's constructor args would silently misrepresent
+    // the etched contract's deployment.
     let args =
         context.artifacts.get(&address).map(|artifact| artifact.meta.constructor_arguments.clone());
 

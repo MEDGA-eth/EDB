@@ -1,0 +1,83 @@
+name: Release Test
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release-test:
+    name: Release Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    timeout-minutes: 120
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-release-
+
+      - name: Cache SVM
+        uses: actions/cache@v5
+        with:
+          path: ~/.svm
+          key: ${{ runner.os }}-svm-${{ hashFiles('~/.svm/**') }}
+          restore-keys: |
+            ${{ runner.os }}-svm-
+
+      - name: Cache e2e foundry projects
+        uses: actions/cache@v5
+        with:
+          path: testdata/foundry-e2e
+          key: ${{ runner.os }}-e2e-foundry-release-${{ hashFiles('scripts/fetch-e2e-foundry-projects.sh') }}
+
+      - name: Fetch e2e foundry projects
+        # `shell: bash` forces Git Bash on windows-latest (default is pwsh,
+        # which silently fails on the script's #!/usr/bin/env bash shebang).
+        shell: bash
+        run: ./scripts/fetch-e2e-foundry-projects.sh
+
+      - name: Cache e2e foundry build artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            testdata/foundry-e2e/forge-template/out
+            testdata/foundry-e2e/solady/out
+            testdata/foundry-e2e/uniswap-v4-core/out
+            testdata/foundry-e2e/solmate/out
+            testdata/foundry-e2e/prb-math/out
+          key: ${{ runner.os }}-foundry-out-release-${{ hashFiles('scripts/fetch-e2e-foundry-projects.sh') }}
+
+      - name: Run tests (release profile)
+        run: cargo test --workspace --all-features --release --verbose -- --nocapture
+        env:
+          EDB_TEST_PROXY_MODE: cache-only
+          EDB_TEST_ETHERSCAN_MODE: cache-only
+          EDB_ASSERT: all
+          RUST_LOG: info

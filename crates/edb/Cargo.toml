@@ -11,9 +11,17 @@ homepage.workspace = true
 repository.workspace = true
 exclude.workspace = true
 
+[lib]
+name = "edb"
+path = "src/lib.rs"
+
 [[bin]]
 name = "edb"
 path = "src/main.rs"
+
+[features]
+# Expose programmatic entrypoints for integration tests (e.g. `run_foundry_test_for_test`).
+test-harness = []
 
 [lints]
 workspace = true
@@ -26,15 +34,40 @@ edb-tui.workspace = true
 edb-web.workspace = true
 
 # alloy - using individual crates like Foundry does
+alloy-json-abi.workspace = true
 alloy-primitives = { workspace = true, features = ["getrandom", "rand"] }
 alloy-provider = { workspace = true, features = ["reqwest"] }
 alloy-rpc-types = { workspace = true, features = ["eth"] }
+# vm.addr / vm.sign use these for secp256k1 key handling + ECDSA signing.
+# Both are pure-Rust k256-backed; no external crypto deps.
+alloy-signer.workspace = true
+alloy-signer-local.workspace = true
+
+# vm.signP256 / vm.publicKeyP256 — NIST P-256 (secp256r1) ECDSA.
+# Pure-Rust; tracks the same RustCrypto ecosystem as k256.
+p256.workspace = true
 
 # foundry
+foundry-config.workspace = true
 foundry-compilers.workspace = true
+foundry-linking.workspace = true
 
 # revm
-revm = { workspace = true, features = ["std", "serde"] }
+# `optional_eip3607` gates the `disable_eip3607` cfg field; we set it in
+# `cmd/test/synth.rs` so `edb test` matches foundry's `configure_env`
+# behaviour for senders with deployed code (forked tests / vm.etch on the
+# caller). `optional_block_gas_limit` / `optional_no_base_fee` /
+# `optional_balance_check` likewise gate `disable_*` fields used in the same
+# cfg block — feature unification with other workspace crates already pulls
+# them in, but listing them here makes the cfg-flag dependency explicit.
+revm = { workspace = true, features = [
+    "std",
+    "serde",
+    "optional_eip3607",
+    "optional_block_gas_limit",
+    "optional_no_base_fee",
+    "optional_balance_check",
+] }
 
 # async
 tokio = { workspace = true, features = ["full"] }
@@ -52,6 +85,7 @@ webbrowser.workspace = true
 # misc
 dotenv.workspace = true
 eyre.workspace = true
+pathdiff = "0.2"
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 serde.workspace = true
@@ -62,3 +96,5 @@ futures.workspace = true
 [dev-dependencies]
 assert_cmd.workspace = true
 predicates.workspace = true
+tempfile = "3"
+serial_test = "3"

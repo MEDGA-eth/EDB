@@ -181,4 +181,14 @@ const HELP_TEXT = `**Built-in commands**
 - \`clear\`, clear terminal
 - \`help\`, this list
 
+**Expression builtins** (use inside any expression or watch)
+
+- \`edb_sload(address, slot)\`, read a storage slot
+- \`edb_tsload(address, slot)\`, read transient storage _(opcode mode only)_
+- \`edb_stack(index)\`, read an EVM stack value _(opcode mode only)_
+- \`edb_memory(offset, size)\`, read EVM memory _(opcode mode only)_
+- \`edb_calldata(offset, size)\`, read a calldata slice
+- \`keccak256(bytes)\`, compute a keccak256 hash
+- \`edb_help()\`, full builtin reference
+
 Anything else is treated as a Solidity expression and evaluated at the current snapshot.`;

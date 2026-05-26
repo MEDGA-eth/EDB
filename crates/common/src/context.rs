@@ -59,7 +59,23 @@ pub fn disable_nonce_check<DB: Database + DatabaseRef>(context: &mut EdbContext<
     context.cfg.disable_nonce_check = true;
 }
 
-/// Relax the constraints for EVM execution in the given transaction
+/// Relax the gas-related constraints for EVM execution in the given
+/// transaction.
+///
+/// EDB does not model gas faithfully, so synthetic transactions
+/// (state-variable getter reads, expression evaluation in
+/// `engine::context::evm`) and the replayed target/creation transaction
+/// (`engine::tweak`, `engine::orchestration::snapshot`, via
+/// [`relax_evm_constraints`]) alike run with gas accounting effectively
+/// disabled.
+///
+/// Chain-id is intentionally left untouched here. This helper runs on the
+/// real target/creation transaction during replay, and typed transactions
+/// (EIP-1559 and friends) require a `chain_id` under post-EIP-155 hardforks —
+/// clearing it would make REVM reject the replayed tx with `MissingChainId`.
+/// Callers that build *synthetic* transactions are responsible for setting an
+/// appropriate `chain_id` matching the cfg they execute against (see
+/// `send_transaction_in_derived_evm`).
 pub fn relax_evm_tx_constraints(tx: &mut TxEnv) {
     tx.gas_limit = u64::MAX; // Relax gas limit for execution
     tx.gas_price = 0; // Relax gas price for execution

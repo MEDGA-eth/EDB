@@ -26,7 +26,7 @@
 //! making it more efficient for tracking specific execution states.
 
 use alloy_dyn_abi::{DynSolType, DynSolValue};
-use alloy_primitives::{Address, Bytes, U256};
+use alloy_primitives::{Address, B256, Bytes, U256};
 use edb_common::{
     EdbContext, OpcodeTr,
     types::{CallResult, EdbSolValue, ExecutionFrameId, Trace},
@@ -93,6 +93,34 @@ where
     pub state_variables: HashMap<String, Option<Arc<EdbSolValue>>>,
     /// User-defined snapshot ID from call data
     pub usid: USID,
+    /// Block environment at the moment of capture. Mutates across the tx when
+    /// cheatcodes like vm.warp/vm.roll fire.
+    #[serde(default)]
+    pub block_env: revm::context::BlockEnv,
+    /// Cfg environment at the moment of capture. Mutates when vm.chainId fires.
+    #[serde(default)]
+    pub cfg_env: revm::context::CfgEnv,
+}
+
+impl<DB> Default for HookSnapshot<DB>
+where
+    DB: Database + DatabaseCommit + DatabaseRef + Clone + Default,
+    <CacheDB<DB> as Database>::Error: Clone,
+    <DB as Database>::Error: Clone,
+{
+    fn default() -> Self {
+        Self {
+            target_address: Address::default(),
+            bytecode_address: Address::default(),
+            database: Arc::new(CacheDB::default()),
+            transient_storage: Arc::new(TransientStorage::default()),
+            locals: HashMap::new(),
+            state_variables: HashMap::new(),
+            usid: USID::default(),
+            block_env: revm::context::BlockEnv::default(),
+            cfg_env: revm::context::CfgEnv::default(),
+        }
+    }
 }
 
 /// Collection of hook snapshots organized by execution order
@@ -226,6 +254,20 @@ where
     /// Source code analysis results
     analysis: &'a HashMap<Address, AnalysisResult>,
 
+    /// Codehash → canonical-address index, borrowed from `EngineContext`.
+    /// Used to resolve addresses with no direct `analysis` entry by
+    /// matching their live runtime bytecode against known artifacts.
+    codehash_to_canonical: &'a HashMap<B256, Address>,
+
+    /// Per-run cache mapping an alias address (one with no direct
+    /// `analysis` entry) to its canonical address (the artifact's
+    /// address whose bytecode it shares). The mapping is directional:
+    /// **alias → canonical**, never the reverse. Populated lazily on
+    /// first miss via codehash equality; subsequent lookups at the
+    /// same alias are O(1). Cleared at the end of the run when the
+    /// inspector is dropped.
+    canonical_by_alias: HashMap<Address, Address>,
+
     /// Collection of hook snapshots
     pub snapshots: HookSnapshots<DB>,
 
@@ -237,6 +279,19 @@ where
 
     /// Creation hooks (original contract bytecode, hooked bytecode, constructor args)
     creation_hooks: Vec<(Bytes, Bytes, Bytes)>,
+
+    /// Predicted-address-keyed substitution map. When a CREATE is intercepted
+    /// at a predicted address present in this map, the runtime init code is
+    /// replaced with `hooked_creation_bytecode || extracted_args` — this is
+    /// the path that makes nested CREATE hook firing work (where the parent
+    /// contract embeds a copy of the child's creation code that may not
+    /// byte-identically match the child's standalone artifact bytecode).
+    ///
+    /// Value tuple: `(hooked_creation_bytecode, args_size_bytes)`. The
+    /// `args_size_bytes` is computed at registration time from the artifact's
+    /// constructor ABI; the inspector reads that many trailing bytes from the
+    /// runtime init_code as the constructor args to forward.
+    creation_by_address: HashMap<Address, (Bytes, usize)>,
 
     /// The latest value of each UVID encountered (for variable tracking)
     uvid_values: HashMap<UVID, Arc<EdbSolValue>>,
@@ -262,14 +317,18 @@ where
         ctx: &EdbContext<DB>,
         trace: &'a Trace,
         analysis: &'a HashMap<Address, AnalysisResult>,
+        codehash_to_canonical: &'a HashMap<B256, Address>,
     ) -> Self {
         Self {
             trace,
             analysis,
+            codehash_to_canonical,
+            canonical_by_alias: HashMap::new(),
             snapshots: HookSnapshots::default(),
             frame_stack: Vec::new(),
             current_trace_id: 0,
             creation_hooks: Vec::new(),
+            creation_by_address: HashMap::new(),
             uvid_values: HashMap::new(),
             last_opcode: None,
             database: Arc::new(ctx.db().clone()),
@@ -282,6 +341,7 @@ where
         &mut self,
         hooks: Vec<(&Contract, &Contract, &Bytes)>,
     ) -> Result<()> {
+        debug!(target: "edb::hook::creation", incoming = hooks.len(), "registering creation hooks");
         for (original, hooked, args) in hooks {
             self.creation_hooks.push((
                 original
@@ -299,6 +359,20 @@ where
         }
 
         Ok(())
+    }
+
+    /// Register a predicted-address-keyed creation substitution map. Entries
+    /// are keyed by the address that *would* be CREATEd (computed from caller
+    /// nonce or CREATE2 salt at substitution time) and store the hooked
+    /// creation bytecode to swap in. See `check_and_apply_creation_hooks` for
+    /// why this exists alongside `with_creation_hooks`.
+    pub fn with_creation_by_address(&mut self, map: HashMap<Address, (Bytes, usize)>) {
+        debug!(
+            target: "edb::hook::creation",
+            entries = map.len(),
+            "registering address-keyed creation hooks",
+        );
+        self.creation_by_address = map;
     }
 
     /// Consume the inspector and return the collected snapshots
@@ -372,7 +446,7 @@ where
         &mut self,
         data: &[u8],
         interp: &Interpreter,
-        _ctx: &mut EdbContext<DB>,
+        ctx: &mut EdbContext<DB>,
     ) {
         let address = self
             .current_frame_id()
@@ -392,12 +466,22 @@ where
             return;
         };
 
-        // Check variables that are valid at this point
-        let Some(step) = self.analysis.get(&address).and_then(|a| a.usid_to_step.get(&usid)) else {
+        // Resolve the analysis result for this address. Falls back through the
+        // codehash alias index when the address itself isn't registered (the
+        // `vm.etch(target, address(impl).code)` case).
+        let Some(analysis) = self.resolve_analysis(address, interp) else {
             error!(
                 address=?address,
                 usid=?usid,
-                "No analysis step found for address and USID, skipping hook snapshot",
+                "No analysis found for address (direct or via codehash alias), skipping hook snapshot",
+            );
+            return;
+        };
+        let Some(step) = analysis.usid_to_step.get(&usid) else {
+            error!(
+                address=?address,
+                usid=?usid,
+                "No analysis step found for USID, skipping hook snapshot",
             );
             return;
         };
@@ -425,6 +509,8 @@ where
                     locals,
                     usid,
                     state_variables: HashMap::new(), // State variables can be filled in later
+                    block_env: ctx.block.clone(),
+                    cfg_env: ctx.cfg.clone(),
                 };
 
                 self.snapshots.update_last_frame_with_snapshot(current_frame_id, hook_snapshot);
@@ -495,11 +581,12 @@ where
 
         let decoded_data = &data[96..96 + length_usize];
 
-        let Some(analysis) = self.analysis.get(&address) else {
+        let Some(analysis) = self.resolve_analysis(address, interp) else {
             error!(
                 address=?address,
                 uvid=?uvid,
-                "No analysis found for address, skipping variable update recording",
+                "No analysis found for address (direct or via codehash alias), \
+                 skipping variable update recording",
             );
             return;
         };
@@ -555,36 +642,103 @@ where
         let nonce = account.info.nonce;
         let predicted_address = inputs.created_address(nonce);
 
-        for (original_bytecode, hooked_bytecode, constructor_args) in &self.creation_hooks {
-            // Check if constructor arguments are at the tail of input bytes
+        debug!(
+            target: "edb::hook::creation",
+            caller = ?inputs.caller(),
+            predicted = ?predicted_address,
+            init_code_len = inputs.init_code().len(),
+            num_hooks = self.creation_hooks.len(),
+            "CREATE intercepted; scanning hooks",
+        );
+
+        // ---------- Step 1: try address-keyed substitution ----------
+        //
+        // We have a pre-computed map of `predicted_address → (hooked_creation,
+        // args_size_bytes)` for every contract in `contracts_in_tx` (the
+        // addresses whose source we have an artifact for). If the predicted
+        // address of *this* CREATE is in that map, we substitute regardless
+        // of whether the bytecode-prefix heuristic below would have matched.
+        //
+        // This handles **nested CREATE**s where the parent contract embeds a
+        // copy of the child's creation bytecode that does *not*
+        // byte-identically match the child's standalone artifact bytecode —
+        // Solidity emits different deployed code (and thus different
+        // creation wrappers) for an inlined-via-parent compilation vs. a
+        // standalone compilation of the same source (different optimizer
+        // context, library refs, metadata hash, etc.), which breaks the
+        // exact-match path below.
+        //
+        // `args_size_bytes` was computed at registration time from the
+        // contract's constructor ABI — exact for static-typed constructors
+        // (`uint256`, `address`, `bool`, `bytesN`, fixed-size arrays of those)
+        // and an underestimate for dynamic-typed ones (`bytes`, `string`,
+        // dynamic arrays); for the dynamic case the substituted constructor
+        // would receive truncated args. None of the current foundry-test
+        // fixtures exercise dynamic-args constructors at the nested layer,
+        // so we accept the limitation; the static path covers every test we
+        // ship.
+        if let Some((hooked_creation, args_size)) =
+            self.creation_by_address.get(&predicted_address).cloned()
+        {
+            let init_code = inputs.init_code();
+            let runtime_args: Bytes = if args_size == 0 {
+                Bytes::default()
+            } else if init_code.len() >= args_size {
+                Bytes::from(init_code[init_code.len() - args_size..].to_vec())
+            } else {
+                Bytes::default()
+            };
+
+            let mut new_init_code = Vec::with_capacity(hooked_creation.len() + runtime_args.len());
+            new_init_code.extend_from_slice(hooked_creation.as_ref());
+            new_init_code.extend_from_slice(runtime_args.as_ref());
+            inputs.set_init_code(Bytes::from(new_init_code));
+            inputs.set_scheme(CreateScheme::Custom { address: predicted_address });
+
+            debug!(
+                target: "edb::hook::creation",
+                caller = ?inputs.caller(),
+                predicted = ?predicted_address,
+                args_len = runtime_args.len(),
+                strategy = "address-keyed",
+                "creation bytecode replaced with hooked version",
+            );
+            return;
+        }
+
+        // ---------- Step 2: fall back to bytecode-prefix heuristic ----------
+        //
+        // For contracts NOT in `creation_by_address` (e.g. legacy Etherscan
+        // path where addresses aren't pre-registered), keep the original
+        // logic: peel the recorded `constructor_args` off the tail and do an
+        // exact bytecode-prefix check.
+        for (hook_idx, (original_bytecode, hooked_bytecode, constructor_args)) in
+            self.creation_hooks.iter().enumerate()
+        {
             if inputs.init_code().len() >= constructor_args.len() {
                 let input_args_start = inputs.init_code().len() - constructor_args.len();
                 let input_args = &inputs.init_code()[input_args_start..];
 
-                // Check if constructor args match
                 if input_args == constructor_args.as_ref() {
-                    // Get the creation bytecode (without constructor args)
                     let input_bytecode = &inputs.init_code()[..input_args_start];
 
-                    // Check if bytecode is very similar to original
-                    // For now, we do exact match, but could be made fuzzy
                     if input_bytecode == original_bytecode.as_ref() {
-                        // Match found! Replace with hooked bytecode + constructor args
                         let mut new_init_code = Vec::from(hooked_bytecode.as_ref());
                         new_init_code.extend_from_slice(constructor_args.as_ref());
                         inputs.set_init_code(Bytes::from(new_init_code));
 
-                        // Update creation schema
                         inputs.set_scheme(CreateScheme::Custom { address: predicted_address });
 
-                        // Log the replacement
                         debug!(
-                            "Replaced creation bytecode with hooked version for {:?} -> {:?}",
-                            inputs.caller(),
-                            predicted_address
+                            target: "edb::hook::creation",
+                            hook = hook_idx,
+                            caller = ?inputs.caller(),
+                            predicted = ?predicted_address,
+                            strategy = "bytecode-prefix",
+                            "creation bytecode replaced with hooked version",
                         );
 
-                        break; // Found a match, no need to check other hooks
+                        break;
                     }
                 }
             }
@@ -596,6 +750,45 @@ where
         self.snapshots.snapshots.clear();
         self.frame_stack.clear();
         self.current_trace_id = 0;
+    }
+
+    /// Resolve an `AnalysisResult` for the given address.
+    ///
+    /// Tries three sources in order:
+    ///   1. Cached redirect from a previous codehash-fallback hit.
+    ///   2. Direct `analysis[address]` lookup (the common case).
+    ///   3. Codehash fallback: hash the live runtime bytecode currently
+    ///      executing in `interp` and look up `codehash_to_canonical[hash]`.
+    ///      On hit, cache the redirect so future calls are O(1).
+    ///
+    /// Returns `None` when no resolution is possible (genuinely-unknown
+    /// bytecode — the current "no analysis found" path).
+    fn resolve_analysis(
+        &mut self,
+        address: Address,
+        interp: &Interpreter,
+    ) -> Option<&'a AnalysisResult> {
+        // Step 1: cached redirect.
+        if let Some(canonical) = self.canonical_by_alias.get(&address) {
+            return self.analysis.get(canonical);
+        }
+        // Step 2: direct hit.
+        if let Some(a) = self.analysis.get(&address) {
+            return Some(a);
+        }
+        // Step 3: codehash fallback. The bytes currently executing in
+        // `interp` at `address` are the etched / instrumented runtime
+        // bytecode in Pass 3 — exactly what we keccak'd when building
+        // the `codehash_to_canonical` index in `prepare`. `resolve_canonical`
+        // absorbs REVM's variable trailing-zero padding for etched aliases.
+        let raw_code = interp.bytecode.original_byte_slice();
+        if raw_code.is_empty() {
+            return None;
+        }
+        let canonical = crate::utils::resolve_canonical(self.codehash_to_canonical, raw_code)?;
+        self.canonical_by_alias.insert(address, canonical);
+        debug!(?address, ?canonical, "hook inspector resolved address via codehash alias");
+        self.analysis.get(&canonical)
     }
 }
 
@@ -928,4 +1121,23 @@ pub fn decode_variable_value(
         .abi_decode(data)
         .map_err(|e| eyre::eyre!("Failed to decode variable value: {}", e))?;
     Ok(value)
+}
+
+#[cfg(test)]
+mod env_capture_tests {
+    use super::*;
+    use revm::{
+        context::{BlockEnv, CfgEnv},
+        database::CacheDB,
+        database_interface::EmptyDB,
+    };
+
+    type TestDB = CacheDB<EmptyDB>;
+
+    #[test]
+    fn hook_snapshot_carries_block_env() {
+        let s = HookSnapshot::<TestDB>::default();
+        let _: &BlockEnv = &s.block_env;
+        let _: &CfgEnv = &s.cfg_env;
+    }
 }

@@ -60,12 +60,17 @@
 //! when not actively collecting data.
 
 mod call_tracer;
+mod cheated_stack;
 mod hook_snapshot_inspector;
 mod opcode_snapshot_inspector;
 mod tweak_inspector;
 mod utils;
 
 pub use call_tracer::*;
+pub use cheated_stack::*;
 pub use hook_snapshot_inspector::*;
 pub use opcode_snapshot_inspector::*;
 pub use tweak_inspector::*;
+
+#[cfg(test)]
+mod cheated_stack_tests;

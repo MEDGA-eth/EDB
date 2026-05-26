@@ -562,3 +562,30 @@ export const Health = z.object({
   service: z.string().optional(),
   version: z.string().optional(),
 });
+
+/* ── Source search (edb_searchSources) ────────────────────── */
+export const SourceSearchLineMatch = z.object({
+  line: z.number(), // 1-based line number within the file
+  text: z.string(), // matching line, clipped on the backend
+});
+export type SourceSearchLineMatch = z.infer<typeof SourceSearchLineMatch>;
+
+export const SourceSearchFile = z.object({
+  path: z.string(),
+  addresses: z.array(z.string()), // lowercase 0x addresses carrying this path
+  matches: z.array(SourceSearchLineMatch),
+});
+export type SourceSearchFile = z.infer<typeof SourceSearchFile>;
+
+export const SourceSearchResult = z.object({
+  query: z.string(),
+  // Whether the query was treated as a regex. Optional for back-compat with
+  // engines predating the regex mode.
+  regex: z.boolean().optional().default(false),
+  // Set (with empty `files`) when a regex pattern failed to compile.
+  error: z.string().nullish(),
+  truncated: z.boolean(),
+  total_matches: z.number(),
+  files: z.array(SourceSearchFile),
+});
+export type SourceSearchResult = z.infer<typeof SourceSearchResult>;

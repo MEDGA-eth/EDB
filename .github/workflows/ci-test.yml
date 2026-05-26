@@ -1,0 +1,122 @@
+name: CI Test
+
+# The heavy `cargo test --workspace --all-features` job, split out from
+# `ci.yml` so it does NOT run on every push. The cheap checks (fmt /
+# clippy / check / build / web-frontend) still run on every push via
+# `ci.yml`; this workflow handles the integration + e2e suites that
+# compile/run real Foundry projects (solady, uniswap-v4-core, solmate,
+# prb-math, forge-template), which adds many minutes to CI.
+#
+# Triggers (any of):
+#   - Manual `workflow_dispatch` from the Actions tab.
+#   - A PR is labeled with `run-tests` (or re-labeled after a push,
+#     since `synchronize` re-fires when the labeled label is still set).
+#
+# Recommended flow for merging:
+#   1. Open / push to the PR — fast checks run via `ci.yml`.
+#   2. When ready to merge, add the `run-tests` label to the PR.
+#   3. This workflow runs against the PR head; reviewers wait for green
+#      before merging.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test
+    # Only fire the heavy job when the gating label is present on the PR
+    # (this branch of the `if` skips `synchronize` events that aren't
+    # labeled). For `workflow_dispatch`, `github.event.pull_request` is
+    # null, so the second arm is satisfied unconditionally.
+    if: >
+      github.event_name == 'workflow_dispatch'
+      || contains(github.event.pull_request.labels.*.name, 'run-tests')
+    # The full real-world e2e suite (solady / uniswap-v4 / solmate / prb-math
+    # + the mega-evm and foundry-fixture suites) runs to completion now that
+    # the previously fast-failing cases pass. macOS finishes in ~33 min, but
+    # the slower Windows runner exceeded the old 60-min cap mid-suite; 90
+    # gives it headroom without unbounding the job.
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v5
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Cache SVM
+        uses: actions/cache@v5
+        with:
+          path: ~/.svm
+          key: ${{ runner.os }}-svm-${{ hashFiles('~/.svm/**') }}
+          restore-keys: |
+            ${{ runner.os }}-svm-
+
+      - name: Cache e2e foundry projects
+        uses: actions/cache@v5
+        with:
+          path: testdata/foundry-e2e
+          key: ${{ runner.os }}-e2e-foundry-${{ hashFiles('scripts/fetch-e2e-foundry-projects.sh') }}
+
+      - name: Fetch e2e foundry projects
+        # `shell: bash` forces Git Bash on windows-latest (default shell is pwsh,
+        # which can't execute #!/usr/bin/env bash scripts; without this line the
+        # step exits silently in ~2s and every e2e test then panics with
+        # "fixture missing"). Linux/macOS unaffected — bash is their default.
+        shell: bash
+        run: ./scripts/fetch-e2e-foundry-projects.sh
+
+      - name: Cache e2e foundry build artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            testdata/foundry-e2e/forge-template/out
+            testdata/foundry-e2e/solady/out
+            testdata/foundry-e2e/uniswap-v4-core/out
+            testdata/foundry-e2e/solmate/out
+            testdata/foundry-e2e/prb-math/out
+          key: ${{ runner.os }}-foundry-out-${{ hashFiles('scripts/fetch-e2e-foundry-projects.sh') }}
+
+      - name: Run tests
+        run: cargo test --workspace --all-features --verbose -- --nocapture
+        env:
+          EDB_TEST_PROXY_MODE: cache-only
+          EDB_TEST_ETHERSCAN_MODE: cache-only
+          EDB_ASSERT: all
+          RUST_LOG: info
+          # Cap glibc malloc arenas. The multi-threaded test harness otherwise
+          # spawns up to ~8×cores arenas that retain freed memory under the
+          # heavy alloc/free churn of EVM analysis, inflating RSS several-fold
+          # on Linux (the suite uses only ~3.5 GB live) and OOM-killing the
+          # ubuntu runner agent mid-suite. No-op on macOS/Windows (non-glibc).
+          MALLOC_ARENA_MAX: "2"

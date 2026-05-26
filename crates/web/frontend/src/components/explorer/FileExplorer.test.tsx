@@ -111,6 +111,44 @@ describe('<FileExplorer />', () => {
     });
   });
 
+  test('reconstructs nested directory structure from source paths', async () => {
+    mockRpc({
+      edb_getTrace: () => ({ inner: [entry(0, null, ADDR_A)] }),
+      edb_getCodeByAddress: () => ({
+        Source: {
+          bytecode_address: ADDR_A,
+          sources: {
+            'src/Counter.sol': 'contract Counter{}',
+            'lib/oz/ERC20.sol': 'contract ERC20{}',
+            'Root.sol': 'contract Root{}',
+          },
+        },
+      }),
+    });
+    const { wrapper } = makeWrapper();
+    render(<FileExplorer />, { wrapper });
+
+    // Folder rows for each directory segment, including the nested one.
+    await waitFor(() => expect(screen.getByTestId(`explorer-dir-${ADDR_A}-src`)).toBeTruthy());
+    expect(screen.getByTestId(`explorer-dir-${ADDR_A}-lib`)).toBeTruthy();
+    expect(screen.getByTestId(`explorer-dir-${ADDR_A}-lib/oz`)).toBeTruthy();
+
+    // Files keep their full path in the testid and are nested under folders.
+    expect(screen.getByTestId(`explorer-file-${ADDR_A}-src/Counter.sol`)).toBeTruthy();
+    expect(screen.getByTestId(`explorer-file-${ADDR_A}-lib/oz/ERC20.sol`)).toBeTruthy();
+    // Top-level file (no directory) renders directly under the address.
+    expect(screen.getByTestId(`explorer-file-${ADDR_A}-Root.sol`)).toBeTruthy();
+
+    // Collapsing a folder hides its descendants.
+    await userEvent.click(screen.getByTestId(`explorer-dir-${ADDR_A}-lib`));
+    await waitFor(() =>
+      expect(screen.queryByTestId(`explorer-dir-${ADDR_A}-lib/oz`)).toBeNull(),
+    );
+    expect(screen.queryByTestId(`explorer-file-${ADDR_A}-lib/oz/ERC20.sol`)).toBeNull();
+    // Sibling directories stay visible.
+    expect(screen.getByTestId(`explorer-file-${ADDR_A}-src/Counter.sol`)).toBeTruthy();
+  });
+
   test('error state surfaces a retry affordance', async () => {
     let calls = 0;
     mockRpc({

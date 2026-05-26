@@ -1,0 +1,7 @@
+[env]
+# Mirror CI's `EDB_ASSERT=all` so the `edb_debug_assert!` family of macros
+# (in crates/common/src/macros.rs) fires for every module in local dev runs.
+# Without this, an off-by-one in an inspector or tracer can pass locally
+# and only blow up in CI (see PR #66 / commit 7bbc2fb for a worked example).
+# Override locally with `EDB_ASSERT= cargo test` if you ever need to disable.
+EDB_ASSERT = { value = "all", force = false }

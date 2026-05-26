@@ -111,6 +111,56 @@ Type `?` in the TUI to view the help page.
 
 For development setup and architecture details, see [DEV.md](DEV.md) and [ARCH.md](ARCH.md).
 
+### Debug a Foundry Test
+
+From inside a Foundry project (or anywhere with `--root`):
+
+```bash
+edb test MyTest::testSomething
+```
+
+EDB locates `foundry.toml`, compiles the project with `foundry-compilers`,
+synthesizes a single-transaction entrypoint that deploys the test contract
+and invokes `setUp()` (if present) + the chosen test function, then drives
+the whole thing through EDB's source-level debugging pipeline. The web UI
+or TUI launches as usual.
+
+Forking is opt-in:
+
+```bash
+edb test MyTest::testForkedThing --fork-url $MAINNET_RPC --fork-block-number 18000000
+```
+
+`--fork-url` is also picked up from `foundry.toml`'s `eth_rpc_url` field
+(with `${VAR}` env-var expansion, matching `forge test`).
+
+**Cheatcode coverage:** EDB ships ~90 hand-rolled cheatcodes covering
+the families used by the vast majority of `forge test` suites:
+- **State mutation**: `vm.warp`, `vm.roll`, `vm.chainId`, `vm.deal`,
+  `vm.etch`, `vm.store`/`load`, `vm.setNonce`
+- **Caller control**: `vm.prank`/`startPrank`/`stopPrank`
+- **Call mocking**: `vm.mockCall`, `vm.mockCallRevert`, `vm.clearMockedCalls`
+- **Expectations**: `vm.expectRevert`, `vm.expectEmit` (4 overloads, soft-match),
+  `vm.expectCall` (2 overloads), `vm.assume`
+- **Assertions** (40 overloads): `vm.assertEq`, `vm.assertNotEq`,
+  `vm.assertGt`/`Ge`/`Lt`/`Le`, `vm.assertTrue`, `vm.assertFalse` —
+  fixed-width primitives (`uint256`, `int256`, `address`, `bool`,
+  `bytes32`), with and without custom error message. Dynamic / array /
+  decimal / approxEq overloads are cataloged but not yet implemented.
+- **Log inspection**: `vm.recordLogs`, `vm.getRecordedLogs`, `vm.label`
+- **State snapshots**: `vm.snapshotState`/`snapshot`,
+  `vm.revertToState`/`revertTo`/`revertToStateAndDelete`,
+  `vm.deleteStateSnapshot`/`deleteStateSnapshots`
+- **Env vars**: `vm.envBool`/`envBytes`/`envString` + `envOr` overloads
+- **Gas stubs**: `vm.pauseGasMetering`, `vm.resumeGasMetering`,
+  `vm.lastCallGas`, `vm.startSnapshotGas`/`stopSnapshotGas`/`snapshotGasLastCall`
+  (6 overloads, all no-op stubs — EDB is not a gas profiler in v1)
+
+Boundary cheatcodes that need multi-fork backend or mid-tx state
+branching (`vm.selectFork`, `vm.transact`, `vm.broadcast`, fs/ffi)
+revert with a clear EDB error so you know exactly what's blocking. See
+[`docs/cheatcodes.md`](docs/cheatcodes.md) for the full matrix.
+
 
 ## Why EDB?
 

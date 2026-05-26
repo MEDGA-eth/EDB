@@ -817,3 +817,24 @@ cargo publish -p edb
 - [Ethereum StackExchange](https://ethereum.stackexchange.com/) - Technical Q&A
 - [Rust Programming Language](https://www.rust-lang.org/) - Core language resources
 
+---
+
+## Decisions
+
+### Cheatcode strategy for `edb test`
+
+EDB's `edb test` ships with hand-rolled cheatcodes, not embedded
+foundry-cheatcodes. Reason: foundry's `Cheatcodes` inspector only
+implements `revm::Inspector` for a `Context` whose db slot is `&mut
+dyn DatabaseExt<F>` (with the Journal type to match). EDB's context
+uses the concrete `CacheDB<DB>`. Bridging the two structurally would
+require restructuring `EdbContext` across `crates/common` and
+`crates/engine` (~800-1500 LOC, risks the on-chain-tx replay path).
+
+The pragmatic alternative: a small selector-dispatch inspector in
+`crates/edb/src/cmd/test/cheats.rs` implementing the high-priority
+cheatcode set (deal/prank/warp/roll/chainId/store/mockCall/expectRevert/
+etc.). Unsupported cheatcodes revert with a clear EDB error. The
+full coverage matrix lives at `docs/cheatcode-coverage.md` (to be
+written in Task 5.6).
+

@@ -18,7 +18,7 @@
 
 use alloy_primitives::TxHash;
 use edb_common::fork_and_prepare;
-use edb_engine::Engine;
+use edb_engine::{Engine, EngineConfig};
 use eyre::Result;
 
 use crate::{Ui, utils};
@@ -33,7 +33,11 @@ pub async fn replay_transaction(tx_hash: TxHash, cli: &crate::Cli, rpc_url: &str
         fork_result.fork_info.block_number
     );
 
-    let engine_config = cli.to_engine_config(rpc_url);
+    let mut engine_config =
+        EngineConfig::default().with_quick_mode(cli.quick).with_rpc_proxy_url(rpc_url.to_string());
+    if let Some(api_key) = &cli.etherscan_api_key {
+        engine_config = engine_config.with_etherscan_api_key(api_key.clone());
+    }
     let engine = Engine::new(engine_config);
 
     let rpc_server_addr = match cli.ui {
@@ -41,17 +45,7 @@ pub async fn replay_transaction(tx_hash: TxHash, cli: &crate::Cli, rpc_url: &str
         Ui::Web => engine.prepare_with_router(fork_result, None, Some(edb_web::router())).await?,
     };
 
-    match cli.ui {
-        Ui::Tui => {
-            utils::start_tui(&cli.tui_options, rpc_server_addr).await?;
-        }
-        Ui::Web => {
-            let url = format!("http://{rpc_server_addr}/");
-            utils::open_browser(&url);
-            tracing::info!("Web UI ready. Press Ctrl+C to exit.");
-            tokio::signal::ctrl_c().await?;
-        }
-    }
+    utils::launch_ui_and_wait(cli, rpc_server_addr).await?;
 
     tracing::info!("Shutting down EDB...");
     engine.shutdown_rpc_server(&tx_hash)?;
